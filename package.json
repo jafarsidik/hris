@@ -1,0 +1,51 @@
+{
+  "name": "hris",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Enterprise HRIS - modular monolith, API-first, multi-company/multi-entity",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.14.0",
+    "npm": ">=10.9.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build:packages && npm run build:apps",
+    "build:packages": "npm run build --if-present -w @hris/shared-types -w @hris/config -w @hris/ui",
+    "build:apps": "npm run build --if-present -w @hris/api -w @hris/web",
+    "clean": "npm run clean --if-present --workspaces --include-workspace-root && rm -rf node_modules",
+    "dev": "concurrently -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @hris/api",
+    "dev:web": "npm run dev -w @hris/web",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}\"",
+    "infra:down": "docker compose down --remove-orphans",
+    "infra:logs": "docker compose logs -f postgres redis",
+    "infra:up": "docker compose up -d postgres redis",
+    "lint": "npm run lint --if-present --workspaces --include-workspace-root",
+    "lint:fix": "npm run lint:fix --if-present --workspaces --include-workspace-root",
+    "test": "npm run test --if-present --workspaces --include-workspace-root",
+    "test:e2e": "npm run test:e2e -w @hris/api",
+    "typecheck": "npm run typecheck --if-present --workspaces --include-workspace-root",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "stack:build": "docker compose --profile app build",
+    "stack:down": "docker compose --profile app down --remove-orphans",
+    "stack:logs": "docker compose --profile app logs -f",
+    "stack:up": "docker compose --profile app up -d --build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.24.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.29.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "@scarf/scarf": false
+  }
+}

@@ -1,0 +1,74 @@
+:root {
+  /* Mirrors the token set exported from @hris/ui so that plain-CSS surfaces
+     (global styles, print layouts) and React components stay aligned. */
+  --hris-color-surface: #ffffff;
+  --hris-color-background: #f1f5f9;
+  --hris-color-border: #e2e8f0;
+  --hris-color-text: #1e293b;
+  --hris-color-text-muted: #64748b;
+  --hris-color-primary: #1d4ed8;
+  --hris-color-danger: #b91c1c;
+  --hris-color-success: #15803d;
+  --hris-radius-sm: 4px;
+  --hris-radius-md: 6px;
+  --hris-radius-lg: 10px;
+  --hris-space-1: 0.25rem;
+  --hris-space-2: 0.5rem;
+  --hris-space-3: 0.75rem;
+  --hris-space-4: 1rem;
+  --hris-space-5: 1.5rem;
+  --hris-space-6: 2rem;
+  --hris-font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--hris-color-background);
+  color: var(--hris-color-text);
+  font-family: var(--hris-font-family);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--hris-color-primary);
+}
+
+/* Visible keyboard focus everywhere, never removed without a replacement. */
+:focus-visible {
+  outline: 2px solid var(--hris-color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hris-color-surface: #0f172a;
+    --hris-color-background: #020617;
+    --hris-color-border: #1e293b;
+    --hris-color-text: #e2e8f0;
+    --hris-color-text-muted: #94a3b8;
+  }
+}
