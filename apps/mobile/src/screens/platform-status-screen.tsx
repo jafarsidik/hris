@@ -59,8 +59,8 @@ export function PlatformStatusScreen() {
           <View>
             <Text style={styles.heading}>Connected</Text>
             <Text style={styles.bodyText}>
-              {status.liveness.service} is responding from the{' '}
-              {status.liveness.environment} environment.
+              {status.liveness.service} is responding from the {status.liveness.environment}{' '}
+              environment.
             </Text>
             <Text style={styles.caption}>Uptime {Math.round(status.liveness.uptimeSeconds)}s</Text>
           </View>

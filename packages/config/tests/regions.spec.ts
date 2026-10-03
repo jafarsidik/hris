@@ -16,7 +16,9 @@ describe('country defaults', () => {
       expect(defaults.defaultCurrency).toMatch(/^[A-Z]{3}$/);
       expect(defaults.defaultLocale).toContain('-');
       expect(() => new Intl.DateTimeFormat(defaults.defaultLocale)).not.toThrow();
-      expect(() => new Intl.DateTimeFormat('en', { timeZone: defaults.defaultTimeZone })).not.toThrow();
+      expect(
+        () => new Intl.DateTimeFormat('en', { timeZone: defaults.defaultTimeZone }),
+      ).not.toThrow();
     }
   });
 

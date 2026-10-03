@@ -49,8 +49,7 @@ export const radii = Object.freeze({
 });
 
 export const typography = Object.freeze({
-  fontFamily:
-    'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   fontSize: Object.freeze({
     xs: '0.75rem',
     sm: '0.875rem',

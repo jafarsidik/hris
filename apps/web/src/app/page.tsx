@@ -17,9 +17,9 @@ export default function HomePage() {
     <div style={{ display: 'grid', gap: 'var(--hris-space-5)' }}>
       <Card title="HRIS platform foundation" subtitle="Repository, tooling and API scaffolding">
         <Text>
-          The platform foundation is in place: the API boots with versioned routing, validated input,
-          standardised responses and health probes, and the web and mobile clients consume that same
-          API.
+          The platform foundation is in place: the API boots with versioned routing, validated
+          input, standardised responses and health probes, and the web and mobile clients consume
+          that same API.
         </Text>
       </Card>
 
@@ -35,9 +35,9 @@ export default function HomePage() {
 
       <Card title="Next steps" subtitle="Delivered strictly in phase order">
         <Text tone="muted">
-          Business capabilities land in order: identity and access, organization and core HR,
-          then workflow, attendance, leave, claims, administration, ATS, performance, payroll,
-          employee relations, mobile, analytics and AI. See docs/IMPLEMENTATION_PLAN.md.
+          Business capabilities land in order: identity and access, organization and core HR, then
+          workflow, attendance, leave, claims, administration, ATS, performance, payroll, employee
+          relations, mobile, analytics and AI. See docs/IMPLEMENTATION_PLAN.md.
         </Text>
       </Card>
     </div>

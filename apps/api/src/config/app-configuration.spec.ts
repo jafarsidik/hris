@@ -107,9 +107,9 @@ describe('parseConfiguration', () => {
     });
 
     it('allows OpenAPI to be explicitly re-enabled in production', () => {
-      expect(parseConfiguration({ NODE_ENV: 'production', SWAGGER_ENABLED: 'true' }).swagger.enabled).toBe(
-        true,
-      );
+      expect(
+        parseConfiguration({ NODE_ENV: 'production', SWAGGER_ENABLED: 'true' }).swagger.enabled,
+      ).toBe(true);
     });
 
     it('reduces the log level in production', () => {
@@ -128,13 +128,7 @@ describe('toNestLogLevel', () => {
     expect(toNestLogLevel('error')).toEqual(['error']);
     expect(toNestLogLevel('warn')).toEqual(['error', 'warn']);
     expect(toNestLogLevel('log')).toEqual(['error', 'warn', 'log']);
-    expect(toNestLogLevel('verbose')).toEqual([
-      'error',
-      'warn',
-      'log',
-      'debug',
-      'verbose',
-    ]);
+    expect(toNestLogLevel('verbose')).toEqual(['error', 'warn', 'log', 'debug', 'verbose']);
   });
 });
 

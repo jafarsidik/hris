@@ -82,7 +82,13 @@ describe('AccessLogInterceptor', () => {
   });
 
   it('never records the query string, which can embed personal data', async () => {
-    await run(createRequest({ path: '/api/v1/employees', query: { ssn: '900101-14-5533' } } as Partial<Request>), 200);
+    await run(
+      createRequest({
+        path: '/api/v1/employees',
+        query: { ssn: '900101-14-5533' },
+      } as Partial<Request>),
+      200,
+    );
 
     const logged = JSON.stringify(logSpy.mock.calls[0]?.[0]);
     expect(logged).not.toContain('900101-14-5533');

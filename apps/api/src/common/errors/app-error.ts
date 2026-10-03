@@ -45,7 +45,10 @@ export class AppError extends Error {
 }
 
 export class ValidationError extends AppError {
-  constructor(message = 'The request payload failed validation', details?: readonly ApiFieldError[]) {
+  constructor(
+    message = 'The request payload failed validation',
+    details?: readonly ApiFieldError[],
+  ) {
     super(message, HttpStatus.BAD_REQUEST, 'VALIDATION_ERROR', { details });
   }
 }
@@ -95,7 +98,10 @@ export class PreconditionFailedError extends AppError {
 }
 
 export class UnprocessableEntityError extends AppError {
-  constructor(message = 'The request was understood but could not be processed', details?: readonly ApiFieldError[]) {
+  constructor(
+    message = 'The request was understood but could not be processed',
+    details?: readonly ApiFieldError[],
+  ) {
     super(message, HttpStatus.UNPROCESSABLE_ENTITY, 'UNPROCESSABLE_ENTITY', { details });
   }
 }

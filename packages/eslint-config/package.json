@@ -12,7 +12,9 @@
     "./node": "./src/node.mjs",
     "./react": "./src/react.mjs"
   },
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
   "dependencies": {
     "@eslint/js": "^9.24.0",
     "eslint-config-prettier": "^10.1.1",

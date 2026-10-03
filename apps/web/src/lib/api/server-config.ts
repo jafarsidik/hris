@@ -30,10 +30,8 @@ export const SERVER_API_PLATFORM_URL =
   'http://localhost:3001';
 
 /** Calls a versioned business endpoint from the server. */
-export const serverApiRequestV1 = <TData>(
-  path: string,
-  options?: RequestOptions,
-): Promise<TData> => apiRequest<TData>(SERVER_API_BASE_URL, path, options);
+export const serverApiRequestV1 = <TData>(path: string, options?: RequestOptions): Promise<TData> =>
+  apiRequest<TData>(SERVER_API_BASE_URL, path, options);
 
 /** Calls an unversioned platform endpoint from the server, such as a probe. */
 export const serverPlatformRequest = <TData>(

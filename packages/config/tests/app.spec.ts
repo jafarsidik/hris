@@ -1,9 +1,4 @@
-import {
-  API_VERSIONS,
-  DEFAULT_API_VERSION,
-  HEALTH_PATHS,
-  buildApiPath,
-} from '../src';
+import { API_VERSIONS, DEFAULT_API_VERSION, HEALTH_PATHS, buildApiPath } from '../src';
 
 describe('api path builder', () => {
   it('builds a versioned path', () => {

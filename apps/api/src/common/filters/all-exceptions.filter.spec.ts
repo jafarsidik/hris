@@ -8,7 +8,9 @@ interface CapturedResponse {
   body: unknown;
 }
 
-const createHost = (correlationId = 'test-correlation-id'): {
+const createHost = (
+  correlationId = 'test-correlation-id',
+): {
   host: ArgumentsHost;
   captured: CapturedResponse;
 } => {

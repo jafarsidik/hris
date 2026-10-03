@@ -30,13 +30,11 @@ export class ResponseEnvelopeInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest<Request & { correlationId?: string }>();
 
     return next.handle().pipe(
-      map(
-        (data): ApiSuccessResponse<unknown> => ({
-          success: true,
-          data: data ?? null,
-          meta: request.correlationId ? { correlationId: request.correlationId } : undefined,
-        }),
-      ),
+      map((data): ApiSuccessResponse<unknown> => ({
+        success: true,
+        data: data ?? null,
+        meta: request.correlationId ? { correlationId: request.correlationId } : undefined,
+      })),
     );
   }
 }

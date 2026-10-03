@@ -4,11 +4,7 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module';
-import {
-  toNestLogLevel,
-  WILDCARD_HOST,
-  type AppConfiguration,
-} from './config/app-configuration';
+import { toNestLogLevel, WILDCARD_HOST, type AppConfiguration } from './config/app-configuration';
 import { APP_CONFIG } from './config/app-configuration.module';
 import { configureApp } from './configure-app';
 

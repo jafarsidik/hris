@@ -116,10 +116,7 @@ export const canTransition = (from: SyncState, to: SyncState): boolean =>
  * Returning a new value keeps the queue immutable, which is what allows a failed
  * upload to be retried without having partially mutated persisted state.
  */
-export function transitionOperation(
-  operation: OfflineOperation,
-  to: SyncState,
-): OfflineOperation {
+export function transitionOperation(operation: OfflineOperation, to: SyncState): OfflineOperation {
   if (!canTransition(operation.syncState, to)) {
     throw new InvalidOfflineOperationError(
       'syncState',

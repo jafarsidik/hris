@@ -31,9 +31,7 @@ describe('AppError', () => {
       { field: 'startDate', message: 'must not be in the past' },
     ]);
 
-    expect(error.details).toEqual([
-      { field: 'startDate', message: 'must not be in the past' },
-    ]);
+    expect(error.details).toEqual([{ field: 'startDate', message: 'must not be in the past' }]);
   });
 
   it('distinguishes an out-of-scope access from a plain denial', () => {

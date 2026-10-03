@@ -71,9 +71,7 @@ describe('validateOfflineOperation', () => {
   });
 
   it('rejects an operation type outside the shared allowlist', () => {
-    expect(() => operation({ type: 'PAYROLL_DISBURSE' })).toThrow(
-      /type/,
-    );
+    expect(() => operation({ type: 'PAYROLL_DISBURSE' })).toThrow(/type/);
   });
 
   it('accepts every operation type defined in the shared contract', () => {
@@ -102,13 +100,13 @@ describe('validateOfflineOperation', () => {
   );
 
   it('rejects a missing payload', () => {
-    expect(() => validateOfflineOperation({ ...validInput, payload: undefined })).toThrow(/payload/);
+    expect(() => validateOfflineOperation({ ...validInput, payload: undefined })).toThrow(
+      /payload/,
+    );
   });
 
   it('rejects an unknown sync state', () => {
-    expect(() => operation({ syncState: 'MOSTLY_DONE' })).toThrow(
-      /syncState/,
-    );
+    expect(() => operation({ syncState: 'MOSTLY_DONE' })).toThrow(/syncState/);
   });
 
   it.each([[-1], [1.5], [Number.NaN], ['3']])('rejects the invalid attempts %p', (attempts) => {
@@ -186,7 +184,9 @@ describe('backoffDelayMs', () => {
   });
 
   it('is deterministic for the same operation', () => {
-    expect(backoffDelayMs(operation({ attempts: 3 }))).toBe(backoffDelayMs(operation({ attempts: 3 })));
+    expect(backoffDelayMs(operation({ attempts: 3 }))).toBe(
+      backoffDelayMs(operation({ attempts: 3 })),
+    );
   });
 
   it('applies jitter within twenty percent of the base delay', () => {

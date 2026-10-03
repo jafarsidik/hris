@@ -48,8 +48,7 @@ export const EMPLOYEE_LIFECYCLE_TRANSITIONS: Readonly<
 
 export function isEmployeeLifecycleStage(value: unknown): value is EmployeeLifecycleStage {
   return (
-    typeof value === 'string' &&
-    (EMPLOYEE_LIFECYCLE_STAGES as readonly string[]).includes(value)
+    typeof value === 'string' && (EMPLOYEE_LIFECYCLE_STAGES as readonly string[]).includes(value)
   );
 }
 

@@ -13,9 +13,7 @@ describe('ResponseEnvelopeInterceptor', () => {
   beforeEach(() => {
     reflector = new Reflector();
     // Stand in for the decorator metadata that a real controller would carry.
-    getAllAndOverride = jest
-      .spyOn(reflector, 'getAllAndOverride')
-      .mockReturnValue(false as never);
+    getAllAndOverride = jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false as never);
   });
 
   const createContext = (): ExecutionContext =>

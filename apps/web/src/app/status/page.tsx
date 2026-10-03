@@ -18,10 +18,7 @@ interface ProbeOutcome {
   readonly detail: string;
 }
 
-const probe = async (
-  name: string,
-  run: () => Promise<unknown>,
-): Promise<ProbeOutcome> => {
+const probe = async (name: string, run: () => Promise<unknown>): Promise<ProbeOutcome> => {
   try {
     const result = await run();
     return { name, healthy: true, detail: describe(result) };

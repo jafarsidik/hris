@@ -40,16 +40,17 @@ const toPositiveInteger = (value: unknown, fallback: number): number => {
  * This is the single place where `page`/`pageSize` query values are trusted;
  * every list endpoint must call it rather than reading the raw query object.
  */
-export function normalisePageParams(input: {
-  page?: unknown;
-  pageSize?: unknown;
-}): PageParams {
+export function normalisePageParams(input: { page?: unknown; pageSize?: unknown }): PageParams {
   const page = toPositiveInteger(input.page, DEFAULT_PAGE);
   const pageSize = Math.min(toPositiveInteger(input.pageSize, DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
   return { page, pageSize };
 }
 
-export function buildPaginated<TItem>(items: readonly TItem[], params: PageParams, totalItems: number): Paginated<TItem> {
+export function buildPaginated<TItem>(
+  items: readonly TItem[],
+  params: PageParams,
+  totalItems: number,
+): Paginated<TItem> {
   const totalPages = totalItems <= 0 ? 0 : Math.ceil(totalItems / params.pageSize);
   return {
     items,

@@ -4,7 +4,10 @@ import { ApiRequestError, apiRequest, platformApiRequest } from './http-client';
 
 const BASE_URL = 'http://api.test/api/v1';
 
-const jsonResponse = (body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) =>
+const jsonResponse = (
+  body: unknown,
+  init: { status?: number; headers?: Record<string, string> } = {},
+) =>
   new Response(JSON.stringify(body), {
     status: init.status ?? 200,
     headers: { 'content-type': 'application/json', ...init.headers },
@@ -61,9 +64,11 @@ describe('apiRequest', () => {
 
       await apiRequest(BASE_URL, '/employees', { correlationId: 'web-trace-1' });
 
-      expect((spy.mock.calls[0]?.[1] as RequestInit & { headers: Record<string, string> }).headers[
-        'X-Correlation-Id'
-      ]).toBe('web-trace-1');
+      expect(
+        (spy.mock.calls[0]?.[1] as RequestInit & { headers: Record<string, string> }).headers[
+          'X-Correlation-Id'
+        ],
+      ).toBe('web-trace-1');
     });
   });
 
@@ -94,22 +99,32 @@ describe('apiRequest', () => {
 
     it('falls back to the response header when the body has no correlation id', async () => {
       stubFetch(async () =>
-        jsonResponse({ success: false, error: { code: 'FORBIDDEN', message: 'nope' } }, {
-          status: 403,
-          headers: { 'x-correlation-id': 'trace-header' },
-        }),
+        jsonResponse(
+          { success: false, error: { code: 'FORBIDDEN', message: 'nope' } },
+          {
+            status: 403,
+            headers: { 'x-correlation-id': 'trace-header' },
+          },
+        ),
       );
 
-      const error = (await apiRequest(BASE_URL, '/x').catch((caught: unknown) => caught)) as ApiRequestError;
+      const error = (await apiRequest(BASE_URL, '/x').catch(
+        (caught: unknown) => caught,
+      )) as ApiRequestError;
       expect(error.correlationId).toBe('trace-header');
     });
 
     it('rejects an unknown error code rather than trusting it', async () => {
       stubFetch(async () =>
-        jsonResponse({ success: false, error: { code: 'DROP_TABLES', message: 'nope' } }, { status: 500 }),
+        jsonResponse(
+          { success: false, error: { code: 'DROP_TABLES', message: 'nope' } },
+          { status: 500 },
+        ),
       );
 
-      const error = (await apiRequest(BASE_URL, '/x').catch((caught: unknown) => caught)) as ApiRequestError;
+      const error = (await apiRequest(BASE_URL, '/x').catch(
+        (caught: unknown) => caught,
+      )) as ApiRequestError;
       expect(error.code).toBe('INTERNAL_ERROR');
     });
 
@@ -118,7 +133,9 @@ describe('apiRequest', () => {
         throw new TypeError('fetch failed');
       });
 
-      const error = (await apiRequest(BASE_URL, '/x').catch((caught: unknown) => caught)) as ApiRequestError;
+      const error = (await apiRequest(BASE_URL, '/x').catch(
+        (caught: unknown) => caught,
+      )) as ApiRequestError;
 
       expect(error.code).toBe('SERVICE_UNAVAILABLE');
       expect(error.status).toBe(0);
@@ -134,7 +151,9 @@ describe('apiRequest', () => {
     it('rejects a non-JSON error body without leaking its contents', async () => {
       stubFetch(async () => new Response('<html>502 Bad Gateway</html>', { status: 502 }));
 
-      const error = (await apiRequest(BASE_URL, '/x').catch((caught: unknown) => caught)) as ApiRequestError;
+      const error = (await apiRequest(BASE_URL, '/x').catch(
+        (caught: unknown) => caught,
+      )) as ApiRequestError;
 
       expect(error.code).toBe('INTERNAL_ERROR');
       expect(error.status).toBe(502);
@@ -146,7 +165,9 @@ describe('apiRequest', () => {
         jsonResponse({ success: false, error: { code: 'CONFLICT', message: 'duplicate' } }),
       );
 
-      const error = (await apiRequest(BASE_URL, '/x').catch((caught: unknown) => caught)) as ApiRequestError;
+      const error = (await apiRequest(BASE_URL, '/x').catch(
+        (caught: unknown) => caught,
+      )) as ApiRequestError;
       expect(error.code).toBe('CONFLICT');
     });
   });
@@ -168,7 +189,12 @@ describe('platformApiRequest', () => {
   // bare object. Sending one through the envelope-expecting apiRequest made a
   // perfectly healthy service render as "Unavailable".
   it('returns a bare payload that carries no response envelope', async () => {
-    const body = { status: 'ok', service: 'hris-api', environment: 'production', uptimeSeconds: 12 };
+    const body = {
+      status: 'ok',
+      service: 'hris-api',
+      environment: 'production',
+      uptimeSeconds: 12,
+    };
     stubFetch(async () => jsonResponse(body));
 
     await expect(platformApiRequest(PLATFORM_URL, '/health/live')).resolves.toEqual(body);
