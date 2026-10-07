@@ -10,15 +10,23 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { exportEmployeesToCsv } from '@/features/employees/employee-export';
 import type { Employee } from '@/features/employees/employee-types';
-import { DownloadIcon, EyeIcon, MailIcon, MoreHorizontalIcon, PencilLineIcon } from 'lucide-react';
+import {
+  DownloadIcon,
+  EyeIcon,
+  ExternalLinkIcon,
+  MailIcon,
+  MoreHorizontalIcon,
+  PencilLineIcon,
+} from 'lucide-react';
+import Link from 'next/link';
 
 /**
  * The per-row actions menu.
  *
  * Rendering the kebab on every row is the only way a mouse-and-keyboard user can act on
- * a single row without a click-through to a detail page, which the directory does not
- * have. Rows themselves stay non-clickable so the whole surface does not quiver when
- * someone selects a row for bulk work.
+ * a single row without a click-through to the detail page. Rows themselves stay
+ * non-clickable so the whole surface does not quiver when someone selects a row for
+ * bulk work; the name cell links to the full profile instead.
  */
 export function EmployeeRowMenu({
   employee,
@@ -44,6 +52,10 @@ export function EmployeeRowMenu({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem render={<Link href={`/employees/${employee.id}`} />}>
+          <ExternalLinkIcon aria-hidden="true" className="size-4" />
+          Open profile
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onView(employee)}>
           <EyeIcon aria-hidden="true" className="size-4" />
           View profile

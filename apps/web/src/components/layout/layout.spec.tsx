@@ -23,6 +23,23 @@ vi.mock('next/navigation', () => ({
 }));
 
 /**
+ * The shell's bell and palette reach into `server-only` modules through their server
+ * actions, which throw under vitest. The components are not what these tests exercise,
+ * so the actions are stubbed to inert values instead of letting the import chain fail.
+ *
+ * The bell's fetch is stubbed to a promise that never settles: it has no queue of
+ * notifications to assert on here, and letting it resolve would fire a state update
+ * outside `act()` on every one of the 38 shell tests.
+ */
+vi.mock('@/app/notifications/actions', () => ({
+  loadNotifications: () => new Promise(() => {}),
+}));
+
+vi.mock('@/app/employees/actions', () => ({
+  searchPeople: () => Promise.resolve([]),
+}));
+
+/**
  * Mirrors `hasSurface`, computed independently so the two can disagree.
  *
  * Typed as `ModuleId` rather than `string` on purpose: widening it would let a typo pass

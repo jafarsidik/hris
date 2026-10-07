@@ -8,12 +8,15 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Info, Users, UserCheck, UserMinus, Building2 } from 'lucide-react';
+import { Building2, Hourglass, Info, Plane, UserCheck, UserPlus, Users } from 'lucide-react';
+import { DashboardGreeting } from '@/features/dashboard/greeting';
 import { HrSampleCard } from '@/features/dashboard/hr-sample-card';
 import { MetricCard } from '@/features/dashboard/metric-card';
 import { ModuleProgress } from '@/features/dashboard/module-progress';
+import { NeedsAttention } from '@/features/dashboard/needs-attention';
 import { QuickActions } from '@/features/dashboard/quick-actions';
 import { RecentHires } from '@/features/dashboard/recent-hires';
+import { computeDirectoryFacts } from '@/features/employees/directory-facts';
 import { getEmployeeRepository } from '@/features/employees';
 import { MAX_PAGE_SIZE } from '@hris/shared-types';
 
@@ -28,10 +31,8 @@ export const metadata: Metadata = {
  * dashboard and the directory can never disagree about a count while still sharing one
  * data path. Every figure is labeled with its basis, and the "sample data" alert makes
  * the source of the numbers impossible to miss — there is no database behind them yet.
- *
- * The platform-foundation notes from earlier phases remain on this page inside the
- * accordion at the bottom, so the engineering baseline is one click away instead of
- * gone.
+ * The KPI row, the attention panel and the notification bell all read
+ * {@link computeDirectoryFacts}, so the three surfaces stay in agreement.
  */
 export default async function CommandCenterPage() {
   const directory = await getEmployeeRepository().list({
@@ -39,16 +40,12 @@ export default async function CommandCenterPage() {
     page: { limit: MAX_PAGE_SIZE },
   });
 
-  const employees = directory.items;
-  const total = employees.length;
-  const active = employees.filter((employee) => employee.status === 'ACTIVE').length;
-  const attention = employees.filter(
-    (employee) => employee.status === 'ON_LEAVE' || employee.status === 'PROBATION',
-  ).length;
-  const departments = new Set(employees.map((employee) => employee.department)).size;
+  const facts = computeDirectoryFacts(directory.items);
 
   return (
     <div className="space-y-6">
+      <DashboardGreeting />
+
       <PageHeader
         title="Command Center"
         description="Headcount, recent hires and platform status at a glance."
@@ -62,28 +59,40 @@ export default async function CommandCenterPage() {
         <Info aria-hidden="true" />
         <AlertTitle>Sample data</AlertTitle>
         <AlertDescription>
-          Every figure below is computed from {total} generated records in memory. They reset each
-          time the server restarts, and nothing here is wired to a database.
+          Every figure below is computed from {facts.total} generated records in memory. They reset
+          each time the server restarts, and nothing here is wired to a database.
         </AlertDescription>
       </Alert>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <MetricCard
           label="Headcount"
-          value={total}
-          sub={`across ${departments} departments`}
+          value={facts.total}
+          sub={`across ${facts.departments} departments`}
           icon={Users}
         />
-        <MetricCard label="Active" value={active} sub={`of ${total} records`} icon={UserCheck} />
         <MetricCard
-          label="Needs attention"
-          value={attention}
-          sub="on leave or probation"
-          icon={UserMinus}
+          label="Active"
+          value={facts.active}
+          sub={`of ${facts.total} records`}
+          icon={UserCheck}
+        />
+        <MetricCard label="On leave" value={facts.onLeave} sub="status ON_LEAVE" icon={Plane} />
+        <MetricCard
+          label="New joiners"
+          value={facts.recentJoiners}
+          sub="in the last 30 days"
+          icon={UserPlus}
+        />
+        <MetricCard
+          label="Probation"
+          value={facts.probation}
+          sub="confirmation pending"
+          icon={Hourglass}
         />
         <MetricCard
           label="Departments"
-          value={departments}
+          value={facts.departments}
           sub="in the sample directory"
           icon={Building2}
         />
@@ -91,12 +100,13 @@ export default async function CommandCenterPage() {
 
       <div className="grid items-start gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <RecentHires employees={employees} />
+          <RecentHires employees={directory.items} />
         </div>
 
         <div className="space-y-6">
+          <NeedsAttention employees={directory.items} />
           <QuickActions />
-          <HrSampleCard employees={employees} />
+          <HrSampleCard employees={directory.items} />
         </div>
       </div>
 

@@ -302,9 +302,13 @@ export function EmployeeDirectory({
                       )}
 
                       <div className="min-w-0">
-                        <span className="block truncate font-medium" title={employee.fullName}>
+                        <Link
+                          href={`/employees/${employee.id}`}
+                          className="block truncate font-medium underline-offset-2 hover:underline"
+                          title={employee.fullName}
+                        >
                           {employee.fullName}
-                        </span>
+                        </Link>
                         <span className="text-xs text-muted-foreground sm:hidden">
                           {employee.employeeNumber} &middot; {employee.department}
                         </span>

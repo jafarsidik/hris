@@ -2,6 +2,18 @@
 @import 'tw-animate-css';
 
 /*
+ * Theme strategy.
+ *
+ * `dark:` utilities resolve against the `.dark` class on `<html>`, not against the OS
+ * preference. A tiny inline script in the root layout (which carries the per-request CSP
+ * nonce) applies the class from `localStorage` before first paint, defaulting to following
+ * the system; the Appearance toggle in the account menu writes that preference. Without a
+ * stored value the class simply mirrors `prefers-color-scheme`, which keeps the
+ * automatic behaviour the previous media query delivered.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
  * Base UI's accordion puts the measured height of an open panel into `--panel-height`
  * on the panel element. These keyframes animate `height` between it and 0 from the
  * `data-open` / `data-closed` states the accordion sets on the panel, so expand and
@@ -43,6 +55,8 @@
  * The values are the original HRIS palette, unchanged.
  */
 :root {
+  color-scheme: light;
+
   --background: #f1f5f9;
   --foreground: #1e293b;
 
@@ -104,52 +118,61 @@
 }
 
 /*
- * Automatic dark mode.
+ * Dark theme.
  *
- * This follows the operating system and needs no client-side script. That is
- * deliberate: `next-themes` would inject an inline `<script>` to toggle a class
- * on `<html>`, and the Content-Security-Policy in `middleware.ts` carries a
- * per-request nonce with no `script-src 'unsafe-inline'`, so such a script would
- * be blocked. A user-selectable theme needs that nonce threaded through a
- * provider first, and is deferred until it is actually required.
+ * The same palette as the previous automatic-only scheme, now bound to the `.dark` class
+ * so a reader can force light or dark instead of inheriting the OS value. Primary, ring,
+ * destructive and success join the set because they were invisible in the old scheme:
+ * the media query left them at their light-mode values, so a ring in dark mode was the
+ * cyan-tinged light blue, and a destructive action read as the muted light red. All four
+ * are lightened for the near-black surface, matching how the rest of the palette inverts.
  */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #020617;
-    --foreground: #e2e8f0;
+.dark {
+  color-scheme: dark;
 
-    --card: #0f172a;
-    --card-foreground: #e2e8f0;
+  --background: #020617;
+  --foreground: #e2e8f0;
 
-    --popover: #0f172a;
-    --popover-foreground: #e2e8f0;
+  --card: #0f172a;
+  --card-foreground: #e2e8f0;
 
-    --secondary: #1e293b;
-    --secondary-foreground: #e2e8f0;
+  --popover: #0f172a;
+  --popover-foreground: #e2e8f0;
 
-    --muted: #1e293b;
-    --muted-foreground: #94a3b8;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
 
-    --accent: #1e293b;
-    --accent-foreground: #e2e8f0;
+  --secondary: #1e293b;
+  --secondary-foreground: #e2e8f0;
 
-    --border: #1e293b;
-    --input: #1e293b;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
 
-    /* Lighter than the light-mode value: amber-700 on the near-black card is too dark
-       to read, so the dark scheme inverts the luminance rather than reusing it. */
-    --warning: #fbbf24;
-    --warning-foreground: #1e293b;
+  --accent: #1e293b;
+  --accent-foreground: #e2e8f0;
 
-    /* The dark rail matches the card surface so the rail and the content area read
-       as two panels on one background, rather than as a floating box. */
-    --sidebar: #0f172a;
-    --sidebar-foreground: #e2e8f0;
-    --sidebar-accent: #1e293b;
-    --sidebar-accent-foreground: #e2e8f0;
-    --sidebar-border: #1e293b;
-    --sidebar-ring: #94a3b8;
-  }
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --success: #22c55e;
+
+  /* Lighter than the light-mode value: amber-700 on the near-black card is too dark
+     to read, so the dark scheme inverts the luminance rather than reusing it. */
+  --warning: #fbbf24;
+  --warning-foreground: #1e293b;
+
+  --border: #1e293b;
+  --input: #1e293b;
+  --ring: #60a5fa;
+
+  /* The dark rail matches the card surface so the rail and the content area read
+     as two panels on one background, rather than as a floating box. */
+  --sidebar: #0f172a;
+  --sidebar-foreground: #e2e8f0;
+  --sidebar-accent: #1e293b;
+  --sidebar-accent-foreground: #e2e8f0;
+  --sidebar-border: #1e293b;
+  --sidebar-ring: #94a3b8;
 }
 
 @theme inline {

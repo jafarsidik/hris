@@ -323,6 +323,10 @@ class MockEmployeeRepository implements EmployeeRepository {
 
     return buildPage(window, params, fingerprint, (employee) => toPosition(employee, sort));
   }
+
+  async getById(id: string): Promise<Employee | null> {
+    return allEmployees().find((employee) => employee.id === id) ?? null;
+  }
 }
 
 /** Raised when a cursor does not belong to the filter set it is replayed against. */

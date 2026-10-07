@@ -261,4 +261,17 @@ describe('mockEmployeeRepository', () => {
   it('offers only distinct status values', () => {
     expect(new Set(EMPLOYEE_STATUSES).size).toBe(EMPLOYEE_STATUSES.length);
   });
+
+  it('resolves a known id to its full record', async () => {
+    const target = await firstEmployee();
+    const employee = await mockEmployeeRepository.getById(target.id);
+
+    expect(employee).not.toBeNull();
+    expect(employee?.id).toBe(target.id);
+    expect(employee?.fullName).toBe(target.fullName);
+  });
+
+  it('returns null for an id that is not present', async () => {
+    await expect(mockEmployeeRepository.getById('missing-employee-id')).resolves.toBeNull();
+  });
 });

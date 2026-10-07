@@ -53,6 +53,48 @@ class ApiEmployeeRepository implements EmployeeRepository {
 
     return parseEmployeePage(data);
   }
+
+  async getById(id: string): Promise<Employee | null> {
+    const data = await serverApiRequestV1<unknown>(`/employees/${encodeURIComponent(id)}`, {
+      headers: { 'cache-control': 'no-store' },
+    });
+
+    return parseEmployee(data);
+  }
+}
+
+/**
+ * Checks that a single-employee response has every field the UI reads.
+ *
+ * A returned 404 for an unknown id would surface as an `ApiRequestError`; a well-formed
+ * envelope carrying a record with fields missing would crash rendering instead. The
+ * strict check keeps the failure at the repository boundary where it is legible.
+ */
+function parseEmployee(data: unknown): Employee | null {
+  if (typeof data !== 'object' || data === null) {
+    throw new TypeError('Employee response was not an object');
+  }
+
+  const candidate = data as Partial<Employee>;
+  const required: readonly (keyof Employee)[] = [
+    'id',
+    'employeeNumber',
+    'fullName',
+    'email',
+    'jobTitle',
+    'department',
+    'employmentType',
+    'hireDate',
+    'status',
+  ];
+
+  for (const field of required) {
+    if (typeof candidate[field] !== 'string') {
+      throw new TypeError(`Employee response had a malformed ${field}`);
+    }
+  }
+
+  return candidate as Employee;
 }
 
 /**

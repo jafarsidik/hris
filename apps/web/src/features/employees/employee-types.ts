@@ -64,10 +64,12 @@ export type EmployeePage = Paginated<Employee>;
 /**
  * Read access to employee data.
  *
- * Narrow on purpose. It covers listing only, because that is all this phase builds;
- * adding write methods now would mean shipping an interface with unimplemented members
- * and a repository that throws on them.
+ * Narrow on purpose. It covers listing and one-record lookups only, because that is all
+ * this phase builds; adding write methods now would mean shipping an interface with
+ * unimplemented members and a repository that throws on them.
  */
 export interface EmployeeRepository {
   list(query: EmployeeQuery): Promise<EmployeePage>;
+  /** The record with the given id, or `null` when it is not in this source. */
+  getById(id: string): Promise<Employee | null>;
 }

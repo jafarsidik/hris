@@ -207,3 +207,34 @@ export async function saveEmployee(
   upsertStoredEmployee(employee);
   return { ok: true, mode: draft.id === undefined ? 'created' : 'updated', employee };
 }
+
+/**
+ * A compact match for the command palette's people search.
+ *
+ * The `Employee` shape already carries exactly what the palette renders, so no reshaping
+ * happens here; the field list exists to keep the palette decoupled from the directory
+ * record in case the two ever diverge.
+ */
+export type PeopleSearchResult = {
+  readonly id: string;
+  readonly fullName: string;
+  readonly email: string;
+  readonly employeeNumber: string;
+  readonly department: string;
+  readonly jobTitle: string;
+  readonly hireDate: string;
+  readonly status: string;
+};
+
+export async function searchPeople(search: unknown): Promise<readonly PeopleSearchResult[]> {
+  const needle = typeof search === 'string' ? search.trim() : '';
+  if (needle === '') return [];
+
+  const page = await getEmployeeRepository().list({
+    search: needle,
+    sort: 'name',
+    page: { limit: 6 },
+  });
+
+  return page.items;
+}

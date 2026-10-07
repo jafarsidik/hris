@@ -17,7 +17,8 @@ import {
   initialsFor,
 } from '@/features/employees/employee-presentation';
 import type { Employee } from '@/features/employees/employee-types';
-import { Building2, Mail, PencilLine } from 'lucide-react';
+import { Building2, ExternalLink, Mail, PencilLine } from 'lucide-react';
+import Link from 'next/link';
 
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -80,10 +81,19 @@ export function EmployeeDetailDrawer({
               </Badge>
             </div>
 
-            <div className="flex">
+            <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => onEdit(employee)}>
                 <PencilLine aria-hidden="true" className="size-3.5" />
                 Edit
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                render={<Link href={`/employees/${employee.id}`} />}
+              >
+                <ExternalLink aria-hidden="true" className="size-3.5" />
+                Open full profile
               </Button>
             </div>
 

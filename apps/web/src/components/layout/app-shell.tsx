@@ -9,6 +9,7 @@ import { CommandPalette } from '@/components/command/command-palette';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -122,7 +123,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </DropdownMenuTrigger>
 
             <DropdownMenuContent align="start" className="w-64">
-              <DropdownMenuLabel>Modules</DropdownMenuLabel>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Modules</DropdownMenuLabel>
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
               {MODULE_MENUS.map((entry) => (
                 <DropdownMenuItem

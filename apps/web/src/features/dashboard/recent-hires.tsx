@@ -68,9 +68,13 @@ export function RecentHires({ employees }: { employees: readonly Employee[] }) {
                         </Avatar>
                       )}
                       <div className="min-w-0">
-                        <span className="block truncate font-medium" title={employee.fullName}>
+                        <Link
+                          href={`/employees/${employee.id}`}
+                          className="block truncate font-medium underline-offset-2 hover:underline"
+                          title={employee.fullName}
+                        >
                           {employee.fullName}
-                        </span>
+                        </Link>
                         <span className="truncate text-xs text-muted-foreground sm:hidden">
                           {employee.jobTitle}
                         </span>

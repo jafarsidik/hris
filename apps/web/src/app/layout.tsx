@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 import type { ReactNode } from 'react';
 
 import { AppShell } from '@/components/layout/app-shell';
+import { ThemeScript } from '@/components/layout/theme-script';
 import { ToastProvider } from '@/components/ui/toast';
 
 import './globals.css';
@@ -40,7 +42,12 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // The per-request nonce the middleware mints for its Content-Security-Policy. It is
+  // read here and handed to the theme script so that script is `script-src`-abiding;
+  // without a nonce an inline script is blocked and the saved theme never applies.
+  const nonce = (await headers()).get('x-nonce') ?? '';
+
   return (
     <html lang="en" suppressHydrationWarning>
       {/*
@@ -53,6 +60,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         the visual difference is only which of two valid states is shown.
       */}
       <body>
+        {/*
+          Applies the saved theme before first paint. It has to run before the token
+          values are read, so it sits at the very top of the body rather than in a
+          component that mounts later; without it the page flashes light before the
+          theme toggle reacts.
+        */}
+        <ThemeScript nonce={nonce} />
         {/*
           Visually hidden until focused, then pinned to the top-left so a
           keyboard user lands on it immediately. Tailwind's `sr-only` clips the

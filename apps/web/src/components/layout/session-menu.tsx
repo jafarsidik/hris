@@ -3,12 +3,14 @@
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { CircleUser, LifeBuoy, LogOut, Settings, UserRound } from 'lucide-react';
+import { ThemeToggle } from '@/components/layout/theme-toggle';
+import { CircleUser, LifeBuoy, LogOut, Palette, Settings, UserRound } from 'lucide-react';
 
 /**
  * The account control in the header.
@@ -34,7 +36,9 @@ export function SessionMenu() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Not signed in</DropdownMenuLabel>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Not signed in</DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
 
         <DropdownMenuItem disabled>
@@ -49,6 +53,15 @@ export function SessionMenu() {
           <LifeBuoy aria-hidden="true" className="size-4" />
           Help
         </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>
+            <Palette aria-hidden="true" className="size-3.5" />
+            Appearance
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
+        <ThemeToggle />
 
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled variant="destructive">

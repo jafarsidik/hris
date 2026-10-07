@@ -111,9 +111,10 @@ Confirmed against running containers, not inferred from configuration:
   nonce, and no inline script lacking that nonce.
 - `GET /status` renders "All checks passing", which requires the web server to reach
   the API over the private network — the same assertion CI makes.
-- API: 67 unit tests, 10 e2e tests. Packages: 53 and 11 tests. Web: 17. Mobile: 46.
-  `npm run verify` runs 194 unit tests in total. The previous count of 203 included 9
-  tests for `@hris/ui`, which has been deleted (ADR 0008).
+- API: 67 unit tests, 10 e2e tests. Packages: 122 and 11 tests. Web: 247. Mobile: 46.
+  `npm run verify` runs 493 unit tests in total. The phase-0 count of 194 included 9
+  tests for `@hris/ui`, which has been deleted (ADR 0008); web tests have since grown
+  from 17 as the shell added the directory, dashboard, palette, bell and profile.
 
 ## Phase 1 acceptance criteria
 
@@ -153,9 +154,11 @@ Confirmed against running containers, not inferred from configuration:
 | Quick view of a record                               | Complete   | Row menu ("View profile") opens a right-hand sheet with identity, status, contact and employment summary; "Edit" from the sheet opens the same form the list uses |
 | Bulk actions                                         | Complete   | Header checkbox selects all visible rows; the selected-count toolbar exports CSV, clear the selection, and holds disabled placeholder actions |
 | Column visibility                                    | Complete   | "Columns" popover toggles the optional department/job-title/hire-date columns per reader |
-| Command palette (⌘K) and header search               | Complete   | `⌘K` / `Ctrl+K` (and the header button) open a dialog that filters built pages, quick actions and planned menu items with keyboard navigation; Enter navigates |
-| Notifications                                        | Complete   | Header bell opens a dropdown that states plainly there are no notifications yet, rather than faking an inbox |
-| Dashboard / command center                           | Complete   | `/` serves headcount KPIs, recent hires, headcount-by-department SVG (library-free), module build progress and quick actions, computed from the same mock repository the directory reads |
+| Command palette (⌘K) and header search               | Complete   | `⌘K` / `Ctrl+K` (and the header button) open a dialog that filters built pages, quick actions and planned menu items; typing also searches people through the directory's own filter, and successful runs are remembered as recent searches in `localStorage` |
+| Notifications                                        | Complete   | Header bell derives real events from the directory — on leave, probation, confirmation windows, recent joiners — via one shared facts function so the bell, the dashboard and the list can never disagree. Read state is per-browser for now; the empty/derived states are honest about there being no workflow inbox yet |
+| Dashboard / command center                           | Complete   | `/` serves a time-aware greeting, six headcount KPIs, needs-attention panel, recent hires, headcount-by-department SVG (library-free), module build progress and quick actions, computed from the same mock repository the directory reads |
+| Light / dark / system theming                        | Complete   | Class-based dark mode via a per-request nonce inline script and a Light/Dark/System radio group in the account menu; no new dependency (no `next-themes`) |
+| Employee profile page                                | Complete   | `/employees/[id]` with a verified identity header, status and type badges, edit (reusing the directory form dialog), email, CSV export and tabbed sections; personal/attendance/payroll/documents are labelled planned and honest about it. Directory names, the row menu, the quick-view drawer, recent hires and palette people all link here |
 | Toast feedback                                       | Complete   | Dependency-free toast provider mounted in the root layout; save confirmation is announced `aria-live` |
 
 ### Not yet delivered in phase 1
@@ -163,12 +166,20 @@ Confirmed against running containers, not inferred from configuration:
 - **No business queries.** The schema, tenant context and soft-delete filter exist and
   are tested, but no module reads or writes business data yet.
 - **The employee directory reads a mock.** The repository interface, the API implementation
-  and the server-rendered page are real, and the API implementation is written against the
-  shared contracts. But there is no employee endpoint, so the page renders 43 generated
-  rows from `HRIS_EMPLOYEE_DATA_SOURCE=mock`. It says so on screen; switching to `api`
-  before the endpoint exists fails loudly rather than rendering nothing. Create and edit
-  write to an in-memory overlay that resets on restart, so a run's edits prove the form
-  and the flow, not persistence.
+  and the server-rendered page are real — including single-record reads for the profile
+  page (`getById`) — and the API implementation is written against the shared contracts.
+  But there is no employee endpoint, so the page renders 43 generated rows from
+  `HRIS_EMPLOYEE_DATA_SOURCE=mock`. It says so on screen; switching to `api` before the
+  endpoint exists fails loudly rather than rendering nothing. Create and edit write to an
+  in-memory overlay that resets on restart, so a run's edits prove the form and the flow,
+  not persistence.
+- **The profile's deep tabs are planned stubs.** Overview and employment sections show
+  real stored fields; attendance, payroll, documents and personal data are labelled
+  "planned" until their endpoints exist, so nothing rendered can be mistaken for a
+  working module.
+- **Notification read state is per-browser.** The bell derives worklist items from the
+  directory because nothing emits events yet; "mark as read" lives in `localStorage`.
+  Real workflow, approval and payroll alerts arrive with the modules that generate them.
 - **No authentication.** `sessions` is a table and nothing populates it. Login lands in
   phase 2.
 - **No role grants beyond `SYSTEM_ADMIN`.** The other ten system roles are seeded
