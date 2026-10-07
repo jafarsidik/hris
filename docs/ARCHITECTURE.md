@@ -76,25 +76,40 @@ apps/
 
 packages/
 ├── shared-types/
-├── validation/
-├── ui/
 ├── config/
 └── eslint-config/
 
 database/
+├── schema.prisma
+├── prisma.config.ts
 ├── migrations/
 ├── seeds/
-└── fixtures/
+├── fixtures/
+├── scripts/
+├── src/
+└── tests/
 
 docs/
 ├── MASTER_PRD.md
 ├── ARCHITECTURE.md
 ├── IMPLEMENTATION_PLAN.md
+├── PHASE_STATUS.md
 ├── DATABASE.md
 ├── API.md
 ├── SECURITY.md
-└── AI_SPEC.md
+├── DEPLOYMENT.md
+├── AI_SPEC.md
+└── ADR/
 ```
+
+There is deliberately no `packages/ui`. It was deleted in ADR 0008: it had one
+consumer, the web tier, and React Native cannot consume web components at all, so
+"shared" described an indirection rather than a sharing. Web presentation lives in
+`apps/web/src/components`, and the web tier's own architecture is section 27.
+
+`packages/validation` was never created. Validation is a class-validator pipeline
+inside the API (`apps/api/src/common/pipes`), because validation that runs in a
+separate process is validation that can be bypassed.
 
 ---
 
@@ -590,9 +605,36 @@ Use object storage for:
 * HR letters
 * case evidence
 
-Files must not be stored directly in PostgreSQL unless there is a justified exception.
+Files must not be stored directly in PostgreSQL unless there is a justified
+exception.
 
 Access should use short-lived signed URLs.
+
+## 15.1 Provider
+
+Object storage is RustFS, reached over its S3-compatible API.
+
+The choice is driven by licensing. RustFS is Apache-2.0. MinIO, the previous
+default for self-hosted S3, is AGPL-3.0, which is a poor fit for a proprietary
+commercial product, and its community edition is archived and no longer
+receives security releases. For a system holding payslips and case evidence,
+an object store with no upstream security patches is not an acceptable
+long-term position.
+
+RustFS is younger than MinIO was. That risk is contained by never depending on
+the provider itself:
+
+* all access goes through the S3 API, never a RustFS-specific interface
+* configuration uses neutral variable names (`STORAGE_ENDPOINT`,
+  `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`)
+* moving to MinIO, Ceph or AWS S3 is a change of endpoint, not of code
+
+Before any production deployment, the S3 compatibility matrix must be checked
+against the specific operations the file-management phase depends on. Object
+Lock, which provides the write-once retention that payslip and evidence
+immutability require, is documented upstream as still maturing, so it must be
+verified rather than assumed. Versioning is enabled on the development bucket
+so an accidental overwrite is recoverable in the meantime.
 
 ---
 
@@ -848,3 +890,74 @@ The ADR must contain:
 * Migration considerations
 
 Only then continue implementation.
+
+---
+
+# 27. WEB TIER ARCHITECTURE
+
+This section is numbered 27 rather than sitting next to section 18 on purpose.
+Source files cite section numbers in comments (`api.types.ts` cites section 11,
+`regions.ts` cites section 21, `rbac.ts` cites section 9), so inserting a section
+in the middle would silently invalidate six citations in compiled code. Appending
+keeps every existing reference true. A future renumbering must update the citations
+in the same commit.
+
+## Shape
+
+```text
+apps/web
+├── src/app/            routes; the only place URLs appear
+├── src/components/
+│   ├── layout/         app shell, navigation
+│   └── ui/             design-system primitives, owned source (ADR 0008)
+├── src/lib/
+│   ├── api/            server-config, client-config, http-client
+│   └── data/           data access, one module per domain area
+└── src/middleware.ts   per-request nonce CSP
+```
+
+## Rules
+
+**Server Components by default.** A page fetches on the server and renders HTML. A
+`'use client'` boundary is added only where interaction demands it. The reason is
+correctness rather than preference: `@hris/database` imports `server-only`, so the
+tenant context and the Prisma client cannot be pulled into a browser bundle even by
+accident.
+
+**Two configuration modules, never one.** `lib/api/server-config.ts` imports
+`server-only`, so importing it from a client component is a build error rather than a
+silent `undefined`. `lib/api/client-config.ts` reads `NEXT_PUBLIC_*` for the browser.
+Merging them reintroduces the exact bug that produced the `ECONNREFUSED` failure
+recorded in `PHASE_STATUS.md`.
+
+**All fetches go through `http-client.ts`.** It maps every failure onto
+`ApiRequestError` with a code from `API_ERROR_CODES` and a message that is safe to
+render. Centralising this is what guarantees a raw backend message can never reach a
+user, and it is why a page branches on `error.code` rather than on `error.message`.
+
+**Cookies are already in place.** Every request sets `credentials: 'include'`, so the
+cookie-based session decided in ADR 0010 needs no further plumbing when phase 2
+arrives.
+
+**List endpoints are cursor-paginated.** The UI shows "load more" driven by
+`pageInfo.hasNextPage` and passes `pageInfo.endCursor` back unchanged. It never
+computes an offset or a page number; `@hris/shared-types` deliberately offers no
+helper that could, because offset pagination on an employee directory is how a
+payroll export ends up quietly missing people.
+
+**Every route is `force-dynamic`.** Two reasons, both in `layout.tsx`: the CSP nonce
+cannot attach to a prerendered page's inline scripts, and one session's HTML must
+never be served from a shared cache to another.
+
+**Navigation is presentational.** `app-shell.tsx` filters nothing by role yet, and
+when it does the API still re-authorises every request. A client-side check is a
+usability feature, never a security control.
+
+**Design tokens are the whole design system.** `globals.css` holds every colour,
+radius and metric; components reference Tailwind utilities bound to those tokens.
+There is no JavaScript theme object, because a second copy of the palette is a drift
+risk by construction.
+
+**Machine-readable state lives in `data-testid`, not in prose.** CI asserts on
+`data-testid` values so copy can be reworded freely. An earlier version grepped the
+sentence "All checks passing", which made an English string a wire contract.

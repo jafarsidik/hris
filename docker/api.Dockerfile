@@ -22,12 +22,12 @@ COPY package.json package-lock.json ./
 COPY packages/eslint-config/package.json packages/eslint-config/package.json
 COPY packages/shared-types/package.json packages/shared-types/package.json
 COPY packages/config/package.json packages/config/package.json
+COPY database/package.json database/package.json
 COPY apps/api/package.json apps/api/package.json
 
 # Stub the workspaces the API image does not build. npm needs the directories to
 # exist to resolve the workspace graph; their contents are never read.
-RUN mkdir -p packages/ui apps/web apps/mobile \
- && printf '{"name":"@hris/ui","version":"0.0.0-stub","private":true}\n' > packages/ui/package.json \
+RUN mkdir -p apps/web apps/mobile \
  && printf '{"name":"@hris/web","version":"0.0.0-stub","private":true}\n' > apps/web/package.json \
  && printf '{"name":"@hris/mobile","version":"0.0.0-stub","private":true}\n' > apps/mobile/package.json
 
@@ -38,6 +38,7 @@ RUN --mount=type=cache,target=/root/.npm \
       --workspace @hris/eslint-config \
       --workspace @hris/shared-types \
       --workspace @hris/config \
+      --workspace @hris/database \
       --workspace @hris/api
 
 # ------------------------------------------------------------------------------
@@ -46,9 +47,9 @@ COPY package.json package-lock.json ./
 COPY packages/eslint-config/package.json packages/eslint-config/package.json
 COPY packages/shared-types/package.json packages/shared-types/package.json
 COPY packages/config/package.json packages/config/package.json
+COPY database/package.json database/package.json
 COPY apps/api/package.json apps/api/package.json
-RUN mkdir -p packages/ui apps/web apps/mobile \
- && printf '{"name":"@hris/ui","version":"0.0.0-stub","private":true}\n' > packages/ui/package.json \
+RUN mkdir -p apps/web apps/mobile \
  && printf '{"name":"@hris/web","version":"0.0.0-stub","private":true}\n' > apps/web/package.json \
  && printf '{"name":"@hris/mobile","version":"0.0.0-stub","private":true}\n' > apps/mobile/package.json
 
@@ -57,6 +58,7 @@ RUN --mount=type=cache,target=/root/.npm \
       --workspace @hris/eslint-config \
       --workspace @hris/shared-types \
       --workspace @hris/config \
+      --workspace @hris/database \
       --workspace @hris/api
 
 # ------------------------------------------------------------------------------
@@ -65,10 +67,13 @@ COPY tsconfig.base.json ./
 COPY packages/eslint-config packages/eslint-config
 COPY packages/shared-types packages/shared-types
 COPY packages/config packages/config
+COPY database database
 COPY apps/api apps/api
 
 # Packages first: the API compiles against their emitted type declarations.
-RUN npm run build -w @hris/shared-types -w @hris/config \
+# `@hris/database` runs `prisma generate` as part of its build, because the client it
+# re-exports is generated output and is deliberately not committed.
+RUN npm run build -w @hris/shared-types -w @hris/config -w @hris/database \
  && npm run build -w @hris/api
 
 # ------------------------------------------------------------------------------
@@ -85,14 +90,15 @@ RUN apk add --no-cache tini curl \
 COPY --from=prod-deps --chown=hris:hris /app/node_modules ./node_modules
 COPY --from=build --chown=hris:hris /app/package.json ./package.json
 COPY --from=build --chown=hris:hris /app/packages ./packages
+COPY --from=build --chown=hris:hris /app/database ./database
 COPY --from=build --chown=hris:hris /app/apps/api ./apps/api
 
 USER hris
 EXPOSE 3001
 
-# The API has no database dependency in phase 0, so readiness is judged purely on
-# process health. Phase 1 replaces this with the probe that also reports database
-# and queue indicators.
+# Readiness covers PostgreSQL, Redis and the queue from phase 1 onward, so this
+# probe fails while a dependency is unreachable, and the orchestrator stops routing
+# traffic to an instance that cannot serve a request.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
   CMD curl -fsS "http://127.0.0.1:${API_PORT}/health/ready" || exit 1
 

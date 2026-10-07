@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 
 import { AppShell } from '@/components/layout/app-shell';
+import { ToastProvider } from '@/components/ui/toast';
 
 import './globals.css';
 
@@ -41,12 +42,34 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      {/*
+        `suppressHydrationWarning` is required by the sidebar, not for appearance.
+        `SidebarProvider` persists its collapsed state in a cookie and the sidebar
+        primitives write layout-affecting data attributes on the first client render.
+        Without this, a reader whose cookie says "collapsed" sees a hydration mismatch
+        on the navigation rail, and React discards the server-rendered tree to recover.
+        The mismatch is expected and harmless: the cookie is the source of truth, and
+        the visual difference is only which of two valid states is shown.
+      */}
       <body>
-        <a className="skip-link" href="#main-content">
+        {/*
+          Visually hidden until focused, then pinned to the top-left so a
+          keyboard user lands on it immediately. Tailwind's `sr-only` clips the
+          element to a 1px box; `not-sr-only` reverses that on focus.
+
+          The target is the `<main>` that `SidebarInset` renders inside `AppShell`,
+          which carries this id. There is exactly one main landmark on the page.
+        */}
+        <a
+          className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+          href="#main-content"
+        >
           Skip to main content
         </a>
-        <AppShell>{children}</AppShell>
+        <ToastProvider>
+          <AppShell>{children}</AppShell>
+        </ToastProvider>
       </body>
     </html>
   );

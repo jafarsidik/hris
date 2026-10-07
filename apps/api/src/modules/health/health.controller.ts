@@ -5,6 +5,10 @@ import { HealthCheckService, type HealthCheckResult } from '@nestjs/terminus';
 import { Public } from '../../common/decorators/public.decorator';
 import { RawResponse } from '../../common/decorators/raw-response.decorator';
 
+import { PrismaHealthIndicator } from './indicators/prisma.health';
+import { QueueHealthIndicator } from './indicators/queue.health';
+import { RedisHealthIndicator } from './indicators/redis.health';
+
 interface LivenessResult {
   readonly status: 'ok';
   readonly service: string;
@@ -17,10 +21,10 @@ interface LivenessResult {
  *
  * - `/health/live` answers "is the process running". It touches no dependency so
  *   that a slow database can never cause the orchestrator to kill a healthy pod.
- * - `/health/ready` answers "can this instance serve traffic". Dependency
- *   indicators (PostgreSQL, Redis, queue) are attached in phase 1; the endpoint
- *   already returns 503 through the `ServiceUnavailableException` contract when
- *   a future indicator fails.
+ * - `/health/ready` answers "can this instance serve traffic" and covers
+ *   PostgreSQL, Redis and the job queue. Terminus raises
+ *   `ServiceUnavailableException` when any of them fails, which the exception
+ *   filter renders as a 503, so an orchestrator stops routing traffic here.
  * - `/health` is a convenience roll-up for humans and dashboards.
  *
  * All three are exempt from authentication and API versioning so that
@@ -33,12 +37,35 @@ interface LivenessResult {
 export class HealthController {
   // Explicit token so injection never depends on `emitDecoratorMetadata`
   // resolving `HealthCheckService` at runtime.
-  constructor(@Inject(HealthCheckService) private readonly health: HealthCheckService) {}
+  constructor(
+    @Inject(HealthCheckService) private readonly health: HealthCheckService,
+    @Inject(PrismaHealthIndicator)
+    private readonly database: PrismaHealthIndicator,
+    @Inject(RedisHealthIndicator)
+    private readonly redis: RedisHealthIndicator,
+    @Inject(QueueHealthIndicator)
+    private readonly queue: QueueHealthIndicator,
+  ) {}
+
+  /**
+   * Every dependency the API cannot serve a request without.
+   *
+   * Order is not significant; Terminus runs them concurrently. Object keys must match
+   * the indicator keys, otherwise Terminus rejects the result, which is a useful guard
+   * against a renamed indicator silently disappearing from the payload.
+   */
+  private readinessIndicators() {
+    return [
+      () => this.database.isHealthy('database'),
+      () => this.redis.isHealthy('redis'),
+      () => this.queue.isHealthy('queue'),
+    ];
+  }
 
   @Get()
   @ApiExcludeEndpoint()
   async check(): Promise<HealthCheckResult> {
-    return this.health.check([]);
+    return this.health.check(this.readinessIndicators());
   }
 
   @Get('live')
@@ -55,6 +82,6 @@ export class HealthController {
   @Get('ready')
   @ApiExcludeEndpoint()
   async readiness(): Promise<HealthCheckResult> {
-    return this.health.check([]);
+    return this.health.check(this.readinessIndicators());
   }
 }

@@ -50,9 +50,10 @@ which runner a package uses.
 
 - Two test runners in one repository, so contributors must know which to use per
   package.
-- Shared packages use Jest, which means `@hris/ui` component tests run under Jest
-  with `react-dom/server` for rendering rather than a DOM environment. Adequate for
-  the presentational components in `@hris/ui`.
+- Shared packages use Jest. Web and mobile components use Vitest with a real DOM
+  environment via Testing Library, which is the better fit for components that
+  respond to interaction; the original cost recorded here, rendering `@hris/ui` under
+  `react-dom/server`, disappeared when ADR 0008 deleted that package.
 - Test commands are not perfectly symmetric across workspaces.
 
 **Mitigations**

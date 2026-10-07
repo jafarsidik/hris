@@ -20,7 +20,6 @@ COPY package.json package-lock.json ./
 COPY packages/eslint-config/package.json packages/eslint-config/package.json
 COPY packages/shared-types/package.json packages/shared-types/package.json
 COPY packages/config/package.json packages/config/package.json
-COPY packages/ui/package.json packages/ui/package.json
 COPY apps/web/package.json apps/web/package.json
 
 RUN mkdir -p apps/api apps/mobile \
@@ -32,7 +31,6 @@ RUN --mount=type=cache,target=/root/.npm \
       --workspace @hris/eslint-config \
       --workspace @hris/shared-types \
       --workspace @hris/config \
-      --workspace @hris/ui \
       --workspace @hris/web
 
 # ------------------------------------------------------------------------------
@@ -46,12 +44,11 @@ COPY tsconfig.base.json ./
 COPY packages/eslint-config packages/eslint-config
 COPY packages/shared-types packages/shared-types
 COPY packages/config packages/config
-COPY packages/ui packages/ui
 COPY apps/web apps/web
 
 # Workspace packages are compiled here because Next resolves their "main" fields
 # to dist output rather than transpiling TypeScript from source.
-RUN npm run build -w @hris/shared-types -w @hris/config -w @hris/ui \
+RUN npm run build -w @hris/shared-types -w @hris/config \
  && npm run build -w @hris/web
 
 # ------------------------------------------------------------------------------

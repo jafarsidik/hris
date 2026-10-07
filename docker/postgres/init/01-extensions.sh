@@ -37,3 +37,20 @@ ALTER DATABASE :"DBNAME" SET idle_in_transaction_session_timeout = '60s';
 -- is the usual way RLS silently does nothing. Authorisation is enforced in the
 -- application layer regardless; RLS is defence in depth behind that.
 SQL
+
+# -----------------------------------------------------------------------------
+# The application role is created by `npm run db:grant`, not here.
+#
+# The image creates POSTGRES_USER as a superuser, and a superuser bypasses
+# row-level security unconditionally. If the API connected as that role, every
+# policy in the phase 1 migration would be inert and tenant isolation would exist
+# only on paper.
+#
+# PostgreSQL will not let a session drop the SUPERUSER attribute from the role it is
+# connected as ("the bootstrap superuser must have the SUPERUSER attribute"), and
+# the image provides no second superuser to do it from, so POSTGRES_USER cannot be
+# demoted in place. The application therefore gets its own NOSUPERUSER role, granted
+# by database/scripts/grant-app-privileges.ts. That script is re-runnable, which
+# matters here: this bootstrap runs only once, so grants made here would be lost
+# the first time a schema was dropped and recreated.
+# -----------------------------------------------------------------------------

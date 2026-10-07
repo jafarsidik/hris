@@ -57,7 +57,10 @@ time. Passing a department id where an employee id belongs does not compile.
 
 - No framework imports. The package must stay usable from NestJS, Next.js and React
   Native.
-- No React or JSX. Presentation belongs in `@hris/ui`.
+- No React or JSX. Presentation belongs in the consuming application. This originally
+  read "Presentation belongs in `@hris/ui`", which ADR 0008 superseded: that package
+  was deleted, so the rule now points at `apps/web/src/components` for the web tier
+  and at the mobile app for React Native.
 - Anything requiring a build step to consume stays out. If it needs compiling, it
   belongs in a different package.
 - Runtime logic belongs in the consuming application unless it is genuinely shared;

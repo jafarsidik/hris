@@ -1,58 +1,237 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/*
+ * Base UI's accordion puts the measured height of an open panel into `--panel-height`
+ * on the panel element. These keyframes animate `height` between it and 0 from the
+ * `data-open` / `data-closed` states the accordion sets on the panel, so expand and
+ * collapse are smooth without any fixed height in the snapshot.
+ */
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--panel-height);
+  }
+}
+@keyframes accordion-up {
+  from {
+    height: var(--panel-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+/*
+ * shadcn/ui is configured in `components.json` and its components are source
+ * files we own, not a dependency. The class names below are only discoverable by
+ * scanning TypeScript, so the scan roots are declared explicitly rather than
+ * left to automatic detection.
+ */
+@source '../../src/**/*.{ts,tsx}';
+
+/*
+ * Design tokens.
+ *
+ * These replace the `--hris-*` custom properties that previously lived here and
+ * were duplicated in the `@hris/ui` package. They now use shadcn's token names so
+ * the generated components bind to them, and they are consumed through
+ * `@theme inline` rather than referenced as raw `var()` calls.
+ *
+ * The values are the original HRIS palette, unchanged.
+ */
 :root {
-  /* Mirrors the token set exported from @hris/ui so that plain-CSS surfaces
-     (global styles, print layouts) and React components stay aligned. */
-  --hris-color-surface: #ffffff;
-  --hris-color-background: #f1f5f9;
-  --hris-color-border: #e2e8f0;
-  --hris-color-text: #1e293b;
-  --hris-color-text-muted: #64748b;
-  --hris-color-primary: #1d4ed8;
-  --hris-color-danger: #b91c1c;
-  --hris-color-success: #15803d;
-  --hris-radius-sm: 4px;
-  --hris-radius-md: 6px;
-  --hris-radius-lg: 10px;
-  --hris-space-1: 0.25rem;
-  --hris-space-2: 0.5rem;
-  --hris-space-3: 0.75rem;
-  --hris-space-4: 1rem;
-  --hris-space-5: 1.5rem;
-  --hris-space-6: 2rem;
-  --hris-font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    sans-serif;
+  --background: #f1f5f9;
+  --foreground: #1e293b;
+
+  --card: #ffffff;
+  --card-foreground: #1e293b;
+
+  --popover: #ffffff;
+  --popover-foreground: #1e293b;
+
+  --primary: #1d4ed8;
+  --primary-foreground: #ffffff;
+
+  --secondary: #e2e8f0;
+  --secondary-foreground: #1e293b;
+
+  --muted: #e2e8f0;
+  --muted-foreground: #64748b;
+
+  --accent: #e2e8f0;
+  --accent-foreground: #1e293b;
+
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+
+  /* Not part of the shadcn default set. Required by the platform status
+     surface, which must report a healthy system as green rather than as the
+     brand blue that `primary` renders. */
+  --success: #15803d;
+
+  /* Added for recoverable problems that are not faults. `RATE_LIMITED` is a warning,
+     not an error: colouring it destructive teaches operators to ignore red, which is
+     the opposite of what a monitoring surface is for. */
+  --warning: #b45309;
+  --warning-foreground: #ffffff;
+
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #1d4ed8;
+
+  /* Sidebar surface. Derived from the existing palette rather than introducing new
+     hues: it reuses `--card` for the background and `--secondary` for the hover
+     accent, so the navigation rail reads as part of the same system. Without these
+     tokens the sidebar utilities resolve to nothing and the rail renders with
+     transparent backgrounds and inherited text colour.
+
+     Sidebar *widths* are deliberately absent. `SidebarProvider` sets
+     `--sidebar-width` and `--sidebar-width-icon` as inline styles from constants in
+     `components/ui/sidebar.tsx`, and it also overrides the width on mobile. Declaring
+     them here as well would create a second source of truth that the inline style
+     silently wins against. */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1e293b;
+  --sidebar-accent: #e2e8f0;
+  --sidebar-accent-foreground: #1e293b;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #1d4ed8;
+
+  --radius: 10px;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+/*
+ * Automatic dark mode.
+ *
+ * This follows the operating system and needs no client-side script. That is
+ * deliberate: `next-themes` would inject an inline `<script>` to toggle a class
+ * on `<html>`, and the Content-Security-Policy in `middleware.ts` carries a
+ * per-request nonce with no `script-src 'unsafe-inline'`, so such a script would
+ * be blocked. A user-selectable theme needs that nonce threaded through a
+ * provider first, and is deferred until it is actually required.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #020617;
+    --foreground: #e2e8f0;
+
+    --card: #0f172a;
+    --card-foreground: #e2e8f0;
+
+    --popover: #0f172a;
+    --popover-foreground: #e2e8f0;
+
+    --secondary: #1e293b;
+    --secondary-foreground: #e2e8f0;
+
+    --muted: #1e293b;
+    --muted-foreground: #94a3b8;
+
+    --accent: #1e293b;
+    --accent-foreground: #e2e8f0;
+
+    --border: #1e293b;
+    --input: #1e293b;
+
+    /* Lighter than the light-mode value: amber-700 on the near-black card is too dark
+       to read, so the dark scheme inverts the luminance rather than reusing it. */
+    --warning: #fbbf24;
+    --warning-foreground: #1e293b;
+
+    /* The dark rail matches the card surface so the rail and the content area read
+       as two panels on one background, rather than as a floating box. */
+    --sidebar: #0f172a;
+    --sidebar-foreground: #e2e8f0;
+    --sidebar-accent: #1e293b;
+    --sidebar-accent-foreground: #e2e8f0;
+    --sidebar-border: #1e293b;
+    --sidebar-ring: #94a3b8;
+  }
 }
 
-html,
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
 body {
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  background-color: var(--hris-color-background);
-  color: var(--hris-color-text);
-  font-family: var(--hris-font-family);
-  font-size: 1rem;
-  line-height: 1.5;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
   -webkit-font-smoothing: antialiased;
 }
 
-a {
-  color: var(--hris-color-primary);
-}
-
-/* Visible keyboard focus everywhere, never removed without a replacement. */
+/*
+ * Visible keyboard focus everywhere, never removed without a replacement.
+ *
+ * Tailwind's preflight suppresses the default outline, so focus styling is
+ * re-established globally. Component-level `focus-visible:ring-*` utilities
+ * override this for anything that opts into a ring.
+ */
 :focus-visible {
-  outline: 2px solid var(--hris-color-primary);
+  outline: 2px solid var(--color-ring);
   outline-offset: 2px;
 }
 
+/*
+ * The custom module rail is a flex sibling of the sidebar, but the desktop sidebar is
+ * `position: fixed; left: 0` (ui/sidebar.tsx). Without a shift it paints over the rail,
+ * which then "disappears" even though the DOM, geometry and computed styles all look
+ * correct — the failure only shows up in a hit test. `--module-rail-width` is set on the
+ * wrapper by app-shell and must match the rail's width in module-rail.tsx exactly.
+ * Scoped to the non-offcanvas cases; offcanvas intentionally keeps left: 0.
+ */
+[data-slot='sidebar-wrapper'][data-has-module-rail]
+  [data-slot='sidebar'][data-collapsible='icon']
+  [data-slot='sidebar-container'],
+[data-slot='sidebar-wrapper'][data-has-module-rail]
+  [data-slot='sidebar'][data-collapsible='']
+  [data-slot='sidebar-container'] {
+  left: var(--module-rail-width);
+}
+
+/*
+ * Honour a reduced-motion preference across the whole document. Tailwind has no
+ * equivalent by default, and an unscoped `animate-*` utility would otherwise
+ * override this per element.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -60,15 +239,6 @@ a {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --hris-color-surface: #0f172a;
-    --hris-color-background: #020617;
-    --hris-color-border: #1e293b;
-    --hris-color-text: #e2e8f0;
-    --hris-color-text-muted: #94a3b8;
+    scroll-behavior: auto !important;
   }
 }

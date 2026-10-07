@@ -3,8 +3,9 @@
 PostgreSQL 17 is the system of record. Every value that affects an employee's pay,
 entitlement, leave balance or employment status is stored here and nowhere else.
 
-At the end of phase 0 the database exists, is hardened, and has **no application
-schema**. The schema is created by Prisma migrations from phase 1.
+From phase 1 the schema is created by Prisma migrations in the `database` workspace,
+and the API connects as a dedicated application role so that row-level security is
+actually enforced.
 
 ## Connecting
 
@@ -23,6 +24,46 @@ application runs on the host. `docker-compose.yml` overrides `POSTGRES_HOST` to
 `postgres` and `POSTGRES_PORT` to `5432`, because inside the network the published
 port does not exist. This split is the single most common cause of "connection
 refused" in this project; see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+### Two roles, not one
+
+| Role            | Variables                                | Used by                              |
+| --------------- | ---------------------------------------- | ------------------------------------ |
+| Migration owner | `POSTGRES_USER`, `POSTGRES_PASSWORD`     | `prisma migrate`, `db:seed`, `db:grant` |
+| Application     | `POSTGRES_APP_USER`, `POSTGRES_APP_PASSWORD` | The API, and only the API         |
+
+The image creates `POSTGRES_USER` as a superuser. **A superuser bypasses row-level
+security unconditionally**, so an API connected as that role would make every tenant
+policy in the migration inert while the tests still passed. The API therefore connects
+as `hris_app`, which is `NOSUPERUSER NOBYPASSRLS` and owns nothing.
+
+The owner role cannot simply be demoted: PostgreSQL refuses to let a session drop
+`SUPERUSER` from the role it is connected as ("the bootstrap superuser must have the
+SUPERUSER attribute"), and the image creates no second superuser to do it from. A
+separate application role is the supported way out.
+
+`db:grant` provisions that role and is re-runnable:
+
+```bash
+npm run db:grant -w @hris/database
+```
+
+It is a script rather than part of `docker/postgres/init` on purpose. Bootstrap SQL runs
+once per volume, so grants made there are silently lost the first time a schema is
+dropped and recreated — a routine thing to do while developing — whereas the script
+always applies against the database that actually exists. It cannot live in a migration
+either, because the role name comes from the environment.
+
+On a new environment the order is fixed:
+
+```bash
+npm run db:deploy -w @hris/database   # schema
+npm run db:seed   -w @hris/database   # reference data, as the owner
+npm run db:grant  -w @hris/database   # application role
+```
+
+`db:seed` must precede `db:grant`: the seed connects as the owner because the
+application role does not exist yet on a fresh volume.
 
 ## Cluster preparation
 
@@ -131,21 +172,56 @@ a cross-tenant read returns nothing.
 
 Sessions use `SET LOCAL`, not `SET`. A `SET` outside a transaction leaks into the
 next request that borrows the pooled connection, which is precisely how one
-company's data reaches another.
+company's data reaches another. `withTenantContext()` in `@hris/database` is the only
+supported way to run a query, and a query without a tenant context returns **nothing**
+rather than everything.
+
+### Provisioning a company
+
+`companies` has an insert policy gated on a session setting, because a new company
+cannot reference itself as a tenant context before it exists. Creating a company
+therefore sets **two** settings in one transaction:
+
+- `app.allow_company_provisioning = 'on'` — opens the insert policy.
+- `app.current_company_id = <new company id>` — required because PostgreSQL evaluates
+  the **select** policies for an `INSERT ... RETURNING`, and Prisma always sends a
+  `RETURNING` clause to read back generated columns. With only the provisioning flag
+  set, the insert fails with "new row violates row-level security policy for table
+  companies" even though its own `WITH CHECK` passes.
+
+The caller generates the company id up front and passes it to `create`; the helper is
+`withCompanyProvisioning()`. Both settings are transaction-local, so nothing needs
+revoking afterwards — and nothing could be, since a `finally` block in an aborted
+transaction cannot run a statement.
+
+### Audit logs
+
+`audit_logs` has no `updated_at`, no `deleted_at` and no update or delete policy. An
+append-only trigger rejects `UPDATE`, `DELETE` and `TRUNCATE` even for the owner role,
+so RLS is not the thing standing between an audit row and an edit. Purging one requires
+disabling the trigger as the owner, which is deliberate and leaves an obvious trace in
+the logs.
 
 ## Connection pooling
 
-Phase 1 introduces a pooler (PgBouncer in transaction mode) in front of
-PostgreSQL. Until then the application uses a bounded pool sized well below
+PgBouncer is **not** in phase 1. The application uses a bounded pool sized well below
 `max_connections`:
 
 ```
 pool_max = (max_connections - reserved) / number_of_app_instances
 ```
 
-Exceeding `max_connections` presents as intermittent "too many clients" failures
-under load, not as a startup error, so the ceiling is set deliberately and
-monitored.
+The pool size comes from `DB_POOL_SIZE` (default 10) and is set per API instance, so
+the total is that number multiplied by the replica count.
+
+This is also the reason the tenant context is set with `SET LOCAL` inside a transaction.
+PgBouncer in transaction mode is where a leaked `SET` would do the most damage, because
+the server-side connection is shared by every transaction on that pool entry. Deferring
+the pooler keeps the blast radius smaller until the connection contract is exercised in
+production.
+
+Exceeding `max_connections` presents as intermittent "too many clients" failures under
+load, not as a startup error, so the ceiling is set deliberately and monitored.
 
 ## Migrations
 
@@ -161,12 +237,18 @@ Rules:
   backfill in batches, then constrain.
 - Destructive changes are two-phase: deploy code that stops using the column, then
   drop it in a later release. Never in one step.
-- `database/seeds` and `database/fixtures` hold reference data and test fixtures.
-  Seeds must be idempotent and must never contain real personal data.
+- `database/seeds` holds reference data; `database/fixtures` will hold test fixtures.
+  Seeds must be idempotent and must never contain real personal data. Idempotency is
+  asserted by a test that runs the seed twice and compares row counts.
+- Role grants are applied by `db:grant` after `db:deploy`, never inside a migration.
 
 `docker/postgres/init` prepares the cluster and creates no tables. Application
 schema belongs in migrations, never in hand-written bootstrap SQL, because a
 bootstrap script cannot be replayed, diffed or rolled back.
+
+Role grants are the deliberate exception, and for the opposite reason: they depend on
+environment-supplied names, so they cannot be committed as SQL that must replay
+verbatim. They live in a re-runnable script instead.
 
 ## Backup and recovery
 
@@ -203,4 +285,24 @@ docker compose exec postgres psql -U hris -d hris -c \
    FROM pg_stat_activity
    WHERE state <> 'idle' AND now() - query_start > interval '5 seconds'
    ORDER BY age DESC;"
+```
+
+Confirm that RLS is doing something, rather than assuming it:
+
+```bash
+# Tables with RLS enabled, and how many policies each has. Tenant tables must show
+# `t` in both columns; reference tables must show `f`.
+docker compose exec postgres psql -U hris -d hris -c \
+  "SELECT c.relname, c.relrowsecurity AS rls, c.relforcerowsecurity AS force,
+          (SELECT count(*) FROM pg_policies p WHERE p.tablename = c.relname) AS policies
+   FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname = 'public' AND c.relkind = 'r'
+   ORDER BY c.relname;"
+
+# The empty result is the important one: a policy on a table without RLS enabled
+# means the policy has never run.
+docker compose exec postgres psql -U hris -d hris -c \
+  "SELECT DISTINCT p.tablename FROM pg_policies p
+   JOIN pg_class c ON c.relname = p.tablename
+   WHERE NOT c.relrowsecurity;"
 ```

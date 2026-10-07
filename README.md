@@ -29,15 +29,21 @@ authoritative state.
                                    ┌──────▼──────┐          ┌───────▼───────┐
                                    │ PostgreSQL  │          │ Redis + queue │
                                    └─────────────┘          └───────────────┘
+                                                       │
+                                              ┌────────▼─────────┐
+                                              │ Object storage   │
+                                              │ (RustFS, S3 API) │
+                                              └──────────────────┘
 ```
 
 | Concern          | Choice                                    | Rationale                                                                                       |
 | ---------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | API              | NestJS, TypeScript, REST, OpenAPI         | Structured modules, first-class guards and pipes, strong DI for shared cross-cutting concerns    |
-| Web              | Next.js, React, TypeScript                | Server rendering for the first paint; a strict Content-Security-Policy is enforceable via middleware |
+| Web | Next.js, React, shadcn/ui, Tailwind CSS | Server rendering for the first paint; a strict Content-Security-Policy is enforceable via middleware |
 | Mobile           | Expo, React Native, TypeScript            | One codebase for iOS and Android with offline capture and background sync                          |
 | Data             | PostgreSQL 17                             | Transactional integrity, row-level security, mature reporting for payroll and compliance           |
 | Cache / queue    | Redis                                     | Sessions, rate limiting, caching, and a durable job queue for notifications and heavy exports       |
+| Object storage   | RustFS (S3-compatible API)               | Apache-2.0, so no AGPL exposure in a proprietary product; endpoint-neutral so the provider can change  |
 | Data access      | Prisma (from phase 1)                     | Type-safe queries derived from one schema, reviewable migrations                                  |
 | Repository       | npm workspaces, single lockfile           | One dependency graph, one install, atomic version bumps across packages                           |
 
@@ -98,13 +104,12 @@ npm run test:e2e   # API end-to-end tests
 ```
 apps/
   api/        NestJS modular monolith
-  web/        Next.js application
+  web/        Next.js application (shadcn/ui components in web/src/components/ui)
   mobile/     Expo / React Native application
 packages/
   config/       Application identity, API paths, regional defaults
   eslint-config/ Shared lint rules
   shared-types/ Contracts shared by the API, web and mobile clients
-  ui/           Design tokens and shared components
 database/     Migrations, seeds and fixtures (owned by Prisma from phase 1)
 docker/       Dockerfiles and PostgreSQL bootstrap
 docs/         Architecture, product and operational documentation

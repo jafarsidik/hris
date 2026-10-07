@@ -1,6 +1,15 @@
-import { Badge, Card, Text } from '@hris/ui';
 import type { Metadata } from 'next';
 
+import { PageHeader } from '@/components/layout/page-header';
+import { Badge } from '@/components/ui/badge';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { fetchLiveness, fetchReadiness, type ApiLiveness } from '@/lib/api/health';
 import { ApiRequestError } from '@/lib/api/http-client';
 
@@ -53,48 +62,73 @@ export default async function StatusPage() {
   const allHealthy = outcomes.every((outcome) => outcome.healthy);
 
   return (
-    <div style={{ display: 'grid', gap: 'var(--hris-space-5)' }}>
-      <Card
+    <div className="grid gap-6">
+      <PageHeader
         title="Platform status"
-        subtitle="Live probe results from the HRIS API"
-        footer={
-          allHealthy ? (
-            <Badge tone="success">All checks passing</Badge>
+        description="Live probe results from the HRIS API, executed on every request."
+      />
+      <Card>
+        <CardHeader>
+          {/* CardTitle renders a div, so the heading element is supplied here to
+              keep the document outline navigable by screen reader users. */}
+          <CardTitle>
+            <h2>Live probes</h2>
+          </CardTitle>
+          <CardDescription>Liveness and readiness checks against the API</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="grid gap-4">
+            {outcomes.map((outcome) => (
+              <li key={outcome.name} className="flex flex-wrap items-center justify-between gap-4">
+                <span className="font-medium">{outcome.name}</span>
+                <span className="flex items-center gap-2">
+                  <span className={outcome.healthy ? 'text-success' : 'text-destructive'}>
+                    {outcome.detail}
+                  </span>
+                  <Badge variant={outcome.healthy ? 'success' : 'destructive'}>
+                    {outcome.healthy ? 'Healthy' : 'Unavailable'}
+                  </Badge>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+        <CardFooter>
+          {/* The label states the outcome in words. Colour is never the only
+              carrier of meaning, so this stays readable in monochrome and in
+              high-contrast modes.
+
+              The `data-testid` is the machine-readable half of that, and it is what
+              CI asserts on. It used to grep the sentence "All checks passing"
+              directly, which silently made that English string a wire contract:
+              rewording this badge broke the docker job. The two testids are mutually
+              exclusive, so the assertion needs no attribute ordering and the copy
+              stays free to change. */}
+          {allHealthy ? (
+            <Badge variant="success" data-testid="status-overall-ok">
+              All checks passing
+            </Badge>
           ) : (
-            <Badge tone="danger">One or more checks failing</Badge>
-          )
-        }
-      >
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '1rem' }}>
-          {outcomes.map((outcome) => (
-            <li
-              key={outcome.name}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 'var(--hris-space-4)',
-                flexWrap: 'wrap',
-              }}
-            >
-              <span style={{ fontWeight: 500 }}>{outcome.name}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--hris-space-2)' }}>
-                <Text tone={outcome.healthy ? 'success' : 'danger'}>{outcome.detail}</Text>
-                <Badge tone={outcome.healthy ? 'success' : 'danger'}>
-                  {outcome.healthy ? 'Healthy' : 'Unavailable'}
-                </Badge>
-              </span>
-            </li>
-          ))}
-        </ul>
+            <Badge variant="destructive" data-testid="status-overall-failed">
+              One or more checks failing
+            </Badge>
+          )}
+        </CardFooter>
       </Card>
 
-      <Card title="How to read this page">
-        <Text tone="muted">
-          Each probe is executed by the server on every request. A failure means the API is
-          unreachable from the web tier, not that any employee data is unavailable: the API is the
-          only source of truth for business data.
-        </Text>
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <h2>How to read this page</h2>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground">
+            Each probe is executed by the server on every request. A failure means the API is
+            unreachable from the web tier, not that any employee data is unavailable: the API is the
+            only source of truth for business data.
+          </p>
+        </CardContent>
       </Card>
     </div>
   );

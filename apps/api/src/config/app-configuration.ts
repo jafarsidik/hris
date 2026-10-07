@@ -40,14 +40,68 @@ export interface SwaggerConfig {
   readonly path: string;
 }
 
+/**
+ * PostgreSQL settings the API connects with.
+ *
+ * `user` and `password` are the application role, not the migration owner. The API must
+ * never run queries as a superuser, because a superuser bypasses row-level security
+ * unconditionally and every tenant policy would become decorative.
+ */
+export interface DatabaseConfig {
+  readonly host: string;
+  readonly port: number;
+  readonly database: string;
+  readonly user: string;
+  readonly password: string;
+  /**
+   * Connections per API instance.
+   *
+   * Bounded because the total is multiplied by the replica count, and an unbounded
+   * default is the usual way a deployment exhausts the database's connection slots.
+   */
+  readonly poolSize: number;
+}
+
+export interface RedisConfig {
+  readonly host: string;
+  readonly port: number;
+  /** `null` when Redis runs without authentication, which is refused outside tests. */
+  readonly password: string | null;
+  readonly db: number;
+}
+
 export interface AppConfiguration {
   readonly environment: NodeEnvironment;
   readonly http: HttpConfig;
   readonly logging: LoggingConfig;
   readonly swagger: SwaggerConfig;
+  /**
+   * `null` when the application role's credentials are absent.
+   *
+   * Optional rather than fatal because liveness must keep answering while a dependency
+   * is missing: a process that refuses to start cannot report itself unhealthy, so
+   * orchestrators never learn why. Readiness turns this into a 503 instead.
+   */
+  readonly database: DatabaseConfig | null;
+  readonly redis: RedisConfig | null;
 }
 
 export const DEFAULT_HTTP_PORT = 3001;
+
+export const DEFAULT_DATABASE_POOL_SIZE = 10;
+export const DEFAULT_REDIS_DB = 0;
+
+/** Defaults shared with `@hris/database` so the two cannot disagree about ports. */
+const POSTGRES_DEFAULTS = {
+  POSTGRES_HOST: 'localhost',
+  POSTGRES_PORT: '5435',
+  POSTGRES_DB: 'hris',
+} as const;
+
+const REDIS_DEFAULTS = {
+  REDIS_HOST: 'localhost',
+  REDIS_PORT: '6381',
+} as const;
 
 /**
  * Bind every interface. `main.ts` maps this to an unspecified host so Node opens a
@@ -186,16 +240,92 @@ export function parseConfiguration(env: EnvSource = process.env): AppConfigurati
     path: '/api/docs',
   };
 
+  const database = readDatabaseConfig(env, problems);
+  const redis = readRedisConfig(env, problems);
+
   if (problems.length > 0) {
     throw new ConfigurationError(problems);
   }
 
-  return { environment, http, logging, swagger };
+  return { environment, http, logging, swagger, database, redis };
 }
 
 /** Converts the configured level into the cumulative level list NestJS expects. */
 export function toNestLogLevel(level: AppLogLevel): LogLevel[] {
   return [...NEST_LOG_LEVELS.slice(0, NEST_LOG_LEVELS.indexOf(level) + 1)];
+}
+
+/**
+ * Reads the PostgreSQL settings, or `null` when the application role is not configured.
+ *
+ * Half-configured credentials are treated as an error rather than as "unconfigured": a
+ * missing password next to a present username is a typo, and silently running without
+ * the database turns that typo into a readiness failure instead of a boot failure.
+ */
+function readDatabaseConfig(env: EnvSource, problems: string[]): DatabaseConfig | null {
+  const user = env['POSTGRES_APP_USER']?.trim() ?? '';
+  const password = env['POSTGRES_APP_PASSWORD']?.trim() ?? '';
+
+  if (user === '' && password === '') {
+    return null;
+  }
+
+  if (user === '' || password === '') {
+    problems.push(
+      'POSTGRES_APP_USER and POSTGRES_APP_PASSWORD must be set together ' +
+        '(run "npm run db:grant -w @hris/database" to provision the application role)',
+    );
+    return null;
+  }
+
+  return {
+    host: readString(env, 'POSTGRES_HOST', POSTGRES_DEFAULTS.POSTGRES_HOST),
+    port: readInteger(
+      env,
+      'POSTGRES_PORT',
+      Number.parseInt(POSTGRES_DEFAULTS.POSTGRES_PORT, 10),
+      { min: 1, max: 65535 },
+      problems,
+    ),
+    database: readString(env, 'POSTGRES_DB', POSTGRES_DEFAULTS.POSTGRES_DB),
+    user,
+    password,
+    poolSize: readInteger(
+      env,
+      'DB_POOL_SIZE',
+      DEFAULT_DATABASE_POOL_SIZE,
+      { min: 1, max: 100 },
+      problems,
+    ),
+  };
+}
+
+/**
+ * Reads the Redis settings, or `null` when `REDIS_PASSWORD` is absent.
+ *
+ * Redis is only treated as configured when a password is present. `redis:7-alpine` in
+ * `docker-compose.yml` requires one via `${REDIS_PASSWORD:?}`, so an unauthenticated
+ * Redis is a sandbox, not a supported deployment.
+ */
+function readRedisConfig(env: EnvSource, problems: string[]): RedisConfig | null {
+  const password = env['REDIS_PASSWORD']?.trim() ?? '';
+
+  if (password === '') {
+    return null;
+  }
+
+  return {
+    host: readString(env, 'REDIS_HOST', REDIS_DEFAULTS.REDIS_HOST),
+    port: readInteger(
+      env,
+      'REDIS_PORT',
+      Number.parseInt(REDIS_DEFAULTS.REDIS_PORT, 10),
+      { min: 1, max: 65535 },
+      problems,
+    ),
+    password,
+    db: readInteger(env, 'REDIS_DB', DEFAULT_REDIS_DB, { min: 0, max: 15 }, problems),
+  };
 }
 
 export function isProduction(config: AppConfiguration): boolean {

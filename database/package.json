@@ -1,0 +1,39 @@
+{
+  "name": "@hris/database",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prisma schema, migrations, seeds and the typed database client for the HRIS platform",
+  "license": "UNLICENSED",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "npm run db:generate && tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist coverage src/generated",
+    "lint": "eslint \"{src,tests,seeds,scripts}/**/*.ts\" prisma.config.ts",
+    "lint:fix": "eslint \"{src,tests,seeds,scripts}/**/*.ts\" prisma.config.ts --fix",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:grant": "ts-node --transpile-only --project tsconfig.json scripts/grant-app-privileges.ts",
+    "db:reset": "prisma migrate reset --force",
+    "db:seed": "prisma db seed",
+    "db:status": "prisma migrate status",
+    "test": "npm run db:generate && jest",
+    "test:integration": "npm run db:generate && jest --config jest.integration.config.mjs",
+    "test:coverage": "npm run db:generate && jest --coverage",
+    "typecheck": "npm run db:generate && tsc --noEmit"
+  },
+  "dependencies": {
+    "@hris/shared-types": "*",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "dotenv": "^17.4.1",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@hris/eslint-config": "*",
+    "@types/pg": "^8.23.1",
+    "prisma": "7.10.0",
+    "ts-node": "^10.9.2"
+  }
+}

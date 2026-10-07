@@ -65,19 +65,41 @@ the exact failure mode this note exists to prevent.
 
 ## Error codes
 
-| Code                 | Status | Meaning                                                       |
-| -------------------- | ------ | ------------------------------------------------------------- |
-| `VALIDATION_ERROR`   | 400    | Request failed validation; `details` lists the fields          |
-| `UNAUTHENTICATED`    | 401    | No valid session. Sign in again                                |
-| `FORBIDDEN`          | 403    | Authenticated, but not permitted to perform this action        |
-| `OUT_OF_SCOPE`       | 403    | The record exists but is outside the caller's data scope       |
-| `NOT_FOUND`          | 404    | No such record, or none the caller may see                     |
-| `CONFLICT`           | 409    | Uniqueness or concurrency conflict                             |
-| `PRECONDITION_FAILED`| 412    | A workflow precondition is not met                             |
-| `UNPROCESSABLE`      | 422    | Well-formed but semantically impossible                        |
-| `RATE_LIMITED`       | 429    | Too many requests; `Retry-After` is set                        |
-| `INTERNAL_ERROR`     | 500    | Unexpected server fault. Details are logged, never returned    |
-| `SERVICE_UNAVAILABLE`| 503    | A dependency is unavailable                                    |
+`API_ERROR_CODES` in `@hris/shared-types` is the canonical list, and this table is its
+documentation rather than a second source. An earlier version of this table listed
+eleven codes and spelled the 422 as `UNPROCESSABLE`, while the implementation emitted
+`UNPROCESSABLE_ENTITY`; a client branching on the documented spelling would have
+fallen through to `INTERNAL_ERROR`. When the two ever disagree again, the code wins and
+this table is the thing that is wrong.
+
+| Code                     | Status | Meaning                                                       |
+| ------------------------ | ------ | ------------------------------------------------------------- |
+| `VALIDATION_ERROR`       | 400    | Request failed validation; `details` lists the fields          |
+| `UNAUTHENTICATED`        | 401    | No valid session. Sign in again                                |
+| `INVALID_CREDENTIALS`    | 401    | Credentials rejected. Deliberately distinct from `UNAUTHENTICATED`, which means no session was presented at all |
+| `MFA_REQUIRED`           | 401    | Credentials accepted but a second factor is required. The client re-prompts rather than treating it as a failed sign-in |
+| `FORBIDDEN`              | 403    | Authenticated, but not permitted to perform this action        |
+| `OUT_OF_SCOPE`           | 403    | The record exists but is outside the caller's data scope       |
+| `NOT_FOUND`              | 404    | No such record, or none the caller may see                     |
+| `CONFLICT`               | 409    | Uniqueness or concurrency conflict                             |
+| `PRECONDITION_FAILED`    | 412    | A workflow precondition is not met                             |
+| `PAYLOAD_TOO_LARGE`      | 413    | Upload or request body exceeded the limit                      |
+| `UNSUPPORTED_MEDIA_TYPE` | 415    | Content type not accepted by the endpoint                      |
+| `UNPROCESSABLE_ENTITY`   | 422    | Well-formed but semantically impossible                        |
+| `RATE_LIMITED`           | 429    | Too many requests; `Retry-After` is set                        |
+| `INTERNAL_ERROR`         | 500    | Unexpected server fault. Details are logged, never returned    |
+| `NOT_IMPLEMENTED`        | 501    | Endpoint exists in the contract but not in this deployment     |
+| `SERVICE_UNAVAILABLE`    | 503    | A dependency is unavailable                                    |
+
+The three authentication codes are separated because a client reacts differently to
+each. `UNAUTHENTICATED` means "no session, send the user to sign in". `INVALID_CREDENTIALS`
+means "the sign-in form was wrong, show the error on the form". `MFA_REQUIRED` means the
+form was right and the flow must continue. Collapsing them produces a sign-in page that
+either loops on a correct password or discards a valid session on a missing header.
+
+`NOT_IMPLEMENTED` exists so a module that has not been built reports that fact
+honestly. Returning `INTERNAL_ERROR` for a deliberately absent feature trains operators
+to ignore 5xx, which is the opposite of what a monitoring surface is for.
 
 `OUT_OF_SCOPE` is separated from `NOT_FOUND` deliberately. A record outside the
 caller's scope and a record that does not exist produce different answers on

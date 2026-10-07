@@ -19,7 +19,7 @@ production build configuration is a second, untested system.
 cp .env.example .env
 npm ci
 
-npm run infra:up     # PostgreSQL on 5435, Redis on 6381
+npm run infra:up     # PostgreSQL on 5435, Redis on 6381, object storage on 9000
 npm run dev          # API on 3001, web on 3000, mobile via `npm run start -w @hris/mobile`
 ```
 
@@ -33,10 +33,16 @@ npm run stack:down
 
 ### The two port numbers that cause confusion
 
-| Context   | PostgreSQL | Redis | API | Web |
-| --------- | ---------- | ----- | --- | --- |
-| From host | 5435       | 6381  | 3001 | 3000 |
-| From container | 5432 | 6379 | 3001 | 3000 |
+| Context        | PostgreSQL | Redis | Object storage | API | Web |
+| -------------- | ---------- | ----- | -------------- | --- | --- |
+| From host      | 5435       | 6381  | 9000           | 3001 | 3000 |
+| From container | 5432       | 6379  | 9000           | 3001 | 3000 |
+
+Object storage uses the upstream port on both sides, but is published on
+`127.0.0.1` only. Port 9000 serves the S3 API *and* an admin API, and port 9001
+serves a browsable console, so neither should be reachable from the local
+network. Containers are unaffected: they address the service by name over the
+private compose network.
 
 `.env.example` describes the host-side values, because that is what an
 application running directly on your machine needs. `docker-compose.yml` overrides
@@ -56,8 +62,7 @@ with a connection error that looks nothing like a misconfiguration.
 
 Both Dockerfiles scope `npm ci` to the workspaces each image needs. Installing the
 whole monorepo would pull Expo and React Native into a server image, and would
-make `@hris/ui` build inside the API image where its React peer dependency is
-deliberately absent.
+build packages the API does not consume.
 
 ### Bind address and the `HOSTNAME` trap
 

@@ -61,7 +61,43 @@ jobs:
   e2e:
     name: API end-to-end tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    # Phase 1 gives the API real dependencies, and readiness now fails closed without
+    # them. Running the suite against a database-free runner would therefore assert the
+    # opposite of what production does, so both dependencies are started here and the
+    # schema is migrated exactly as a deployment would.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: hris
+          POSTGRES_USER: hris
+          POSTGRES_PASSWORD: hris_ci_owner_password
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd "pg_isready -U hris -d hris"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Container-to-container values are absent here: on the runner PostgreSQL and
+      # Redis are reached through their published ports, which is exactly the host-side
+      # case `DATABASE.md` warns about.
+      NODE_ENV: test
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: '5435'
+      POSTGRES_DB: hris
+      POSTGRES_USER: hris
+      POSTGRES_PASSWORD: hris_ci_owner_password
+      POSTGRES_APP_USER: hris_app
+      POSTGRES_APP_PASSWORD: hris_ci_app_password
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: '6381'
+      REDIS_PASSWORD: hris_ci_redis_password
+      REDIS_DB: '0'
 
     steps:
       - uses: actions/checkout@v4
@@ -73,30 +109,131 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
 
+      # Redis cannot be declared in `services` here, because that block cannot set a
+      # container command and `redis:7-alpine` does not read REDIS_PASSWORD: started
+      # with only that variable it runs with no `requirepass` at all. ioredis then warns
+      # and connects anyway, so the suite would stay green while testing an
+      # unauthenticated Redis that production never runs. Starting it explicitly keeps
+      # the tested configuration identical to compose.
+      - name: Start Redis
+        run: |
+          set -euo pipefail
+          docker run -d --name ci-redis \
+            -p 6381:6379 \
+            redis:7-alpine \
+            redis-server \
+            --requirepass "$REDIS_PASSWORD" \
+            --appendonly yes \
+            --appendfsync everysec \
+            --maxmemory-policy noeviction
+
+      - name: Wait for Redis and confirm it rejects unauthenticated commands
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if docker exec ci-redis redis-cli --no-auth-warning \
+                -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG; then
+              # A plain PING must be refused. Without `requirepass` this returns PONG,
+              # which is the exact misconfiguration this step exists to prevent.
+              if docker exec ci-redis redis-cli ping 2>/dev/null | grep -q PONG; then
+                echo "redis is accepting unauthenticated commands"
+                docker logs ci-redis
+                exit 1
+              fi
+              echo "redis ready and authenticated after ${attempt} attempt(s)"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs ci-redis
+          echo "redis did not become ready in time"
+          exit 1
+
       # The e2e suite builds the Nest application through the same configureApp()
       # helper the production entrypoint uses, so it exercises real middleware,
       # filters and pipes rather than a reduced test harness.
       - name: Build workspace packages
         run: npm run build:packages
 
+      # Order is the deployment order and is not interchangeable: the application role
+      # cannot exist before the migrations, and the API connects as that role.
+      - name: Apply migrations
+        run: npm run db:deploy -w @hris/database
+
+      - name: Seed reference data
+        run: npm run db:seed -w @hris/database
+
+      - name: Grant application role
+        run: npm run db:grant -w @hris/database
+
+      # Row-level security and the append-only trigger only exist inside PostgreSQL, so
+      # these run here rather than in the hermetic `verify` job. They connect as the
+      # application role, which is the whole point: the owner role would bypass RLS and
+      # make every assertion pass regardless of the policies.
+      - name: Run database integration tests
+        run: npm run test:integration -w @hris/database
+
       - name: Run end-to-end tests
         run: npm run test:e2e -w @hris/api
+
+      # Last step on purpose: `always()` runs a step in place rather than at the end of
+      # the job, so a teardown placed earlier would stop Redis before the tests ran.
+      - name: Tear down Redis
+        if: always()
+        run: docker rm -f ci-redis 2>/dev/null || true
 
   docker:
     name: Docker images and stack health
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    env:
+      # Object storage credentials are mandatory for the compose stack to
+      # interpolate. These are throwaway values for an ephemeral CI runner that
+      # never leaves the job; real environments supply them from a secret
+      # manager.
+      STORAGE_ACCESS_KEY: CIACCESSKEY
+      STORAGE_SECRET_KEY: ci_storage_secret_not_used_anywhere_real
+      # The compose file marks POSTGRES_APP_PASSWORD as required, because the API
+      # connects as the application role rather than as POSTGRES_USER.
+      POSTGRES_APP_USER: hris_app
+      POSTGRES_APP_PASSWORD: ci_postgres_app_password
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/setup-buildx-action@v3
 
-      - name: Start PostgreSQL and Redis
-        run: docker compose up -d postgres redis
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Start PostgreSQL, Redis and object storage
+        run: docker compose up -d postgres redis rustfs
         env:
           POSTGRES_PASSWORD: ci_postgres_password
           REDIS_PASSWORD: ci_redis_password
+
+      # Readiness now covers PostgreSQL, so the API in this job reports unhealthy until
+      # the schema exists and the application role can log in. Migration runs from the
+      # runner against the published port, which is also the host-versus-container case
+      # the connection defaults are written for.
+      - name: Migrate and grant the application role
+        env:
+          POSTGRES_HOST: 127.0.0.1
+          POSTGRES_PORT: '5435'
+          POSTGRES_DB: hris
+          POSTGRES_USER: hris
+          POSTGRES_PASSWORD: ci_postgres_password
+          POSTGRES_APP_USER: hris_app
+          POSTGRES_APP_PASSWORD: ci_postgres_app_password
+        run: |
+          npm run db:deploy -w @hris/database
+          npm run db:seed -w @hris/database
+          npm run db:grant -w @hris/database
 
       - name: Build images
         run: docker compose --profile app build
@@ -122,6 +259,7 @@ jobs:
           for attempt in $(seq 1 30); do
             if curl -fsS http://localhost:3001/health/ready >/dev/null \
               && curl -fsS http://localhost:3000/ >/dev/null \
+              && curl -fsS http://localhost:9000/health/ready >/dev/null \
               && docker compose ps --format json | grep -q '"Health":"healthy"'; then
               echo "stack healthy after ${attempt} attempt(s)"
               docker compose ps
@@ -134,13 +272,45 @@ jobs:
           docker compose logs --tail 100
           exit 1
 
+      # `rustfs-init` is a one-shot job with no healthcheck, so the healthy gate
+      # above says nothing about whether it succeeded. Without this assertion a
+      # broken bucket bootstrap would pass CI and only surface later as a missing
+      # bucket at the first upload.
+      - name: Verify object storage bucket was provisioned
+        run: |
+          set -euo pipefail
+          cid=$(docker compose ps -aq rustfs-init)
+          if [ -z "$cid" ]; then
+            echo "rustfs-init container was never created"
+            exit 1
+          fi
+          exit_code=$(docker inspect -f '{{.State.ExitCode}}' "$cid")
+          if [ "$exit_code" != "0" ]; then
+            echo "rustfs-init failed with exit code $exit_code"
+            docker compose logs --no-color rustfs-init
+            exit 1
+          fi
+          echo "rustfs-init completed successfully"
+
       - name: Verify the web tier can reach the API
         run: |
           set -euo pipefail
           # The status page performs a server-side probe. If the internal URL
           # wiring regresses, this fails with the page reporting "Unavailable"
           # even though both containers are individually healthy.
-          curl -fsS http://localhost:3000/status | grep -q 'All checks passing'
+          #
+          # This asserts the `data-testid`, never the visible sentence. The two
+          # testids are mutually exclusive, so this needs no attribute ordering and
+          # the page's copy can be reworded without touching CI.
+          page=$(curl -fsS http://localhost:3000/status)
+          grep -q 'data-testid="status-overall-ok"' <<<"$page" || {
+            echo "status page did not report an overall pass"
+            exit 1
+          }
+          if grep -q 'data-testid="status-overall-failed"' <<<"$page"; then
+            echo "status page reported a failing check"
+            exit 1
+          fi
 
       - name: Dump logs on failure
         if: failure()

@@ -1,12 +1,12 @@
 # ==============================================================================
 # HRIS local development stack
 #
-# Ports are deliberately offset from the defaults (PostgreSQL 5433, Redis 6381)
+# Ports are deliberately offset from the defaults (PostgreSQL 5435, Redis 6381)
 # so this stack can run alongside other projects on the same machine without
 # clashing. Container-to-container traffic uses the service names, never these
 # published ports.
 #
-#   npm run infra:up      start PostgreSQL and Redis only
+#   npm run infra:up      start PostgreSQL, Redis and object storage only
 #   npm run stack:up      build and start the full stack (infra + API + web)
 #   npm run stack:logs    tail application logs
 #   npm run stack:down    stop and remove everything
@@ -25,6 +25,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-hris}
       POSTGRES_USER: ${POSTGRES_USER:-hris}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      # Consumed by docker/postgres/init, which creates the NOSUPERUSER role the
+      # application connects as. See docs/DATABASE.md.
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-hris_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}
       # Deterministic collation keeps index behaviour identical across machines.
       POSTGRES_INITDB_ARGS: '--data-checksums --locale=C.UTF-8'
     ports:
@@ -91,6 +95,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-hris}
       POSTGRES_USER: ${POSTGRES_USER:-hris}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      # The API connects as the application role, not as the migration owner, so
+      # row-level security applies to it.
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-hris_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}
       REDIS_HOST: redis
       REDIS_PORT: '6379'
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -165,9 +173,80 @@ services:
     networks:
       - hris-network
 
+  rustfs:
+    image: rustfs/rustfs:latest
+    restart: unless-stopped
+    environment:
+      # RustFS falls back to `rustfsadmin`/`rustfsadmin` when these are absent,
+      # which is acceptable for a throwaway sandbox and unacceptable anywhere
+      # else. They are therefore required, not defaulted.
+      RUSTFS_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}
+      RUSTFS_SECRET_KEY: ${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}
+      RUSTFS_ADDRESS: ':9000'
+      RUSTFS_CONSOLE_ADDRESS: ':9001'
+      RUSTFS_CONSOLE_ENABLE: 'true'
+      # Logging goes to stdout so `npm run stack:logs` picks it up. Pointing
+      # RUSTFS_OBS_LOG_DIRECTORY at a path inside the image fails outright: the
+      # process runs as uid 10001 and cannot create that directory.
+      RUSTFS_OBS_LOG_LEVEL: ${STORAGE_LOG_LEVEL:-info}
+    volumes:
+      # A named volume rather than a bind mount. A bind mount inherits host
+      # ownership, and uid 10001 then cannot write to it without the extra
+      # chown init container the RustFS docs prescribe.
+      - rustfs-data:/data
+    ports:
+      # Bound to loopback. Port 9000 serves the S3 API *and* the admin API, so
+      # publishing it on every interface would expose object storage to the
+      # local network. The API container is unaffected: it reaches the service
+      # by name over the private network.
+      - '127.0.0.1:${STORAGE_PORT:-9000}:9000'
+      # The web console exposes bucket and object browsing. Development only.
+      - '127.0.0.1:${STORAGE_CONSOLE_PORT:-9001}:9001'
+    healthcheck:
+      # Readiness, not liveness: this only passes once storage and IAM are usable,
+      # so a dependent service never starts against a half-initialised store.
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9000/health/ready >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - hris-network
+
+  # One-shot bucket provisioning. Runs to completion and exits, so it is not a
+  # long-lived service and carries no healthcheck. `--ignore-existing` keeps it
+  # idempotent, which is what allows `up` to run it on every start.
+  rustfs-init:
+    image: rustfs/rc:latest
+    restart: 'no'
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      STORAGE_ENDPOINT: http://rustfs:9000
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-hris-documents}
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      # Versioning is enabled so an overwrite of an employee document is
+      # recoverable. Object Lock (WORM) is deliberately not enabled here: it can
+      # only be applied at creation time, so switching the bucket is cheaper than
+      # discovering the setting was wrong after payslips have landed in it.
+      - >
+        rc alias set hris "$$STORAGE_ENDPOINT" "$$STORAGE_ACCESS_KEY" "$$STORAGE_SECRET_KEY" &&
+        rc bucket create "hris/$$STORAGE_BUCKET" --with-versioning --ignore-existing
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - hris-network
+
 volumes:
   postgres-data:
   redis-data:
+  rustfs-data:
 
 networks:
   hris-network:

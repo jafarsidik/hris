@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@hris/config": "*",
+    "@hris/database": "*",
     "@hris/shared-types": "*",
     "@nestjs/common": "^11.0.12",
     "@nestjs/config": "^4.0.2",
@@ -28,9 +29,11 @@
     "@nestjs/platform-express": "^11.0.12",
     "@nestjs/swagger": "^11.1.0",
     "@nestjs/terminus": "^11.0.0",
+    "bullmq": "^5.34.10",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "helmet": "^8.1.0",
+    "ioredis": "^5.6.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
