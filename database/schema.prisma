@@ -47,7 +47,6 @@ model Role {
   updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
   createdBy   String?          @map("created_by_user_id") @db.Uuid
   grants      RolePermission[]
-  users       User?            @relation(fields: [createdBy], references: [id], map: "roles_created_by_fkey")
   users       UserRole[]
 
   @@map("roles")
@@ -222,7 +221,6 @@ model User {
   registered_actions                                                          RegisteredAction[]
   resource_definitions                                                        ResourceDefinition[]
   resource_fields                                                             ResourceField[]
-  roles                                                                       Role[]
   sessions_sessions_created_by_user_idTousers                                 Session[]                @relation("sessions_created_by_user_idTousers")
   sessions                                                                    Session[]
   sso_identities_sso_identities_created_by_user_idTousers                     SsoIdentity[]            @relation("sso_identities_created_by_user_idTousers")
@@ -905,6 +903,7 @@ enum Action {
   export
   download
   manage
+  view_sensitive
 }
 
 /// Hierarchical scope a permission applies to. Mirrors `DATA_SCOPES`.
