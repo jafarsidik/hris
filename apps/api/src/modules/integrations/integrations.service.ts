@@ -14,7 +14,14 @@ import {
   type WebhookSubscriptionSummary,
 } from '@hris/shared-types';
 
-import { ConflictError, NotFoundError, ValidationError } from '../../common/errors/app-error';
+import { resolveScope, type ScopeDecision } from '../../common/auth/data-scope';
+import type { SessionPrincipal } from '../../common/auth/permission.service';
+import {
+  ConflictError,
+  NotFoundError,
+  OutOfScopeError,
+  ValidationError,
+} from '../../common/errors/app-error';
 import { CredentialCipherService } from '../../common/crypto/credential-cipher.service';
 import { PrismaService } from '../database/prisma.service';
 import { LogService } from '../logs/log.service';
@@ -69,17 +76,47 @@ export class IntegrationsService {
     ]);
   }
 
-  async list(companyId: string): Promise<readonly IntegrationSummary[]> {
+  async list(
+    companyId: string,
+    principal: SessionPrincipal,
+  ): Promise<readonly IntegrationSummary[]> {
+    const decision = this.readScope(principal);
     const client = this.prisma.getClient();
     return withTenantContext(client, companyId, async (tx) => {
       const rows = await tx.integration.findMany({
+        where: integrationScopeWhere(decision),
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
       return rows.map(toSummary);
     });
   }
 
-  async get(companyId: string, id: string): Promise<IntegrationSummary> {
+  async get(
+    companyId: string,
+    principal: SessionPrincipal,
+    id: string,
+  ): Promise<IntegrationSummary> {
+    const decision = this.readScope(principal);
+    const client = this.prisma.getClient();
+    return withTenantContext(client, companyId, async (tx) => {
+      const row = await tx.integration.findFirst({
+        where: { id, ...integrationScopeWhere(decision) },
+      });
+      if (row === null) {
+        throw new NotFoundError('The integration does not exist.');
+      }
+      return toSummary(row);
+    });
+  }
+
+  /**
+   * Reads an integration without a data-scope predicate.
+   *
+   * For internal callers that have already authorised the action by another route — the
+   * update path reads the row to validate a merged payload — scope would be redundant.
+   * Public reads go through {@link get}, which applies the caller's scope.
+   */
+  private async getUnscoped(companyId: string, id: string): Promise<IntegrationSummary> {
     const client = this.prisma.getClient();
     return withTenantContext(client, companyId, async (tx) => {
       const row = await tx.integration.findFirst({ where: { id } });
@@ -88,6 +125,24 @@ export class IntegrationsService {
       }
       return toSummary(row);
     });
+  }
+
+  /**
+   * The caller's record scope for reading integrations, or a hard denial when the grant
+   * cannot be resolved. The controller has already checked `integration:view`; this only
+   * narrows *which* rows that capability reaches.
+   */
+  private readScope(principal: SessionPrincipal): ScopeDecision {
+    const decision = resolveScope(principal.permissions, 'integration', 'view', {
+      userId: principal.user.id,
+      unitId: principal.user.organizationalUnitId,
+    });
+    if (decision.kind === 'denied') {
+      throw new OutOfScopeError(
+        `Your "${decision.scope ?? 'unresolved'}" scope for integration.view cannot be resolved.`,
+      );
+    }
+    return decision;
   }
 
   async create(actor: IntegrationActor, input: IntegrationInput): Promise<IntegrationSummary> {
@@ -138,7 +193,7 @@ export class IntegrationsService {
     input: Partial<IntegrationInput>,
   ): Promise<IntegrationSummary> {
     if (input.kind !== undefined || input.provider !== undefined || input.config !== undefined) {
-      const current = await this.get(actor.companyId, id);
+      const current = await this.getUnscoped(actor.companyId, id);
       const merged: IntegrationInput = {
         key: input.key ?? current.key,
         name: input.name ?? current.name,
@@ -458,6 +513,26 @@ function normalizeEvents(eventTypes: readonly string[]): readonly string[] {
     }
   }
   return [...seen];
+}
+
+/**
+ * Narrows an integration read to the caller's record scope.
+ *
+ * `GLOBAL`/`COMPANY` reach the whole tenant (the company boundary is already enforced by
+ * row-level security). `SELF` reaches only the rows the caller created. Integrations are
+ * tenant-level configuration with no organizational dimension, so a `TEAM`/`DEPARTMENT`/
+ * `ENTITY` grant cannot be honoured: rather than silently widening it to every row, the
+ * predicate matches nothing.
+ */
+function integrationScopeWhere(decision: ScopeDecision): Prisma.IntegrationWhereInput {
+  switch (decision.kind) {
+    case 'all':
+      return {};
+    case 'self':
+      return { createdBy: decision.userId };
+    default:
+      return { id: { in: [] } };
+  }
 }
 
 function toSummary(row: {

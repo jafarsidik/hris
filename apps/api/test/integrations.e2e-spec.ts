@@ -35,6 +35,9 @@ describe('Integrations (e2e)', () => {
   let deadIntegrationId = '';
   let webhookIntegrationId = '';
 
+  // A platform-wide role the scope test grants, tracked so it can be removed afterwards.
+  let scopeRoleKey: string | null = null;
+
   beforeAll(async () => {
     process.env['NODE_ENV'] = 'test';
     process.env['SWAGGER_ENABLED'] = 'false';
@@ -58,6 +61,13 @@ describe('Integrations (e2e)', () => {
   });
 
   afterAll(async () => {
+    if (scopeRoleKey !== null) {
+      // Roles are platform-wide; leaving one would skew global role counts for later runs.
+      await app
+        .get(PrismaService)
+        .getClient()
+        .role.deleteMany({ where: { key: scopeRoleKey } });
+    }
     tcpServer?.close();
     await app.close();
   });
@@ -312,6 +322,104 @@ describe('Integrations (e2e)', () => {
       .get(integrationPath())
       .set({ Authorization: `Bearer ${token}` })
       .expect(403);
+  });
+
+  /**
+   * Proves the record-level scope resolver is reusable outside `user.view`.
+   *
+   * A `SELF` grant on `integration.view` must narrow the list to rows the caller created,
+   * even though the capability itself is held — the same contract the generic records
+   * layer and the user directory honour.
+   */
+  it('narrows a SELF-scoped reader to the integrations they created', async () => {
+    const prisma = app.get(PrismaService);
+    const passwords = app.get(PasswordService);
+    const client = prisma.getClient();
+    const hash = await passwords.hashPassword(password);
+
+    const selfEmail = `integration-self-${suffix}@acme.test`;
+    const otherEmail = `integration-other-${suffix}@acme.test`;
+    const selfKey = `self_${suffix}`;
+    const otherKey = `other_${suffix}`;
+    const roleKey = `INTEGRATION_SELF_${suffix.toUpperCase()}`;
+    scopeRoleKey = roleKey;
+
+    let otherIntegrationId = '';
+
+    await withTenantContext(client, companyId, async (tx) => {
+      const self = await tx.user.create({
+        data: {
+          companyId,
+          email: selfEmail,
+          displayName: 'Self reader',
+          status: 'ACTIVE',
+          passwordHash: hash,
+          hasVerifiedEmail: true,
+        },
+      });
+      const other = await tx.user.create({
+        data: {
+          companyId,
+          email: otherEmail,
+          displayName: 'Other owner',
+          status: 'ACTIVE',
+          passwordHash: hash,
+          hasVerifiedEmail: true,
+        },
+      });
+
+      const role = await tx.role.create({
+        data: {
+          key: roleKey,
+          name: 'Integration self reader',
+          description: '',
+          isSystem: false,
+        },
+      });
+      const view = await tx.permission.findUniqueOrThrow({ where: { key: 'integration.view' } });
+      await tx.rolePermission.create({
+        data: { roleId: role.id, permissionId: view.id, dataScope: 'SELF' },
+      });
+      await tx.userRole.create({ data: { userId: self.id, roleId: role.id, companyId } });
+
+      await tx.integration.create({
+        data: {
+          companyId,
+          key: selfKey,
+          name: 'Mine',
+          kind: 'EMAIL',
+          provider: 'smtp',
+          createdBy: self.id,
+        },
+      });
+      const theirRow = await tx.integration.create({
+        data: {
+          companyId,
+          key: otherKey,
+          name: 'Theirs',
+          kind: 'EMAIL',
+          provider: 'smtp',
+          createdBy: other.id,
+        },
+      });
+      otherIntegrationId = theirRow.id;
+    });
+
+    const login = await api()
+      .post('/api/v1/auth/login')
+      .send({ email: selfEmail, password })
+      .expect(200);
+    const token = login.body.data.token as string;
+    const asSelf = { Authorization: `Bearer ${token}` };
+
+    const list = await api().get(integrationPath()).set(asSelf).expect(200);
+    const keys = (list.body.data as { key: string }[]).map((row) => row.key);
+    expect(keys).toContain(selfKey);
+    expect(keys).not.toContain(otherKey);
+
+    // Reading another owner's integration is a 404, not a 403: the SELF predicate removes
+    // the row before the handler sees it, so the caller cannot even probe for its existence.
+    await api().get(integrationPath(otherIntegrationId)).set(asSelf).expect(404);
   });
 });
 

@@ -120,14 +120,21 @@ export class IntegrationsController {
 
   @Get()
   @RequirePermission('integration', 'view')
-  async list(@CurrentAuth() session: AuthenticatedRequest) {
-    return this.integrations.list(session.companyId);
+  async list(
+    @CurrentAuth() session: AuthenticatedRequest,
+    @CurrentPrincipal() principal: SessionPrincipal,
+  ) {
+    return this.integrations.list(session.companyId, principal);
   }
 
   @Get(':id')
   @RequirePermission('integration', 'view')
-  async get(@CurrentAuth() session: AuthenticatedRequest, @Param('id') id: string) {
-    return this.integrations.get(session.companyId, id);
+  async get(
+    @CurrentAuth() session: AuthenticatedRequest,
+    @CurrentPrincipal() principal: SessionPrincipal,
+    @Param('id') id: string,
+  ) {
+    return this.integrations.get(session.companyId, principal, id);
   }
 
   @Post()
