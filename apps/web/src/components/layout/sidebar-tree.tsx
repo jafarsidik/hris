@@ -12,7 +12,7 @@ import {
   SidebarMenuSubItem,
 } from '@/components/ui/sidebar';
 import { locatePath, type ModuleMenu, type MenuGroup } from '@/lib/navigation';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, CircleCheck, CircleDashed } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -24,9 +24,10 @@ import { usePathname } from 'next/navigation';
  * a `SidebarMenuButton`, so it behaves as a tree node rather than as a heading, and its
  * items live in a `SidebarMenuSub` underneath it.
  *
- * **A group containing the current page starts open.** Collapsing the section that hides
- * the page you are on leaves no indication of where you are, and the state would not
- * survive a reload anyway.
+ * **Every group starts open.** The sidebar doubles as the delivery roadmap: a module's
+ * planned entries are its remaining scope, so they must be visible when the module is
+ * selected rather than hidden behind a section the reader has to discover and open. The
+ * group remains collapsible, so this is a default and not a cage.
  *
  * **Only `built` items link.** Planned items render as disabled text with a marker.
  * They were once disabled buttons carrying a tooltip, which fails twice over: a disabled
@@ -60,12 +61,17 @@ function Group({ group, pathname }: { group: MenuGroup; pathname: string }) {
    */
   const activeItem = locatePath(pathname)?.item;
 
-  const holdsCurrentPage = activeItem !== undefined && group.items.includes(activeItem);
-
   const plannedCount = group.items.filter((item) => item.status === 'planned').length;
+  const builtCount = group.items.length - plannedCount;
 
   return (
-    <Collapsible defaultOpen={holdsCurrentPage} className="group/collapsible">
+    /*
+     * Every group starts open so the whole roadmap — built and planned alike — is
+     * visible the moment a module is selected. A collapsed group hides exactly the
+     * entries a reader came to inspect, and on the mostly-planned modules that is all
+     * of them. The group stays collapsible for readers who want to narrow it down.
+     */
+    <Collapsible defaultOpen className="group/collapsible">
       <SidebarGroup>
         <SidebarMenu>
           {/*
@@ -88,11 +94,22 @@ function Group({ group, pathname }: { group: MenuGroup; pathname: string }) {
             >
               <span className="truncate">{group.label}</span>
 
-              {plannedCount > 0 && (
-                <SidebarMenuBadge className="ml-auto text-muted-foreground">
-                  {plannedCount} planned
-                </SidebarMenuBadge>
-              )}
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                {builtCount > 0 && (
+                  <span
+                    className="text-xs font-normal tabular-nums text-emerald-600 dark:text-emerald-400"
+                    title={`${builtCount} of ${group.items.length} menus built`}
+                  >
+                    {builtCount}/{group.items.length}
+                  </span>
+                )}
+
+                {plannedCount > 0 && (
+                  <SidebarMenuBadge className="text-muted-foreground">
+                    {plannedCount} planned
+                  </SidebarMenuBadge>
+                )}
+              </span>
 
               <ChevronRight
                 aria-hidden="true"
@@ -122,18 +139,28 @@ function Group({ group, pathname }: { group: MenuGroup; pathname: string }) {
                         render={<span />}
                         aria-disabled
                         title={item.description}
+                        className="gap-2 text-muted-foreground"
                       >
                         <span className="truncate">{item.label}</span>
                         <span className="sr-only"> — planned, not built yet</span>
+                        <CircleDashed
+                          aria-hidden="true"
+                          className="ml-auto size-3.5 shrink-0 opacity-60"
+                        />
                       </SidebarMenuSubButton>
                     ) : (
                       <SidebarMenuSubButton
                         isActive={activeItem === item}
                         aria-current={activeItem === item ? 'page' : undefined}
                         title={item.description}
+                        className="gap-2"
                         render={<Link href={item.href} />}
                       >
                         <span className="truncate">{item.label}</span>
+                        <CircleCheck
+                          aria-hidden="true"
+                          className="ml-auto size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                        />
                       </SidebarMenuSubButton>
                     )}
                   </SidebarMenuSubItem>

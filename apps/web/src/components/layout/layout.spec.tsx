@@ -96,6 +96,17 @@ describe('ModuleRail', () => {
     }
   });
 
+  it('pins the System module to the bottom of the rail', () => {
+    pathname.current = '/';
+    renderShell();
+
+    // The administrative console is the one always-built surface; sitting it last keeps
+    // it from crowding the roadmaps of the ten product modules above it.
+    const buttons = within(rail()).getAllByRole('button');
+
+    expect(buttons.at(-1)).toBe(moduleButton('M00_AUTHENTICATION'));
+  });
+
   it('names each module in words, not by icon alone', () => {
     pathname.current = '/';
     renderShell();
@@ -184,10 +195,14 @@ describe('SidebarTree', () => {
     expect(within(tree()).getByRole('link', { name: /employees/i })).toBeVisible();
   });
 
-  it('collapses groups that do not hold the current page', () => {
+  it('shows planned entries from groups that do not hold the current page', () => {
     pathname.current = '/employees';
     renderShell();
 
+    // The sidebar is the roadmap: a planned item in another group is visible without the
+    // reader opening that group first. This one is `Organization`'s, not the active
+    // `Workforce` group's.
+    expect(within(tree()).getByText('Organization Structure')).toBeVisible();
     expect(within(tree()).queryByRole('link', { name: /payroll runs/i })).not.toBeInTheDocument();
   });
 
@@ -306,7 +321,9 @@ describe('module selection', () => {
 
     expect(tree()).toHaveAccessibleName('Core HR menus');
     expect(within(tree()).getByText('Workforce')).toBeInTheDocument();
-    expect(within(tree()).queryByRole('link', { name: /employees/i })).not.toBeInTheDocument();
+    // Groups start open, so the tick that selecting a module reveals is its whole
+    // roadmap — the built Employees entry and its planned siblings alike.
+    expect(within(tree()).getByRole('link', { name: /employees/i })).toBeInTheDocument();
   });
 
   it('marks the chosen module pressed and leaves the current one marked current', () => {
@@ -349,18 +366,17 @@ describe('module selection', () => {
     expect(within(tree()).getByRole('link', { name: /employees/i })).toBeVisible();
   });
 
-  it('opens a group that was closed when its module was not in view', () => {
+  it('shows a module roadmap with its groups already open', () => {
     pathname.current = '/';
     renderShell();
 
-    // `Workforce` holds nothing that is the current page, so it mounts closed. Opening it is
-    // then the reader's only route into its menus, which is the point of the group.
+    // Selecting a module reveals its full roadmap: every group is open on mount whether or
+    // not it holds the current page, so planned scope is visible without hunting for a
+    // collapsed section first.
     fireEvent.click(moduleButton('M01_CORE_HR'));
 
     const workforce = within(tree()).getByRole('button', { name: /^Workforce/ });
-    expect(workforce).toHaveAttribute('aria-expanded', 'false');
-
-    fireEvent.click(workforce);
+    expect(workforce).toHaveAttribute('aria-expanded', 'true');
 
     expect(within(tree()).getByRole('link', { name: /employees/i })).toBeVisible();
   });

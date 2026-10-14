@@ -25,7 +25,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
-import { MODULE_MENUS, activeModule, type ModuleId } from '@/lib/navigation';
+import { MODULE_MENUS, activeModule, type ModuleId, type ModuleMenu } from '@/lib/navigation';
 import { Building2, Check, ChevronsUpDown } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -128,25 +128,31 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <DropdownMenuLabel>Modules</DropdownMenuLabel>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              {MODULE_MENUS.map((entry) => (
-                <DropdownMenuItem
-                  key={entry.module}
-                  onClick={() => {
-                    setSelected(entry.module);
-                  }}
-                  className="justify-between gap-2"
-                >
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate">{entry.label}</span>
-                    {!entry.hasSurface && (
-                      <span className="truncate text-xs text-muted-foreground">Not built yet</span>
-                    )}
-                  </span>
-                  {entry.module === selected && (
-                    <Check aria-hidden="true" className="size-4 shrink-0" />
-                  )}
-                </DropdownMenuItem>
-              ))}
+              {MODULE_MENUS.filter((entry) => entry.module !== 'M00_AUTHENTICATION').map(
+                (entry) => (
+                  <ModuleMenuItem
+                    key={entry.module}
+                    entry={entry}
+                    selected={selected}
+                    onSelect={setSelected}
+                  />
+                ),
+              )}
+              {/*
+                The console is pinned below a divider, mirroring the rail: it configures
+                the other modules rather than belonging beside them.
+              */}
+              <DropdownMenuSeparator />
+              {MODULE_MENUS.filter((entry) => entry.module === 'M00_AUTHENTICATION').map(
+                (entry) => (
+                  <ModuleMenuItem
+                    key={entry.module}
+                    entry={entry}
+                    selected={selected}
+                    onSelect={setSelected}
+                  />
+                ),
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -190,5 +196,41 @@ export function AppShell({ children }: { children: ReactNode }) {
         </footer>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+/**
+ * One module entry in the narrow-screen dropdown.
+ *
+ * The built/total ratio mirrors the rail's corner dot and the sidebar's group headers, so
+ * "how much of this module exists" is answered the same way wherever the nav is read.
+ */
+function ModuleMenuItem({
+  entry,
+  selected,
+  onSelect,
+}: {
+  entry: ModuleMenu;
+  selected: ModuleId;
+  onSelect: (module: ModuleId) => void;
+}) {
+  const items = entry.groups.flatMap((group) => group.items);
+  const builtCount = items.filter((item) => item.status === 'built').length;
+
+  return (
+    <DropdownMenuItem
+      onClick={() => {
+        onSelect(entry.module);
+      }}
+      className="justify-between gap-2"
+    >
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate">{entry.label}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {entry.hasSurface ? `${builtCount} of ${items.length} menus built` : 'Not built yet'}
+        </span>
+      </span>
+      {entry.module === selected && <Check aria-hidden="true" className="size-4 shrink-0" />}
+    </DropdownMenuItem>
   );
 }
