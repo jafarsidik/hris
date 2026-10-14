@@ -12,7 +12,7 @@ import {
 import type { ApiError, ApiErrorCode } from '@hris/shared-types';
 import type { Request, Response } from 'express';
 
-import { isAppError } from '../errors/app-error';
+import { isAppError, RateLimitedError } from '../errors/app-error';
 
 /** Maps an HTTP status onto the stable client-facing error code. */
 const STATUS_TO_ERROR_CODE: Readonly<Record<number, ApiErrorCode>> = Object.freeze({
@@ -89,6 +89,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
       details: error.details,
       correlationId: request.correlationId,
     };
+
+    // A 429 must tell the caller when it is worth retrying, so the documented
+    // `Retry-After` header is always present on a rate-limited response.
+    if (exception instanceof RateLimitedError && exception.retryAfterSeconds !== undefined) {
+      response.setHeader('Retry-After', String(exception.retryAfterSeconds));
+    }
 
     response.status(statusCode).json({ success: false, error: payload });
   }

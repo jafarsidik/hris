@@ -7,6 +7,7 @@ import { BUILT_ITEMS, ROUTES, moduleLabel, type ModuleId } from '@/lib/navigatio
 import { AppShell } from './app-shell';
 import { BreadcrumbTrail } from './breadcrumb-trail';
 import { PageHeader } from './page-header';
+import { SessionProvider } from '@/features/auth/session-context';
 
 /**
  * The shell is a client component, so it is tested as one.
@@ -19,7 +20,17 @@ const pathname = vi.hoisted(() => ({ current: '/' }));
 
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname.current,
-  useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+}));
+
+/**
+ * The shell's session menu reads session state from `SessionProvider`, which fetches
+ * `auth/me`. Stub the fetch with a promise that never settles: the shell only needs
+ * the menu to render in its loading state, and a resolving promise would fire a state
+ * update outside `act()` on every one of the 25 shell tests.
+ */
+vi.mock('@/lib/api/client-config', () => ({
+  apiRequestV1: () => new Promise(() => {}),
 }));
 
 /**
@@ -31,11 +42,11 @@ vi.mock('next/navigation', () => ({
  * notifications to assert on here, and letting it resolve would fire a state update
  * outside `act()` on every one of the 38 shell tests.
  */
-vi.mock('@/app/notifications/actions', () => ({
+vi.mock('@/app/(app)/notifications/actions', () => ({
   loadNotifications: () => new Promise(() => {}),
 }));
 
-vi.mock('@/app/employees/actions', () => ({
+vi.mock('@/app/(app)/employees/actions', () => ({
   searchPeople: () => Promise.resolve([]),
 }));
 
@@ -58,7 +69,12 @@ const tree = () => screen.getByRole('navigation', { name: /menus$/i });
 const moduleButton = (moduleId: ModuleId) =>
   within(rail()).getByRole('button', { name: new RegExp(`^${moduleLabel(moduleId)}[.]`, 'i') });
 
-const renderShell = () => render(<AppShell>{<p>content</p>}</AppShell>);
+const renderShell = () =>
+  render(
+    <SessionProvider>
+      <AppShell>{<p>content</p>}</AppShell>
+    </SessionProvider>,
+  );
 
 describe('ModuleRail', () => {
   it('labels the module landmark', () => {

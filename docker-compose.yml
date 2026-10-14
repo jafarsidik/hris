@@ -78,6 +78,22 @@ services:
     networks:
       - hris-network
 
+  # Local SMTP sink. Captures every outbound email and exposes a web UI so
+  # invitation and notification delivery can be inspected without a real relay.
+  # The API and worker both address it by the service name `mailpit`.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      # 1025 collides with the documented host SMTP default on purpose: developers
+      # point their local tools at the same port the worker uses.
+      - '${MAILPIT_SMTP_PORT:-1025}:1025'
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - hris-network
+
   api:
     profiles: ['app']
     build:
@@ -105,7 +121,8 @@ services:
       REDIS_DB: ${REDIS_DB:-0}
       # The browser reaches the API through the published host port, so CORS must
       # allow the host-side origin rather than the internal compose hostname.
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # The web workspaces on 3000 and 3100 (override with CORS_ORIGINS).
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:3100,http://127.0.0.1:3100}
       # Must be a concrete interface. The wildcard is required so sibling
       # containers can reach the API, and it is not read from the host .env so a
       # developer restricting local development to 127.0.0.1 cannot accidentally
@@ -167,6 +184,47 @@ services:
       - '${WEB_PORT:-3000}:3000'
     depends_on:
       api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - hris-network
+
+  worker:
+    profiles: ['app']
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: '5432'
+      POSTGRES_DB: ${POSTGRES_DB:-hris}
+      POSTGRES_USER: ${POSTGRES_USER:-hris}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-hris_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDIS_DB: ${REDIS_DB:-0}
+      # Email is company-scoped at runtime; these values are the fallback relay for
+      # companies that have not configured their own.
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-no-reply@hris.local}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-HRIS}
+      WEB_APP_URL: ${WEB_APP_URL:-http://localhost:3000}
+      APP_NAME: ${APP_NAME:-HRIS}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true

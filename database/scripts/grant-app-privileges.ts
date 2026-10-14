@@ -98,6 +98,22 @@ async function main(): Promise<void> {
       `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${applicationRoleIdentifier}`,
     );
 
+    // The cross-tenant authentication lookups (migrations ...access_admin_foundation
+    // and ...auth_token_lookup_functions) revoke EXECUTE from PUBLIC. Re-grant on
+    // every run so the application role can find a user by email or token at sign-in,
+    // resets and verification even after a fresh database reset.
+    const authFunctions = [
+      'app_auth_find_user_by_email(citext)',
+      'app_auth_find_user_by_reset_token(text)',
+      'app_auth_find_user_by_verification_token(text)',
+      'app_sso_find_provider(uuid)',
+      'app_sso_find_providers_for_email(citext)',
+      'app_api_find_client(text)',
+    ];
+    for (const authFunction of authFunctions) {
+      await pool.query(`GRANT EXECUTE ON FUNCTION ${authFunction} TO ${applicationRoleIdentifier}`);
+    }
+
     // Privileges on tables created by later migrations.
     await pool.query(
       `ALTER DEFAULT PRIVILEGES FOR ROLE ${ownerRoleIdentifier} IN SCHEMA public ` +

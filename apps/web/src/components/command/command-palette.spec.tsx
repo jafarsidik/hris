@@ -15,7 +15,7 @@ type Person = {
 const searchPeople = vi.hoisted(() => vi.fn(async (_: string): Promise<readonly Person[]> => []));
 const push = vi.hoisted(() => vi.fn());
 
-vi.mock('@/app/employees/actions', () => ({ searchPeople }));
+vi.mock('@/app/(app)/employees/actions', () => ({ searchPeople }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, prefetch: vi.fn() }),
 }));

@@ -78,6 +78,7 @@ this table is the thing that is wrong.
 | `UNAUTHENTICATED`        | 401    | No valid session. Sign in again                                |
 | `INVALID_CREDENTIALS`    | 401    | Credentials rejected. Deliberately distinct from `UNAUTHENTICATED`, which means no session was presented at all |
 | `MFA_REQUIRED`           | 401    | Credentials accepted but a second factor is required. The client re-prompts rather than treating it as a failed sign-in |
+| `INVALID_MFA`            | 401    | The presented second factor (TOTP, recovery code or passkey) was rejected. The first factor remains valid, so the client stays on the second-factor step |
 | `FORBIDDEN`              | 403    | Authenticated, but not permitted to perform this action        |
 | `OUT_OF_SCOPE`           | 403    | The record exists but is outside the caller's data scope       |
 | `NOT_FOUND`              | 404    | No such record, or none the caller may see                     |
@@ -176,16 +177,108 @@ A request never supplies its own scope. Any client-supplied entity, company,
 department or employee identifier is treated as a hint and re-validated against
 stored state before use.
 
+### API keys
+
+A machine client authenticates with a key presented as `Authorization: Bearer
+hris_ak_<clientId>.<secret>` or in the `X-Api-Key` header. The key is resolved through a
+cross-tenant lookup by its public `clientId`, then the secret is compared as a SHA-256
+hash in constant time. The resulting principal carries exactly the scopes the client was
+granted (each a `resource.action`), at company breadth, and nothing else. Keys are
+managed under `/api/v1/developers/clients` gated on `api-client:*`; rotation, disabling
+and deletion take effect on the next request. The secret is returned only when a client
+is created or rotated — it is never readable again.
+
+### Generic resources
+
+A registry resource with `supportsCrud` is served by a single generic surface,
+`/api/v1/records/:resource[/:id]` (`GET`, `POST`, `PATCH`, `DELETE`). Because the
+resource is named in the path, these routes cannot carry a static
+`@RequirePermission`; the controller resolves capability and scope from the
+caller's live permissions on every request. The request body is validated against
+the resource's registered `resource_fields` — unknown keys are rejected. The
+optional reserved key `unitId` places a record in the organizational hierarchy;
+`ownerUserId` and `organizationalUnitId` are stored as real columns so `SELF`,
+`TEAM`/`DEPARTMENT` and `ENTITY` grants remain row-level predicates.
+
+#### Custom actions
+
+A resource may register custom actions beyond the standard CRUD verbs; they are
+dispatched through `POST /api/v1/records/:resource/:id/actions/:action`. The action
+registry is keyed by `resource` + `action` and each definition names the permission it
+requires (for example the example application's `task.complete` reuses the standard
+`task.update` grant). The handler may return a `patch` (validated against the registered
+fields and merged into the record), a `result` envelope, and `events`, which the platform
+emits on an in-process domain-event bus after the write commits. An unregistered action
+returns `404`; a caller lacking the action's permission gets `403`.
+
+#### Example application
+
+The seeded "Projects" application demonstrates the extension mechanism: the `project` and
+`task` resources are registered entirely through metadata (with the standard actions plus a
+custom `complete` on `task`), so they are served by the generic CRUD surface above, and
+completing a task emits `task.completed`.
+
+### Workflows
+
+Authoring a configurable state machine uses `/api/v1/workflows` gated on `workflow:*`:
+
+- `GET /workflows`, `GET /workflows/:id` — definitions with their version list.
+- `POST /workflows` — create a definition (a draft v1 is created automatically).
+- `PATCH` / `DELETE /workflows/:id`.
+- `POST /api/v1/workflows/:id/versions` — clone the latest version into a new draft.
+- `PUT /api/v1/workflows/:id/versions/:version` — replace a draft's `states` and
+  `transitions` (validated: unique keys, exactly one initial state, known endpoints).
+- `POST /api/v1/workflows/:id/versions/:version/publish` — validate, activate, and
+  archive the previous active version.
+
+Runtime is served under `/api/v1/workflow-instances`. Starting an instance requires
+`workflow:create`, listing/getting requires `workflow:view`, and cancelling requires
+`workflow:manage`. Executing a transition (`POST /:id/transitions`) is authorised per
+transition by the engine: it must satisfy the transition's `requiredPermission`
+(defaulting to `workflow:approve`) and, when the transition declares `requiresApproval`,
+the actor must be an effective approver under the `ApprovalAuthority` rules or an active
+delegation. Every transition is appended to the instance history.
+
+### Integrations
+
+The integration registry (`/api/v1/integrations`, gated on `integration:*`) stores one
+non-secret record per configured adapter instance for a tenant:
+
+- `GET /integrations`, `GET /integrations/:id` — list and read configured integrations.
+- `POST /integrations` — create one (`key`, `name`, `kind`, `provider`, optional
+  `config`, `isEnabled`). The `kind` must have a registered adapter; only `EMAIL`
+  exists today, so other kinds are rejected until an adapter ships.
+- `PATCH` / `DELETE /integrations/:id` — update or soft-delete.
+- `POST /integrations/:id/test` — run the adapter's connection test (`integration:manage`),
+  record the outcome and update the integration's `status`/`lastCheckedAt`/`lastMessage`.
+- `GET /integrations/:id/deliveries` — the append-only operation ledger (connection
+  tests and outbound email deliveries), newest first, capped at 100 rows.
+
+`config` is validated to reject credential-like keys, so secrets stay in encrypted
+System Settings. The email adapter resolves the tenant's SMTP relay from the `email.smtpHost`
+and `email.smtpPort` settings (or an explicit `host`/`port` override in `config`) and
+probes it over TCP; secrets are never read from the integration record.
+
 ## OpenAPI
 
-Generated from decorators and served at `/api/docs`. **Disabled by default in
-production** because the explorer enumerates the entire authenticated attack
-surface. Staging keeps it enabled for consumers.
+Generated from decorators and served at `/api/docs` (explorer) and `/api/docs-json`
+(the raw document). **Disabled by default in production** because the explorer
+enumerates the entire authenticated attack surface. Staging keeps it enabled for
+consumers.
 
-Spec drift is a real risk when documentation is generated and then diverges. The
-spec is generated from the code that serves the requests, so it cannot describe an
-endpoint that does not exist; contract tests assert that every documented response
-shape matches what the API actually returns.
+`buildOpenApiDocument` (`apps/api/src/openapi.ts`) is the single definition used by both
+the explorer and any consumer export. The document declares two credential schemes: a
+human session (`access-token`, an opaque bearer token also accepted from the
+`hris_session` cookie) and a developer API key (`api-key`, sent as `X-API-Key` or as
+`Authorization: Bearer hris_ak_...`). The public health probes are `@ApiExcludeEndpoint()`
+and intentionally absent.
+
+Spec drift is a real risk when documentation is generated and then diverges. Two
+measures keep it honest: the spec is generated from the code that serves the requests,
+so it cannot describe an endpoint that does not exist; and
+`apps/api/test/openapi.e2e-spec.ts` re-reads the served document to assert the routes and
+security schemes consumers depend on are still present, so a refactor that silently
+drops one fails the suite.
 
 ## Client contract
 

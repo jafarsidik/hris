@@ -3,19 +3,26 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const alertVariants = cva(
-  "group/alert relative grid w-full gap-0.5 rounded-lg border px-2.5 py-2 text-left text-sm has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pr-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-2 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4",
+  "group/alert relative grid w-full gap-0.5 rounded-lg border px-3 py-2.5 text-left text-sm shadow-xs has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pr-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-2.5 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: 'bg-card text-card-foreground',
+        default: 'border-border bg-card text-card-foreground',
         // Added beyond the shadcn default set. A recoverable condition such as a rate
         // limit is neither a fault nor neutral information, and neither `default` nor
         // `destructive` describes it. Reporting it as destructive would put ordinary
         // back-pressure in the same visual class as a genuine outage.
+        //
+        // Each status variant carries a tinted wash as well as coloured text: a plain
+        // white card with coloured text reads as ordinary content, so a save or an
+        // error was easy to miss. The tint plus matching border makes the surface
+        // legible at a glance without resorting to a heading-sized banner.
+        success:
+          'border-success/30 bg-success/10 text-success *:data-[slot=alert-description]:text-success/90 *:[svg]:text-current',
         warning:
-          'bg-card text-warning *:data-[slot=alert-description]:text-warning/90 *:[svg]:text-current',
+          'border-warning/30 bg-warning/10 text-warning *:data-[slot=alert-description]:text-warning/90 *:[svg]:text-current',
         destructive:
-          'bg-card text-destructive *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current',
+          'border-destructive/30 bg-destructive/10 text-destructive *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current',
       },
     },
     defaultVariants: {

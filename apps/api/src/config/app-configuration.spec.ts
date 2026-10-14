@@ -17,7 +17,12 @@ describe('parseConfiguration', () => {
       expect(config.http.port).toBe(DEFAULT_HTTP_PORT);
       expect(config.http.host).toBe(WILDCARD_HOST);
       expect(config.http.globalPrefix).toBe('api');
-      expect(config.http.corsOrigins).toEqual(['http://localhost:3000']);
+      expect(config.http.corsOrigins).toEqual([
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:3100',
+        'http://127.0.0.1:3100',
+      ]);
       expect(config.swagger.enabled).toBe(true);
     });
 

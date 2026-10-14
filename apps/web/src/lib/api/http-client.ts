@@ -83,6 +83,7 @@ async function requestJson(
   options: RequestOptions = {},
 ): Promise<RawResult> {
   const url = `${baseUrl.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
+  const method = options.method ?? 'GET';
 
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -91,6 +92,12 @@ async function requestJson(
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
+  if (method !== 'GET') {
+    // The API's CSRF guard only trusts same-origin, cookie-authenticated state
+    // changes when this header is present; without it every browser-side POST,
+    // PATCH, PUT and DELETE is rejected with 403.
+    headers['X-Requested-With'] = 'XMLHttpRequest';
+  }
   if (options.correlationId) {
     headers['X-Correlation-Id'] = options.correlationId;
   }
@@ -98,7 +105,7 @@ async function requestJson(
   let response: Response;
   try {
     response = await fetch(url, {
-      method: options.method ?? 'GET',
+      method,
       headers,
       credentials: 'include',
       ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),

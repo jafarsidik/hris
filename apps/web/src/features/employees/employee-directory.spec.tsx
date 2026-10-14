@@ -1,63 +1,80 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { EMPTY_FILTERS } from '@/components/data-table';
+import { ToastProvider } from '@/components/ui/toast';
+import { installLocalStorageStub } from '@/test/local-storage-stub';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { EmployeeDirectory } from './employee-directory';
-import type { Employee, EmployeePage } from './employee-types';
+import type { Employee } from './employee-types';
 
 /**
- * The table is a client component, so the server action is mocked. Mocking it rather than
- * a route handler keeps these tests about rendering and interaction; the action's own
- * paging and validation behaviour is covered in `app/employees/actions.spec.ts`.
+ * The directory is a pure client component over rows the server page already fetched:
+ * there is no action to mock, and the workspace root test setup's `server-only` stub
+ * keeps the directory's imports (which never touch `server-only`) honest. These tests
+ * pin the interaction surface the table hands back to this page — filtering, paging and
+ * selection over the in-browser window — while the generic table's own behaviours are
+ * covered in the data-table spec.
  */
 
-const loadMoreEmployees = vi.hoisted(() => vi.fn());
+let employeeCounter = 0;
 
-vi.mock('@/app/employees/actions', () => ({ loadMoreEmployees }));
+function employee(overrides: Partial<Employee> = {}): Employee {
+  employeeCounter += 1;
+  const sequence = String(employeeCounter).padStart(4, '0');
+  return {
+    id: `emp-${sequence}`,
+    employeeNumber: `EMP-${sequence}`,
+    fullName: `Employee ${employeeCounter}`,
+    email: `employee${employeeCounter}@example.com`,
+    jobTitle: 'Backend Engineer',
+    department: 'Engineering',
+    employmentType: 'Full time',
+    hireDate: '2019-04-02',
+    status: 'ACTIVE',
+    ...overrides,
+  };
+}
 
-// Reset per test. Without it the shared spy accumulates calls, and an assertion that a
-// request was never made passes or fails according to test order rather than behaviour.
-beforeEach(() => {
-  loadMoreEmployees.mockReset();
-});
+function renderDirectory(
+  rows: readonly Employee[],
+  overrides: Partial<{
+    initialFilters: typeof EMPTY_FILTERS;
+    initialSearch: string;
+  }> = {},
+) {
+  return render(
+    <ToastProvider>
+      <EmployeeDirectory
+        initialRows={rows}
+        initialFilters={overrides.initialFilters ?? EMPTY_FILTERS}
+        initialSearch={overrides.initialSearch ?? ''}
+      />
+    </ToastProvider>,
+  );
+}
 
-const FILTERS = { search: '', status: 'ALL', sort: 'name' as const };
-
-const employee = (overrides: Partial<Employee> = {}): Employee => ({
-  id: 'emp-0001',
-  employeeNumber: 'EMP-0001',
-  fullName: 'Amara Adeyemi',
-  email: 'amara.adeyemi@example.com',
-  jobTitle: 'Backend Engineer',
-  department: 'Engineering',
-  employmentType: 'Full time',
-  hireDate: '2019-04-02',
-  status: 'ACTIVE',
-  ...overrides,
-});
-
-const page = (
-  items: Employee[],
-  overrides: Partial<EmployeePage['pageInfo']> = {},
-): EmployeePage => ({
-  items,
-  pageInfo: { hasNextPage: false, endCursor: null, ...overrides },
-});
+const thirtyEmployees = Array.from({ length: 30 }, (_, index) =>
+  employee({ id: `emp-${String(index + 1).padStart(4, '0')}`, fullName: `Employee ${index + 1}` }),
+);
 
 describe('EmployeeDirectory', () => {
+  beforeEach(() => {
+    installLocalStorageStub();
+    employeeCounter = 0;
+  });
+
   it('renders a row per employee', () => {
-    render(
-      <EmployeeDirectory
-        initialPage={page([employee(), employee({ id: 'emp-0002', fullName: 'Chen Silva' })])}
-        filters={FILTERS}
-      />,
-    );
+    renderDirectory([
+      employee({ fullName: 'Amara Adeyemi' }),
+      employee({ fullName: 'Chen Silva' }),
+    ]);
 
     expect(screen.getByText('Amara Adeyemi')).toBeInTheDocument();
     expect(screen.getByText('Chen Silva')).toBeInTheDocument();
   });
 
   it('labels the table columns', () => {
-    render(<EmployeeDirectory initialPage={page([employee()])} filters={FILTERS} />);
+    renderDirectory([employee()]);
 
     const header = screen.getByRole('table');
 
@@ -66,6 +83,7 @@ describe('EmployeeDirectory', () => {
       'Employee no.',
       'Department',
       'Job title',
+      'Type',
       'Hire date',
       'Status',
     ]) {
@@ -74,148 +92,132 @@ describe('EmployeeDirectory', () => {
   });
 
   it('renders the row as a table row rather than a card', () => {
-    render(<EmployeeDirectory initialPage={page([employee()])} filters={FILTERS} />);
+    renderDirectory([employee({ fullName: 'Amara Adeyemi' })]);
 
-    // A directory that stops being a table below some width is no longer scannable by
-    // column, which is the main thing it is for.
-    const row = screen.getByText('Amara Adeyemi').closest('tr');
-
-    expect(row).not.toBeNull();
+    expect(screen.getByText('Amara Adeyemi').closest('tr')).not.toBeNull();
   });
 
-  it('shows the count of loaded employees', () => {
-    render(
-      <EmployeeDirectory
-        initialPage={page([employee(), employee({ id: 'emp-0002' })])}
-        filters={FILTERS}
-      />,
-    );
+  it('paginates over the rows already on the client', () => {
+    renderDirectory(thirtyEmployees);
 
-    expect(screen.getByText('Showing 2 employees')).toBeInTheDocument();
+    expect(screen.getByText(/1–25 of 30/)).toBeInTheDocument();
+    expect(screen.getByText('Employee 1')).toBeInTheDocument();
+    expect(screen.queryByText('Employee 26')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+
+    expect(screen.getByText(/26–30 of 30/)).toBeInTheDocument();
+    expect(screen.getByText('Employee 26')).toBeInTheDocument();
+    expect(screen.queryByText('Employee 1')).not.toBeInTheDocument();
   });
 
-  it('uses the singular for one employee', () => {
-    render(<EmployeeDirectory initialPage={page([employee()])} filters={FILTERS} />);
+  it('filters by search without a server round-trip', () => {
+    renderDirectory([
+      employee({ fullName: 'Amara Adeyemi' }),
+      employee({ fullName: 'Chen Silva' }),
+    ]);
 
-    expect(screen.getByText('Showing 1 employee')).toBeInTheDocument();
-  });
-
-  it('does not claim a total it cannot know', () => {
-    render(
-      <EmployeeDirectory
-        initialPage={page([employee()], { hasNextPage: true, endCursor: 'c' })}
-        filters={FILTERS}
-      />,
-    );
-
-    // The endpoint returns no total, so any "of N" would be invented.
-    expect(screen.getByText(/Showing 1 employee, more available/)).toBeInTheDocument();
-    expect(screen.queryByText(/\bof \d+/)).not.toBeInTheDocument();
-  });
-
-  it('offers load more only when there is another page', () => {
-    const { unmount } = render(
-      <EmployeeDirectory
-        initialPage={page([employee()], { hasNextPage: true, endCursor: 'c' })}
-        filters={FILTERS}
-      />,
-    );
-    expect(screen.getByRole('button', { name: 'Load more' })).toBeInTheDocument();
-    unmount();
-
-    render(<EmployeeDirectory initialPage={page([employee()])} filters={FILTERS} />);
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
-  });
-
-  it('appends the next page without dropping what is already shown', async () => {
-    loadMoreEmployees.mockResolvedValueOnce({
-      ok: true,
-      page: page([employee({ id: 'emp-0002', fullName: 'Chen Silva' })], {
-        hasNextPage: false,
-        endCursor: null,
-      }),
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search table' }), {
+      target: { value: 'amara' },
     });
 
-    render(
-      <EmployeeDirectory
-        initialPage={page([employee()], { hasNextPage: true, endCursor: 'cursor-1' })}
-        filters={FILTERS}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-
-    expect(await screen.findByText('Chen Silva')).toBeInTheDocument();
-    // The first row must survive. Replacing the list on paging would lose the reader's
-    // place without saying so.
     expect(screen.getByText('Amara Adeyemi')).toBeInTheDocument();
-    expect(screen.getByText('Showing 2 employees')).toBeInTheDocument();
+    expect(screen.queryByText('Chen Silva')).not.toBeInTheDocument();
   });
 
-  it('sends the current cursor and filters with the request', async () => {
-    loadMoreEmployees.mockResolvedValueOnce({ ok: true, page: page([]) });
+  it('explains a search that matches nothing and offers a way out', () => {
+    renderDirectory([employee({ fullName: 'Amara Adeyemi' })]);
 
-    render(
-      <EmployeeDirectory
-        initialPage={page([employee()], { hasNextPage: true, endCursor: 'cursor-1' })}
-        filters={{ search: 'amara', status: 'ACTIVE', sort: 'name' }}
-      />,
-    );
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search table' }), {
+      target: { value: 'nobody-has-this-name' },
+    });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    expect(screen.getByText('Nothing matches your search or filters')).toBeInTheDocument();
 
-    await screen.findByRole('button', { name: 'Load more' }).catch(() => undefined);
-    expect(loadMoreEmployees).toHaveBeenCalledWith(
-      expect.objectContaining({ cursor: 'cursor-1', search: 'amara', status: 'ACTIVE' }),
-    );
-  });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
 
-  it('keeps the rows and explains the failure when the cursor is rejected', async () => {
-    loadMoreEmployees.mockResolvedValueOnce({ ok: false, reason: 'INVALID_CURSOR' });
-
-    render(
-      <EmployeeDirectory
-        initialPage={page([employee()], { hasNextPage: true, endCursor: 'stale' })}
-        filters={FILTERS}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load the next page/i);
-    // Blanking the table on a paging failure would destroy context the user still has.
     expect(screen.getByText('Amara Adeyemi')).toBeInTheDocument();
   });
 
   it('shows an empty state instead of an empty table', () => {
-    render(<EmployeeDirectory initialPage={page([])} filters={FILTERS} />);
+    renderDirectory([]);
 
-    expect(screen.getByText('No employees match these filters')).toBeInTheDocument();
+    expect(screen.getByText('No employees in the directory yet')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('offers a way out of the empty state', () => {
-    render(<EmployeeDirectory initialPage={page([])} filters={FILTERS} />);
+  it('shows honest bread-and-butter actions in the bulk bar', () => {
+    renderDirectory([employee()]);
 
-    expect(screen.getByRole('link', { name: /clear filters/i })).toHaveAttribute(
-      'href',
-      '/employees',
-    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select emp-0001' }));
+
+    const bulkBar = screen.getByRole('toolbar', { name: '1 rows selected' });
+    expect(within(bulkBar).getByText('1 selected')).toBeInTheDocument();
+
+    const exportButton = within(bulkBar).getByRole('button', { name: 'Export' });
+    expect(exportButton).toBeEnabled();
+
+    // Disabled bulk actions must say why, not just be greyed out.
+    const changeStatus = within(bulkBar).getByRole('button', { name: /change status/i });
+    expect(changeStatus).toBeDisabled();
+    expect(changeStatus).toHaveAccessibleName(/not wired to a backend/i);
+
+    const assignDepartment = within(bulkBar).getByRole('button', { name: /assign department/i });
+    expect(assignDepartment).toBeDisabled();
+  });
+
+  it('clears the selection from the bulk bar', () => {
+    renderDirectory([employee()]);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select emp-0001' }));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+
+    expect(screen.queryByText('1 selected')).not.toBeInTheDocument();
+  });
+
+  it('selects every row on the page from the header', () => {
+    renderDirectory([employee(), employee(), employee()]);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select this page' }));
+
+    expect(screen.getByText('3 selected')).toBeInTheDocument();
+  });
+
+  it('means the selection survives a page change', () => {
+    renderDirectory(thirtyEmployees);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select emp-0001' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+
+    // The count is still there, because selection spans pages.
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+  });
+
+  it('offers the import surface from the toolbar', () => {
+    renderDirectory([employee()]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+
+    expect(screen.getByText('Import employees')).toBeInTheDocument();
+    expect(screen.getByText(/drag a CSV here/i)).toBeInTheDocument();
+  });
+
+  it('offers an add-employee control straight from the toolbar', () => {
+    renderDirectory([employee()]);
+
+    expect(screen.getByRole('button', { name: /add employee/i })).toBeInTheDocument();
   });
 
   it('renders an unrecognised status rather than hiding the row value', () => {
-    render(
-      <EmployeeDirectory
-        initialPage={page([employee({ status: 'ON_PARENTAL_LEAVE' })])}
-        filters={FILTERS}
-      />,
-    );
+    renderDirectory([employee({ status: 'ON_PARENTAL_LEAVE' })]);
 
     expect(screen.getByText('ON_PARENTAL_LEAVE')).toBeInTheDocument();
   });
 
   it('makes the email actionable', () => {
-    render(<EmployeeDirectory initialPage={page([employee()])} filters={FILTERS} />);
+    renderDirectory([employee({ email: 'amara.adeyemi@example.com', fullName: 'Amara Adeyemi' })]);
 
     expect(screen.getByRole('link', { name: 'amara.adeyemi@example.com' })).toHaveAttribute(
       'href',
@@ -223,18 +225,14 @@ describe('EmployeeDirectory', () => {
     );
   });
 
-  it('does not call the action without a cursor', () => {
-    // `hasNextPage` and `endCursor` are supposed to agree; if they ever do not, the
-    // button must not fire a request that cannot succeed.
-    render(
-      <EmployeeDirectory
-        initialPage={page([employee()], { hasNextPage: true, endCursor: null })}
-        filters={FILTERS}
-      />,
-    );
+  it('keeps the directory looking like a directory when a name is long', () => {
+    renderDirectory([
+      employee({
+        fullName: 'Alejandra Sofia del Carmen Rodriguez Hernandez',
+        id: 'emp-0001',
+      }),
+    ]);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-
-    expect(loadMoreEmployees).not.toHaveBeenCalled();
+    expect(screen.getByText('Alejandra Sofia del Carmen Rodriguez Hernandez')).toBeInTheDocument();
   });
 });

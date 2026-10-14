@@ -14,7 +14,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ACTIONS, DATA_SCOPES, RESOURCES, SYSTEM_ROLE_KEYS } from '@hris/shared-types';
+import {
+  ACTIONS,
+  DATA_SCOPES,
+  INTEGRATION_DELIVERY_DIRECTIONS,
+  INTEGRATION_DELIVERY_STATUSES,
+  INTEGRATION_KINDS,
+  INTEGRATION_STATUSES,
+  RESOURCES,
+  SYSTEM_ROLE_KEYS,
+  WORKFLOW_INSTANCE_STATUSES,
+  WORKFLOW_VERSION_STATUSES,
+} from '@hris/shared-types';
 
 import { SOFT_DELETED_MODELS } from '../src/soft-delete-extension';
 
@@ -54,6 +65,38 @@ describe('schema contract with @hris/shared-types', () => {
 
   it('exposes exactly the shared data scopes', () => {
     expect(new Set(enumMembers('DataScope'))).toEqual(new Set(DATA_SCOPES));
+  });
+
+  it('exposes exactly the shared workflow version statuses', () => {
+    expect(new Set(enumMembers('WorkflowVersionStatus'))).toEqual(
+      new Set(WORKFLOW_VERSION_STATUSES),
+    );
+  });
+
+  it('exposes exactly the shared workflow instance statuses', () => {
+    expect(new Set(enumMembers('WorkflowInstanceStatus'))).toEqual(
+      new Set(WORKFLOW_INSTANCE_STATUSES),
+    );
+  });
+
+  it('exposes exactly the shared integration kinds', () => {
+    expect(new Set(enumMembers('IntegrationKind'))).toEqual(new Set(INTEGRATION_KINDS));
+  });
+
+  it('exposes exactly the shared integration statuses', () => {
+    expect(new Set(enumMembers('IntegrationStatus'))).toEqual(new Set(INTEGRATION_STATUSES));
+  });
+
+  it('exposes exactly the shared integration delivery directions', () => {
+    expect(new Set(enumMembers('IntegrationDeliveryDirection'))).toEqual(
+      new Set(INTEGRATION_DELIVERY_DIRECTIONS),
+    );
+  });
+
+  it('exposes exactly the shared integration delivery statuses', () => {
+    expect(new Set(enumMembers('IntegrationDeliveryStatus'))).toEqual(
+      new Set(INTEGRATION_DELIVERY_STATUSES),
+    );
   });
 
   it('has an enum value matching every shared role key', () => {

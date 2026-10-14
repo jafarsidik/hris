@@ -24,6 +24,20 @@ export const SOFT_DELETED_MODELS = [
   'OrganizationalUnit',
   'User',
   'Session',
+  'NotificationPreference',
+  'NotificationTemplate',
+  'MfaFactor',
+  'MfaRecoveryCode',
+  'IdentityProvider',
+  'SsoIdentity',
+  'Authenticator',
+  'ApprovalAuthority',
+  'ApprovalDelegation',
+  'ResourceRecord',
+  'ApiClient',
+  'WorkflowDefinition',
+  'WorkflowInstance',
+  'Integration',
 ] as const;
 
 export type SoftDeletedModel = (typeof SOFT_DELETED_MODELS)[number];

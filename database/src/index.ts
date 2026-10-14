@@ -23,6 +23,8 @@ export {
   describeApplicationConnection,
 } from './client';
 
+export { findOrgUnitEntity, findOrgUnitIdsByEntity, findOrgUnitSubtree } from './org-scope';
+
 export {
   COMPANY_ID_SETTING,
   PROVISIONING_SETTING,

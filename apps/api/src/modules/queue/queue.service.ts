@@ -1,4 +1,5 @@
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
+import { QUEUE_NOTIFICATIONS, QUEUE_WEBHOOKS } from '@hris/shared-types';
 import { Queue, type JobsOptions } from 'bullmq';
 
 import { APP_CONFIG } from '../../config/app-configuration.module';
@@ -6,18 +7,17 @@ import type { AppConfiguration } from '../../config/app-configuration';
 import { buildBullMqConnectionOptions } from '../redis/redis.service';
 
 /**
- * Background queues (M00 foundation).
+ * Owns BullMQ queues on the producer side.
  *
- * Names live here rather than inline at each call site because a queue is a durable
- * contract: renaming one strands the jobs already persisted in it, and a typo in a
- * string literal silently creates a queue that no worker ever reads.
- *
- * Phase 1 registers no queues. Each module declares its own when it needs one, so this
- * list grows with the system rather than being a speculative guess at M01-M09.
+ * The queue names live in `@hris/shared-types` because the worker (`apps/worker`)
+ * consumes the same streams; one definition means a rename cannot silently orphan
+ * already-enqueued jobs, and a typo cannot create a queue nobody reads.
  */
 export const QUEUE_NAMES = {
   /** Outbound email and other provider calls that must not block a request. */
-  NOTIFICATIONS: 'hris.notifications',
+  NOTIFICATIONS: QUEUE_NOTIFICATIONS,
+  /** Signed webhook deliveries to tenant endpoints. */
+  WEBHOOKS: QUEUE_WEBHOOKS,
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];

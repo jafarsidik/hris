@@ -226,6 +226,7 @@ describe('seed idempotency (integration)', () => {
 
     try {
       const { seedRbac, seedReferenceData } = await import('../seeds/rbac');
+      const { seedRegistry } = await import('../seeds/registry');
       const { PrismaClient } = await import('../src/generated/prisma/client');
       const { PrismaPg } = await import('@prisma/adapter-pg');
 
@@ -234,18 +235,27 @@ describe('seed idempotency (integration)', () => {
       });
 
       await seedReferenceData(seedClient);
+      await seedRegistry(seedClient);
       await seedRbac(seedClient);
       const first = await countRows(owner);
       await seedReferenceData(seedClient);
+      await seedRegistry(seedClient);
       await seedRbac(seedClient);
       const second = await countRows(owner);
 
       expect(second).toEqual(first);
       expect(first.countries).toBe(COUNTRY_CODES.length);
       expect(first.roles).toBe(SYSTEM_ROLE_KEYS.length);
-      // The permission matrix is RESOURCES x ACTIONS, so a partial seed is detectable
-      // rather than merely producing fewer grants than expected.
-      expect(first.permissions).toBe(RESOURCES.length * ACTIONS.length);
+      // Permissions are generated from the registry (resource x registered action). The
+      // registry carries the bootstrap resources plus any metadata-registered domains
+      // (for example the example Projects application), so derive the expected count from
+      // the registry tables while still requiring at least the full bootstrap matrix.
+      const { rows } = await owner.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM registered_actions WHERE action = ANY($1)',
+        [[...ACTIONS]],
+      );
+      expect(first.permissions).toBe(rows[0]?.count);
+      expect(first.permissions).toBeGreaterThanOrEqual(RESOURCES.length * ACTIONS.length);
       await seedClient.$disconnect();
     } finally {
       await owner.end();
@@ -264,7 +274,7 @@ async function countRows(
   }>(`SELECT
         (SELECT count(*) FROM countries)::int AS countries,
         (SELECT count(*) FROM currencies)::int AS currencies,
-        (SELECT count(*) FROM roles)::int AS roles,
+        (SELECT count(*) FROM roles WHERE is_system = true)::int AS roles,
         (SELECT count(*) FROM permissions)::int AS permissions`);
 
   return result.rows[0];

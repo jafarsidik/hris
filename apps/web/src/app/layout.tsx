@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import type { ReactNode } from 'react';
 
-import { AppShell } from '@/components/layout/app-shell';
 import { ThemeScript } from '@/components/layout/theme-script';
 import { ToastProvider } from '@/components/ui/toast';
 
@@ -81,9 +80,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         >
           Skip to main content
         </a>
-        <ToastProvider>
-          <AppShell>{children}</AppShell>
-        </ToastProvider>
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

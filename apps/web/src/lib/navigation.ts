@@ -3,9 +3,9 @@ import {
   Banknote,
   CalendarClock,
   ChartNoAxesCombined,
+  Cog,
   Gauge,
   Handshake,
-  KeyRound,
   Receipt,
   Settings2,
   Target,
@@ -67,9 +67,13 @@ const MODULE_META: Readonly<
   Record<ModuleId, { label: string; description: string; icon: LucideIcon }>
 > = {
   M00_AUTHENTICATION: {
-    label: 'Identity & Access',
-    description: 'Authentication, authorization, roles and security',
-    icon: KeyRound,
+    // MASTER_PRD §6 names M00 "Authentication & Base System". Every system-administration
+    // surface built in phase 3 — users, roles, permissions, sessions, settings, audit and
+    // logs — belongs to it, so it is presented as one menu rather than being scattered
+    // across the rail under Administration and Platform.
+    label: 'System',
+    description: 'Authentication, access control, system configuration and audit',
+    icon: Cog,
   },
 
   M01_CORE_HR: {
@@ -150,23 +154,38 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
    */
   M00_AUTHENTICATION: [
     {
+      id: 'M00_CONSOLE',
+      label: 'Console',
+      items: [
+        {
+          label: 'Console Home',
+          description: 'Every administrative surface in ten sections',
+          href: '/setup',
+          status: 'built',
+        },
+      ],
+    },
+    {
       id: 'M00_IDENTITY',
       label: 'Identity',
       items: [
         {
-          label: 'Sign In',
-          description: 'Password, passkey and enterprise sign-in',
-          status: 'planned',
+          label: 'Sign In Policy',
+          description: 'Password, passkey and enterprise sign-in policy',
+          href: '/setup/sign-in-policy',
+          status: 'built',
         },
         {
           label: 'My Account',
           description: 'Personal account and security settings',
-          status: 'planned',
+          href: '/setup/account',
+          status: 'built',
         },
         {
           label: 'Sessions',
           description: 'Active sessions and login devices',
-          status: 'planned',
+          href: '/setup/account/sessions',
+          status: 'built',
         },
       ],
     },
@@ -177,22 +196,38 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Users',
           description: 'System users and employee accounts',
-          status: 'planned',
+          href: '/setup/users',
+          status: 'built',
         },
         {
           label: 'Roles',
           description: 'Role definitions and access profiles',
-          status: 'planned',
+          href: '/setup/roles',
+          status: 'built',
         },
         {
           label: 'Permissions',
           description: 'Fine-grained permissions and data access',
-          status: 'planned',
+          href: '/setup/permissions',
+          status: 'built',
         },
         {
           label: 'Approval Authority',
           description: 'Approval limits and delegation authority',
-          status: 'planned',
+          href: '/setup/approval-authority',
+          status: 'built',
+        },
+      ],
+    },
+    {
+      id: 'M00_APPLICATIONS',
+      label: 'Application & Metadata',
+      items: [
+        {
+          label: 'Resource Registry',
+          description: 'Applications, modules and registered resources',
+          href: '/setup/registry',
+          status: 'built',
         },
       ],
     },
@@ -201,23 +236,101 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
       label: 'Security',
       items: [
         {
-          label: 'MFA',
-          description: 'Multi-factor authentication configuration',
-          status: 'planned',
+          label: 'MFA & Passkeys',
+          description: 'Multi-factor authentication and passkey management',
+          href: '/setup/account/security',
+          status: 'built',
         },
         {
           label: 'SSO',
           description: 'Enterprise SSO and identity provider integration',
-          status: 'planned',
+          href: '/setup/security/sso',
+          status: 'built',
         },
         {
           label: 'Login History',
           description: 'Authentication and login activity',
-          status: 'planned',
+          href: '/setup/login-history',
+          status: 'built',
         },
         {
           label: 'Security Audit',
           description: 'Security events and access audit trail',
+          href: '/setup/security-audit',
+          status: 'built',
+        },
+      ],
+    },
+    {
+      id: 'M00_COMMUNICATION',
+      label: 'Communication',
+      items: [
+        {
+          label: 'Notifications',
+          description: 'In-app notifications and delivery status',
+          href: '/notifications',
+          status: 'built',
+        },
+        {
+          label: 'Notification Templates',
+          description: 'Email and in-app message templates',
+          status: 'planned',
+        },
+        {
+          label: 'Notification Preferences',
+          description: 'Channel preferences and quiet hours',
+          status: 'planned',
+        },
+      ],
+    },
+    {
+      id: 'M00_CONFIGURATION',
+      label: 'Configuration',
+      items: [
+        {
+          label: 'System Parameters',
+          description: 'System-wide settings and configuration',
+          href: '/setup/settings',
+          status: 'built',
+        },
+      ],
+    },
+    {
+      id: 'M00_OPERATIONS',
+      label: 'Operations',
+      items: [
+        {
+          label: 'Queue Monitor',
+          description: 'Background queue health and failed jobs',
+          href: '/setup/operations/queues',
+          status: 'built',
+        },
+        {
+          label: 'Integration Monitor',
+          description: 'External integration health and errors',
+          status: 'planned',
+        },
+      ],
+    },
+    {
+      id: 'M00_OBSERVABILITY',
+      label: 'Observability',
+      items: [
+        {
+          label: 'Audit Log',
+          description: 'System-wide audit trail',
+          href: '/setup/logs/audit',
+          status: 'built',
+        },
+        {
+          label: 'System Logs',
+          description: 'Application and integration logs',
+          href: '/setup/logs',
+          status: 'built',
+        },
+        {
+          label: 'System Activity',
+          description: 'Platform activity and operational events',
           status: 'planned',
         },
       ],
@@ -1112,21 +1225,6 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
           description: 'HR approval workflows',
           status: 'planned',
         },
-        {
-          label: 'Approval Matrix',
-          description: 'Approval hierarchy and authority',
-          status: 'planned',
-        },
-        {
-          label: 'Delegation',
-          description: 'Temporary approval delegation',
-          status: 'planned',
-        },
-        {
-          label: 'Notifications',
-          description: 'HR notifications and reminders',
-          status: 'planned',
-        },
       ],
     },
 
@@ -1147,11 +1245,6 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Document Templates',
           description: 'HR document and letter templates',
-          status: 'planned',
-        },
-        {
-          label: 'System Parameters',
-          description: 'HR system configuration',
           status: 'planned',
         },
       ],
@@ -1481,16 +1574,6 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
           href: '/status',
           status: 'built',
         },
-        {
-          label: 'System Activity',
-          description: 'Platform activity and operational events',
-          status: 'planned',
-        },
-        {
-          label: 'Background Jobs',
-          description: 'Background job and queue monitoring',
-          status: 'planned',
-        },
       ],
     },
 
@@ -1498,11 +1581,6 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
       id: 'PLATFORM_AUDIT',
       label: 'Audit & Compliance',
       items: [
-        {
-          label: 'Audit Log',
-          description: 'System-wide audit trail',
-          status: 'planned',
-        },
         {
           label: 'Data Changes',
           description: 'Track important HR data changes',
@@ -1520,21 +1598,6 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
       id: 'PLATFORM_OPERATIONS',
       label: 'Operations',
       items: [
-        {
-          label: 'System Logs',
-          description: 'Application and integration logs',
-          status: 'planned',
-        },
-        {
-          label: 'Queue Monitor',
-          description: 'Background queue monitoring',
-          status: 'planned',
-        },
-        {
-          label: 'Integration Monitor',
-          description: 'External integration health and errors',
-          status: 'planned',
-        },
         {
           label: 'Feature Flags',
           description: 'Feature rollout and configuration',
@@ -1607,9 +1670,9 @@ export function locatePath(pathname: string): {
   readonly group: MenuGroup;
   readonly item: MenuItem;
 } | null {
-  const match = BUILT_ITEMS.find(
-    ({ item }) => item.href !== undefined && isActiveRoute(pathname, item.href),
-  );
+  const match = BUILT_ITEMS.slice()
+    .sort((a, b) => b.item.href.length - a.item.href.length)
+    .find(({ item }) => item.href !== undefined && isActiveRoute(pathname, item.href));
 
   return match ?? null;
 }

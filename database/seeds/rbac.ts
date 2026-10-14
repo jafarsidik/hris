@@ -5,28 +5,50 @@
  * converges on the same rows instead of failing on a unique constraint. That matters
  * because the seed runs on every deploy of an environment that already has data.
  */
-import { ACTIONS, RESOURCES, SYSTEM_ROLES } from '@hris/shared-types';
+import { ACTIONS, SYSTEM_ROLES } from '@hris/shared-types';
 
 import type { PrismaClient } from '../src/generated/prisma/client';
 
-/**
- * The full `resource.action` matrix, as rows.
- *
- * Every combination is created rather than a curated subset, so a role grant can be
- * added for any capability without a new vocabulary row. The alternative — seeding only
- * the permissions someone happened to need — means the set of grantable permissions
- * silently differs per environment.
- */
-export function buildPermissionRows(): {
-  key: string;
-  resource: string;
-  action: (typeof ACTIONS)[number];
-}[] {
-  const rows: { key: string; resource: string; action: (typeof ACTIONS)[number] }[] = [];
+type Action = (typeof ACTIONS)[number];
 
-  for (const resource of RESOURCES) {
-    for (const action of ACTIONS) {
-      rows.push({ key: `${resource}.${action}`, resource, action });
+function isAction(value: string): value is Action {
+  return (ACTIONS as readonly string[]).includes(value);
+}
+
+/**
+ * Builds the `resource.action` permission rows from the registry.
+ *
+ * The registry (`resource_definitions` × `registered_actions`) is the source of truth
+ * for what can be authorised; the shared `RESOURCES`/`ACTIONS` constants are only the
+ * bootstrap seed that `seedRegistry` reads. Generating permissions from the registry
+ * means a resource or action registered at runtime becomes grantable after the next
+ * seed, with no core change.
+ *
+ * Only actions in the `Action` enum become permission rows: the `permissions.action`
+ * column is that enum, while a registered action is a free string (so a custom action
+ * such as `approve` is registered but is not a standalone grantable permission yet).
+ */
+export async function buildPermissionRowsFromRegistry(client: PrismaClient): Promise<
+  {
+    key: string;
+    resource: string;
+    action: Action;
+  }[]
+> {
+  const resources = await client.resourceDefinition.findMany({
+    where: { isActive: true },
+    orderBy: { key: 'asc' },
+    select: { key: true, actions: { select: { action: true } } },
+  });
+
+  const rows: { key: string; resource: string; action: Action }[] = [];
+  for (const resource of resources) {
+    const seen = new Set<Action>();
+    for (const { action } of resource.actions) {
+      if (isAction(action) && !seen.has(action)) {
+        seen.add(action);
+        rows.push({ key: `${resource.key}.${action}`, resource: resource.key, action });
+      }
     }
   }
 
@@ -106,7 +128,7 @@ export async function seedRbac(client: PrismaClient): Promise<{
     roles += 1;
   }
 
-  const permissionRows = buildPermissionRows();
+  const permissionRows = await buildPermissionRowsFromRegistry(client);
 
   for (const permission of permissionRows) {
     await client.permission.upsert({

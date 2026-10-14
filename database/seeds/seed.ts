@@ -21,7 +21,11 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { buildPostgresUrl, readPostgresSettings } from '../src/connection-string';
 import { PrismaClient } from '../src/generated/prisma/client';
 
+import { seedExampleProjects } from './example-projects';
+import { seedNotificationTemplates } from './notifications';
 import { seedRbac, seedReferenceData } from './rbac';
+import { seedRegistry } from './registry';
+import { seedSettings } from './settings';
 
 loadEnvFile({ path: join(__dirname, '..', '..', '.env'), quiet: true });
 
@@ -33,11 +37,27 @@ async function main(): Promise<void> {
 
   try {
     const reference = await seedReferenceData(client);
+    const registry = await seedRegistry(client);
+    const example = await seedExampleProjects(client);
     const rbac = await seedRbac(client);
+    const settings = await seedSettings(client);
+    const notifications = await seedNotificationTemplates(client);
 
     console.log(
       `Seeded ${reference.countries} countries, ${reference.currencies} currencies, ` +
         `${rbac.roles} roles, ${rbac.permissions} permissions and ${rbac.grants} grants.`,
+    );
+    console.log(
+      `Registered ${registry.applications} application(s), ${registry.modules} modules, ` +
+        `${registry.resources} resources, ${registry.fields} fields and ${registry.actions} actions.`,
+    );
+    console.log(
+      `Registered the example application: ${example.resources} resources, ` +
+        `${example.fields} fields and ${example.actions} actions.`,
+    );
+    console.log(
+      `Seeded ${settings.settings} system settings and ${notifications.templates} notification ` +
+        `templates across ${settings.companies} company(ies).`,
     );
     console.log(
       'Only SYSTEM_ADMIN has grants so far; the remaining system roles are seeded ' +

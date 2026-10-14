@@ -7,7 +7,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { loadNotifications, type DerivedNotification } from '@/app/notifications/actions';
+import { loadNotifications, type DerivedNotification } from '@/app/(app)/notifications/actions';
 import { BellIcon, CheckCheck, Info, TriangleAlert, UserRound } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';

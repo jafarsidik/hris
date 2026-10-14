@@ -275,6 +275,22 @@ function matchesFilters(employee: Employee, query: EmployeeQuery): boolean {
     return false;
   }
 
+  if (
+    query.department !== undefined &&
+    query.department !== 'ALL' &&
+    employee.department !== query.department
+  ) {
+    return false;
+  }
+
+  if (
+    query.employmentType !== undefined &&
+    query.employmentType !== 'ALL' &&
+    employee.employmentType !== query.employmentType
+  ) {
+    return false;
+  }
+
   if (query.search !== undefined && query.search !== '') {
     const needle = query.search.trim().toLowerCase();
     const haystack =
@@ -292,7 +308,12 @@ class MockEmployeeRepository implements EmployeeRepository {
     const params = normalisePageParams(query.page ?? {});
     const sort: EmployeeSort = query.sort ?? 'name';
 
-    const filters = { search: query.search?.trim() ?? '', status: query.status ?? 'ALL' };
+    const filters = {
+      search: query.search?.trim() ?? '',
+      status: query.status ?? 'ALL',
+      department: query.department ?? 'ALL',
+      employmentType: query.employmentType ?? 'ALL',
+    };
     const fingerprint = cursorFingerprint({ filters, sort });
 
     const resolution = resolveCursor(query.page?.cursor, fingerprint);

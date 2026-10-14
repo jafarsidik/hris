@@ -4,6 +4,14 @@ Phase 1 is in progress: the database layer, the application role, the tenant-sco
 client and the dependency-aware readiness probe are in place and verified. Phase 2
 (identity and access) has not started.
 
+> **Platform evolution.** The phase table below tracks the original HRIS delivery plan.
+> The parallel effort to turn the monolith into a metadata-driven enterprise platform is
+> tracked separately in [architecture/implementation-roadmap.md](architecture/implementation-roadmap.md);
+> its Phase 0 (architecture) and Phase 1 (Platform Metadata Registry) are complete.
+> The System menu (M00) slice — authentication, IAM/RBAC, SSO, MFA, passkeys, approval
+> authority, notifications, queue monitoring — is delivered and described under
+> "System menu (M00) capabilities".
+
 This document exists so that nothing delivered so far is mistaken for a finished
 feature. The platform foundation is deliberately not a product feature.
 
@@ -130,6 +138,7 @@ Confirmed against running containers, not inferred from configuration:
 | Schema and shared contracts cannot drift                 | Complete | Test compares `Action`, `DataScope` and the soft-delete list against `schema.prisma` |
 | Audit history cannot be edited                           | Complete | Append-only trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`, including for the owner role |
 | Readiness covers the real dependencies                   | Complete | `/health/ready` reports PostgreSQL, Redis and the queue; returns 503 when one is down while `/health/live` stays 200 |
+| API surface documented for consumers                    | Complete | `buildOpenApiDocument` serves `/api/docs` and `/api/docs-json`; `openapi.e2e-spec.ts` guards the routes and both credential schemes, and asserts the document is absent when disabled |
 | Redis and the job queue available to the API            | Complete | `RedisModule` and `QueueModule`; no queues registered until a module needs one |
 | CI runs the database tests                               | Complete | `e2e` job starts PostgreSQL and Redis, migrates, seeds, grants, then runs integration and e2e tests |
 | Docker stack healthy with real dependencies              | Complete | `docker` job migrates and grants before asserting `/health/ready` |
@@ -160,6 +169,22 @@ Confirmed against running containers, not inferred from configuration:
 | Light / dark / system theming                        | Complete   | Class-based dark mode via a per-request nonce inline script and a Light/Dark/System radio group in the account menu; no new dependency (no `next-themes`) |
 | Employee profile page                                | Complete   | `/employees/[id]` with a verified identity header, status and type badges, edit (reusing the directory form dialog), email, CSV export and tabbed sections; personal/attendance/payroll/documents are labelled planned and honest about it. Directory names, the row menu, the quick-view drawer, recent hires and palette people all link here |
 | Toast feedback                                       | Complete   | Dependency-free toast provider mounted in the root layout; save confirmation is announced `aria-live` |
+
+### System menu (M00) capabilities
+
+The System menu slice is built end to end — database, API, worker, web screens and
+navigation — and covered by the e2e suite (`apps/api/test`: 7 suites, 58 tests).
+
+| Capability | Status | Evidence |
+| ---------- | ------ | -------- |
+| Administration console hub | Complete | `/setup` is a hub of ten sections (`apps/web/src/lib/console.ts`, `apps/web/src/features/console/console-home.tsx`); every item is gated on the effective permission the backing API enforces and links only a built route, so no section can 404. Count and routes asserted by `console.spec.ts` |
+| Notification centre with delivery status | Complete | `apps/api/src/modules/notifications`, `apps/web/src/features/platform/notifications-screen.tsx`; recipients scoped to the caller, template maintenance gated on `notification:*` |
+| Background worker and queue monitoring | Complete | `apps/worker`, `apps/api/src/modules/queue`; separate `queue:view` and `queue:manage` grants |
+| Multi-factor authentication (TOTP) | Complete | `apps/api/src/modules/mfa`; encrypted secrets, hashed recovery codes, single-use Redis challenge |
+| Single sign-on (OIDC + SAML) | Complete | `apps/api/src/modules/sso`; PKCE/state/nonce, encrypted client secrets, RLS-safe `SECURITY DEFINER` provider lookup |
+| Sign-in policy settings | Complete | `system_settings` group `security.signIn.*`; `/setup/sign-in-policy` |
+| Passkeys (WebAuthn) | Complete | `apps/api/src/modules/passkeys`; counter persisted, single-use challenge, disabled unless `WEBAUTHN_ENABLED` |
+| Approval authority | Config only | `apps/api/src/modules/approvals`; stores and validates limits and delegations, but enforcement waits on the M07 workflow engine |
 
 ### Not yet delivered in phase 1
 

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { saveEmployee, type SaveEmployeeResult } from '@/app/employees/actions';
+import { saveEmployee, type SaveEmployeeResult } from '@/app/(app)/employees/actions';
 import { Button } from '@/components/ui/button';
 import { DateInput } from '@/components/ui/date-input';
 import { FormField, FormSubmitButton } from '@/components/ui/form-field';

@@ -60,6 +60,13 @@ const DESCRIPTIONS: Readonly<Record<ApiErrorCode, Omit<ApiErrorDescription, 'cor
     canRetry: false,
     requiresSignIn: true,
   },
+  INVALID_MFA: {
+    title: 'That verification code is not valid',
+    description: 'Check the code from your authenticator app and start sign-in again.',
+    tone: 'error',
+    canRetry: false,
+    requiresSignIn: true,
+  },
   FORBIDDEN: {
     title: 'You do not have permission to do that',
     description:

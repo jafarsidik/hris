@@ -71,6 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider
       data-has-module-rail
+      className="h-svh overflow-hidden"
       style={{ '--module-rail-width': '53px' } as CSSProperties}
     >
       {/*
@@ -163,8 +164,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset id="main-content">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur-sm">
+      <SidebarInset id="main-content" className="min-h-0 overflow-y-auto">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
           <SidebarTrigger className="size-8 md:hidden" aria-label="Open navigation" />
 
           {/*
@@ -184,7 +185,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mx-auto w-full max-w-[1600px]">{children}</div>
         </div>
 
-        <footer className="px-4 py-4 text-sm text-muted-foreground sm:px-6">
+        <footer className="border-t border-border bg-card px-4 py-4 text-sm text-muted-foreground sm:px-6">
           Enterprise HRIS &middot; foundation phase
         </footer>
       </SidebarInset>

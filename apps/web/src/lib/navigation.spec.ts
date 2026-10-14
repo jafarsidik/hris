@@ -256,10 +256,15 @@ describe('isActiveRoute', () => {
 
   it('marks exactly one entry active for each navigable route', () => {
     for (const current of BUILT_ITEMS) {
+      // Longest match wins, so a nested route resolves to its own entry rather than
+      // also lighting up its parent (`/setup/account/sessions` -> Sessions, not
+      // My Account).
       const active = BUILT_ITEMS.filter((entry) =>
         isActiveRoute(current.item.href, entry.item.href),
       );
-      expect(active.length, current.item.href).toBe(1);
+      expect(active.length, current.item.href).toBeGreaterThanOrEqual(1);
+      const resolved = locatePath(current.item.href);
+      expect(resolved?.item.href, current.item.href).toBe(current.item.href);
     }
   });
 });
@@ -395,5 +400,36 @@ describe('breadcrumbTrail', () => {
 
       expect(breadcrumbTrail(path).length, path).toBe(expected);
     }
+  });
+});
+
+describe('System menu', () => {
+  // Every system-administration surface built in phase 3 lives under one rail entry, so a
+  // reader looking for "where is all of this configured?" has exactly one place to look.
+  // Spreading them across Identity, Administration and Platform was the first draft and
+  // made the set unreviewable: three menus to visit instead of one.
+  const setupItems = () => BUILT_ITEMS.filter(({ item }) => item.href.startsWith('/setup'));
+
+  it('files every built setup route under the System module', () => {
+    const items = setupItems();
+
+    expect(items.length).toBeGreaterThan(0);
+
+    const modules = new Set(items.map((entry) => entry.module));
+    expect([...modules], items.map((e) => e.item.href).join(', ')).toEqual(['M00_AUTHENTICATION']);
+  });
+
+  it('presents that module as System', () => {
+    expect(moduleMenu('M00_AUTHENTICATION')?.label).toBe('System');
+  });
+
+  it('leaves no setup route behind in another module', () => {
+    // The inverse of the first assertion, so a route moved out of System fails here rather
+    // than only through the module list above.
+    const stray = BUILT_ITEMS.filter(
+      (entry) => entry.item.href.startsWith('/setup') && entry.module !== 'M00_AUTHENTICATION',
+    );
+
+    expect(stray.map((entry) => entry.item.href)).toEqual([]);
   });
 });

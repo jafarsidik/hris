@@ -55,6 +55,8 @@ export interface EmployeeQuery {
   /** Free-text match against name, email and employee number. */
   readonly search?: string;
   readonly status?: string;
+  readonly department?: string;
+  readonly employmentType?: string;
   readonly sort?: EmployeeSort;
   readonly page?: PageParams;
 }

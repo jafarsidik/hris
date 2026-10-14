@@ -28,6 +28,8 @@ class ApiEmployeeRepository implements EmployeeRepository {
     const params = normalisePageParams(query.page ?? {});
     const search = query.search?.trim() ?? '';
     const status = query.status ?? 'ALL';
+    const department = query.department ?? 'ALL';
+    const employmentType = query.employmentType ?? 'ALL';
     const sort = query.sort ?? 'name';
 
     const searchParams = new URLSearchParams({ limit: String(params.limit), sort });
@@ -42,6 +44,12 @@ class ApiEmployeeRepository implements EmployeeRepository {
     }
     if (status !== 'ALL') {
       searchParams.set('status', status);
+    }
+    if (department !== 'ALL') {
+      searchParams.set('department', department);
+    }
+    if (employmentType !== 'ALL') {
+      searchParams.set('employmentType', employmentType);
     }
 
     const data = await serverApiRequestV1<unknown>(

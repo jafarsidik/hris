@@ -107,8 +107,15 @@ export class UnprocessableEntityError extends AppError {
 }
 
 export class RateLimitedError extends AppError {
-  constructor(message = 'Too many requests. Please retry later') {
+  /**
+   * Whole seconds the caller should wait before retrying. Surfaced as the
+   * `Retry-After` header by the exception filter.
+   */
+  public readonly retryAfterSeconds?: number;
+
+  constructor(message = 'Too many requests. Please retry later', retryAfterSeconds?: number) {
     super(message, HttpStatus.TOO_MANY_REQUESTS, 'RATE_LIMITED');
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 

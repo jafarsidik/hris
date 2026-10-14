@@ -11,7 +11,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from '@/components/ui/sidebar';
-import { isActiveRoute, type ModuleMenu, type MenuGroup } from '@/lib/navigation';
+import { locatePath, type ModuleMenu, type MenuGroup } from '@/lib/navigation';
 import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -53,9 +53,14 @@ export function SidebarTree({ menu }: { menu: ModuleMenu }) {
 }
 
 function Group({ group, pathname }: { group: MenuGroup; pathname: string }) {
-  const holdsCurrentPage = group.items.some(
-    (item) => item.href !== undefined && isActiveRoute(pathname, item.href),
-  );
+  /*
+   * The single active entry for this pathname, resolved longest-match first, so
+   * nested built routes (`/setup/account` and `/setup/account/sessions`) never
+   * highlight two items at once. `undefined` when the path matches nothing built.
+   */
+  const activeItem = locatePath(pathname)?.item;
+
+  const holdsCurrentPage = activeItem !== undefined && group.items.includes(activeItem);
 
   const plannedCount = group.items.filter((item) => item.status === 'planned').length;
 
@@ -123,8 +128,8 @@ function Group({ group, pathname }: { group: MenuGroup; pathname: string }) {
                       </SidebarMenuSubButton>
                     ) : (
                       <SidebarMenuSubButton
-                        isActive={isActiveRoute(pathname, item.href)}
-                        aria-current={isActiveRoute(pathname, item.href) ? 'page' : undefined}
+                        isActive={activeItem === item}
+                        aria-current={activeItem === item ? 'page' : undefined}
                         title={item.description}
                         render={<Link href={item.href} />}
                       >

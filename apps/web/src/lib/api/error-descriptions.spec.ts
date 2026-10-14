@@ -104,7 +104,9 @@ describe('describeApiError', () => {
   it('does not mark other codes as needing a sign-in', () => {
     for (const code of API_ERROR_CODES.filter(
       (candidate) =>
-        !['UNAUTHENTICATED', 'INVALID_CREDENTIALS', 'MFA_REQUIRED'].includes(candidate),
+        !['UNAUTHENTICATED', 'INVALID_CREDENTIALS', 'MFA_REQUIRED', 'INVALID_MFA'].includes(
+          candidate,
+        ),
     )) {
       expect(describeApiError(errorWith(code)).requiresSignIn, code).toBe(false);
     }

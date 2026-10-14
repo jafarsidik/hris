@@ -19,7 +19,7 @@ const loadNotifications = vi.hoisted(() =>
   vi.fn(async (): Promise<readonly NotificationItem[]> => []),
 );
 
-vi.mock('@/app/notifications/actions', () => ({ loadNotifications }));
+vi.mock('@/app/(app)/notifications/actions', () => ({ loadNotifications }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }),
 }));

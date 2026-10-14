@@ -1,9 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Monitor, Moon, Sun } from 'lucide-react';
+import { Monitor, Moon, Palette, Sun } from 'lucide-react';
 
-import { DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -31,14 +40,19 @@ export function readThemePreference(): ThemePreference {
 }
 
 /**
- * The Appearance control for the account menu.
+ * The Light / Dark / System choices, as a radio group.
+ *
+ * Base UI renders these menu parts inside `Menu.Root`, so this component is deliberately
+ * **not** usable on its own: it belongs inside a `DropdownMenu` (the account menu embeds
+ * it below its "Appearance" heading). `ThemeToggle` is the self-contained menu for
+ * surfaces that have no surrounding menu of their own.
  *
  * Writes the choice to `localStorage` and toggles the `.dark` class immediately, then keeps
  * a live listener so a System preference follows OS changes without a reload. The pre-paint
  * inline script in the root layout reads the same storage key, so there is no flash between
  * the server HTML (always light) and the selected theme.
  */
-export function ThemeToggle() {
+export function ThemePreferenceGroup() {
   const [preference, setPreference] = useState<ThemePreference>('system');
 
   useEffect(() => {
@@ -80,5 +94,45 @@ export function ThemeToggle() {
         </DropdownMenuRadioItem>
       ))}
     </DropdownMenuRadioGroup>
+  );
+}
+
+/**
+ * The appearance control as a menu of its own.
+ *
+ * `Menu.RadioItem` throws — Base UI error #36, "MenuRootContext is missing" — when it is
+ * rendered outside a `Menu.Root`, which is exactly what rendering the bare radio group in
+ * the auth layout did: every auth screen died on hydration. Wrapping the group in a root
+ * here means the component is safe wherever it is placed; `SessionMenu` embeds
+ * `ThemePreferenceGroup` inside the account menu instead, so no menu nests within a menu.
+ */
+export function ThemeToggle() {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            aria-label="Appearance"
+            className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          />
+        }
+      >
+        <Palette aria-hidden="true" className="size-4" />
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>
+            <span className="flex items-center gap-1.5">
+              <Palette aria-hidden="true" className="size-3.5" />
+              Appearance
+            </span>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <ThemePreferenceGroup />
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

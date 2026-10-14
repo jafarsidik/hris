@@ -171,6 +171,130 @@ with a reason in the pull request.
 - Pinned major versions for infrastructure images; digest pinning is added at
   release.
 
+## System menu security (M00)
+
+The System menu owns the account-security surfaces. They are implemented, not
+scheduled, and each is covered by end-to-end tests in `apps/api/test`.
+
+| Capability | Where | Notes |
+| ---------- | ----- | ----- |
+| Multi-factor authentication | `apps/api/src/modules/mfa` | TOTP (RFC 6238) verified by an internal, dependency-free helper. The shared secret is AES-256-GCM encrypted with `AUTH_MFA_ENCRYPTION_KEY` before it touches the database; recovery codes are stored as hashes and burned on use. The sign-in challenge is single-use in Redis and expires after five minutes. |
+| Single sign-on | `apps/api/src/modules/sso` | OIDC (authorization code + PKCE, state and nonce) and SAML 2.0 (SP-initiated, signed assertion expected). Client secrets are encrypted with `SSO_ENCRYPTION_KEY`. Provider discovery and lookup run before a session exists, so they use `SECURITY DEFINER` functions (`app_sso_find_provider`, `app_sso_find_providers_for_email`) that are RLS-safe and execute-only for the app role. Identities link by subject first, then by verified email to an ACTIVE user in the same company; anything else fails closed. |
+| Passkeys (WebAuthn) | `apps/api/src/modules/passkeys` | Registration and assertion are verified by `@simplewebauthn/server`. The signature counter is persisted on each assertion to detect cloned authenticators; challenges are single-use in Redis. Disabled unless `WEBAUTHN_ENABLED=true`. |
+| Approval authority | `apps/api/src/modules/approvals` | Stores and validates who may approve what, up to a monetary limit, and temporary delegations. **Enforcement is out of scope here**: routing real approvals through these rules belongs to the M07 workflow engine. |
+| Background jobs | `apps/api/src/modules/queue` | Observing queues is `queue:view`; retrying, removing and pausing is `queue:manage`. The two are separate grants because inspecting a backlog and discarding failed jobs are different levels of trust. |
+
+Relevant environment variables: `AUTH_MFA_ENCRYPTION_KEY`, `SSO_ENCRYPTION_KEY`,
+`WEBAUTHN_ENABLED`, `WEBAUTHN_RP_ID`, `WEBAUTHN_RP_NAME`, `WEBAUTHN_ORIGIN`,
+`API_PUBLIC_URL` and `WEB_APP_URL`. See `.env.example`.
+
+## Record-level data scope (Phase 3)
+
+A capability grant is not access on its own: the widest `dataScope` the caller holds
+for a `resource.action` is turned into a query constraint by
+`apps/api/src/common/auth/data-scope.ts` before the data layer runs.
+
+- `GLOBAL` and `COMPANY` mean "every row the tenant context exposes"; the company
+  boundary is enforced by row-level security and `withTenantContext`, not by an extra
+  predicate.
+- `SELF` narrows reads to the caller's own row.
+- `TEAM`/`DEPARTMENT` narrow to the organizational subtree rooted at the unit the caller
+  is placed in (`User.organizationalUnitId`); `ENTITY` narrows to that unit's legal
+  entity. A grant carrying a `scopeId` anchors the scope at that unit instead. A
+  recursive walk (`findOrgUnitSubtree`/`findOrgUnitEntity`, depth-bounded) resolves the
+  subtree, so the constraint is a real query predicate, not a post-filter.
+- An org scope with no unit to resolve (no caller placement and no `scopeId`)
+  **default-denies**, so a scope the platform cannot resolve never silently widens access.
+- The check raises `OUT_OF_SCOPE` (403) when a scope cannot be resolved; a row outside a
+  resolved scope is simply not returned (404 on a single read, absent from a list).
+
+Enforcement is applied today to `user.view` (`AccessService.listUsers`/`getUser`) and to
+the generic `records` layer for every registry-declared, `supportsCrud` resource, and is
+covered by `apps/api/test/data-scope.e2e-spec.ts` (SELF, COMPANY, TEAM, DEPARTMENT,
+ENTITY, unresolved default-deny, and cross-tenant). Other bespoke resources adopt the
+resolver as their read paths are hardened.
+
+Custom record actions are authorised the same way: the generic action route resolves the
+handler's declared `resource.action` from the caller's live permissions (and rejects a
+handler whose declared resource does not match the record's resource) before the handler
+runs, so registering an action never widens access. See
+`apps/api/test/example-app.e2e-spec.ts` for the denial and conflict paths.
+
+Authority cannot be manufactured. `canGrant` in the same module backs an escalation
+guard in `AccessService`: creating a role, replacing a role's grants, or assigning a
+role to a user is refused unless the actor already holds every granted
+`resource.action` at a scope at least as wide. A delegated administrator with
+`role.manage`/`user.manage` at COMPANY cannot mint a GLOBAL grant, grant a capability
+they lack, or hand out `SYSTEM_ADMIN`. Covered by
+`apps/api/test/privilege-escalation.e2e-spec.ts`.
+
+- A key is bounded by a fixed-window rate limit keyed on the client id
+  (`API_RATE_LIMIT_PER_MINUTE`, default 600), enforced in the authentication guard so a
+  machine principal cannot exhaust tenant capacity. A spent window returns
+  `429 RATE_LIMITED` with `Retry-After`. The same `RateLimiter` backs the per-IP sign-in
+  throttle.
+
+## Machine credentials (Phase 4)
+
+Developer API clients are the platform's first non-human principals.
+
+- The secret is 256 bits of randomness, shown once at creation/rotation and stored only
+  as a SHA-256 hash (`api_clients.secret_hash`). A leaked hash is not usable as a
+  credential.
+- The key carries no authority of its own: its scopes are validated at creation against
+  the `resource.action` vocabulary *and* against what the creator may grant (`canGrant`),
+  so a client cannot be minted with capability its creator lacks. At request time each
+  scope is re-parsed, so an unknown scope fails closed.
+- Authentication is a cross-tenant `SECURITY DEFINER` lookup by the public `clientId`
+  (`app_api_find_client`), executed before any tenant context exists, followed by a
+  constant-time hash comparison. Rotation, disabling and deletion revoke on the next
+  request because the row is read every time.
+- The client principal is synthetic (`roles: [API_CLIENT]`) and its permissions are the
+  granted scopes at `COMPANY` breadth; it has no user placement, so org-scoped resources
+  are out of reach until narrower machine scopes are modelled.
+
+Covered by `apps/api/test/api-clients.e2e-spec.ts`.
+
+## Workflow transition authorisation (Phase 5)
+
+The workflow engine is a place where authority could easily be laundered, so every
+transition is a fresh authorisation decision rather than a property of the instance:
+
+- The transition's `requiredPermission` (a real `resource.action`, defaulting to
+  `workflow.approve`) is checked against the caller's live permissions on each request,
+  so revoking a grant stops in-flight transitions immediately.
+- A transition that declares `requiresApproval` additionally requires an effective
+  `ApprovalAuthority` rule for the resource (matched to the actor directly or through a
+  role), or an active `ApprovalDelegation` to the actor from someone who holds one. The
+  effective window (`effectiveFrom`/`effectiveTo`) is evaluated at request time.
+- Publishing a version only defines *which* permission a transition needs; it grants no
+  authority, because a caller can only ever name a permission and must still hold it to
+  execute the transition.
+- Every applied transition is appended to `workflow_transition_events` and audited;
+  failed attempts are rejected before any write.
+
+Covered by `apps/api/test/workflows.e2e-spec.ts`.
+
+## Integration credentials (Phase 5)
+
+The integration registry is configured by administrators, which makes it an attractive
+place to smuggle a credential into a lower-protected store, so the constraints are
+enforced in code rather than by convention:
+
+- An integration's `config` is validated recursively and any key that looks like a
+  credential (`password`, `secret`, `token`, `apiKey`, `privateKey`, ...) is rejected
+  with a validation error, so secrets cannot be persisted in cleartext on the record.
+- Adapters read the secrets they need from encrypted System Settings; the email adapter
+  resolves `email.smtpHost`/`email.smtpPort` (or a non-secret host/port override) and
+  never reads a credential from the integration. Connection tests therefore run without
+  ever returning a secret.
+- The connection test is gated on `integration.manage` because it performs a server-side
+  network request that could otherwise be used to probe internal hosts.
+- Every configuration change and connection test writes a hash-chained audit row, and the
+  append-only `integration_deliveries` ledger records each operation's outcome.
+
+Covered by `apps/api/test/integrations.e2e-spec.ts`.
+
 ## Controls scheduled for later phases
 
 Stated explicitly so that nothing in this repository is mistaken for a finished

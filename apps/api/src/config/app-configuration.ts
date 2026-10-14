@@ -70,8 +70,72 @@ export interface RedisConfig {
   readonly db: number;
 }
 
+/**
+ * Authentication and session policy (ADR 0010 opaque tokens, account lockout,
+ * login rate limiting).
+ */
+export interface AuthConfig {
+  /** Absolute session lifetime. A fresh session is created on every sign-in. */
+  readonly sessionTtlSeconds: number;
+  /** The `hris_session` HttpOnly cookie. */
+  readonly cookieName: string;
+  /** Consecutive failures that lock an account before prompting sign-in again. */
+  readonly maxFailedAttempts: number;
+  /** Duration an account stays locked after reaching the failure limit. */
+  readonly lockoutSeconds: number;
+  /** Per-IP successful-login attempts per window defensive upper bound. */
+  readonly loginRateLimitPerMinute: number;
+}
+
+/** Platform-wide request ceilings applied per principal. */
+export interface RateLimitConfig {
+  /**
+   * Requests a single developer API client may make per minute. Session-authenticated
+   * users are not capped here; this bounds a machine principal that can otherwise run
+   * unbounded. `0` disables the check.
+   */
+  readonly apiRequestsPerMinute: number;
+}
+
+/**
+ * At-rest encryption keys for credentials the platform must keep but must never
+ * store in plain text (TOTP secrets, SSO client secrets / SAML private keys).
+ *
+ * Each value is `null` until the corresponding env var is present, so the feature
+ * degrades to a clear, boot-time-facing error when configured without a key rather
+ * than silently storing plaintext.
+ */
+export interface CredentialSecretsConfig {
+  readonly mfaEncryptionKey: string | null;
+  readonly ssoEncryptionKey: string | null;
+  /**
+   * Encrypts webhook signing secrets at rest. `null` until `WEBHOOK_ENCRYPTION_KEY`
+   * is set; registering a webhook endpoint then fails loudly rather than storing a
+   * plaintext signing credential.
+   */
+  readonly webhookEncryptionKey: string | null;
+  /**
+   * The externally reachable base URL of the API. Required for OIDC/SAML callbacks,
+   * SP metadata and discovery documents. `null` until `API_PUBLIC_URL` is set.
+   */
+  readonly externalBaseUrl: string | null;
+}
+
+/** WebAuthn relying-party identity (passkeys). Disabled until fully configured. */
+export interface WebAuthnConfig {
+  readonly enabled: boolean;
+  readonly rpId: string;
+  readonly rpName: string;
+  readonly origin: string;
+}
+
 export interface AppConfiguration {
   readonly environment: NodeEnvironment;
+  /**
+   * Where the browser-facing web app lives. Used to send the browser back after an
+   * SSO callback, which lands on the API origin before a session cookie is set.
+   */
+  readonly webAppUrl: string;
   readonly http: HttpConfig;
   readonly logging: LoggingConfig;
   readonly swagger: SwaggerConfig;
@@ -84,12 +148,24 @@ export interface AppConfiguration {
    */
   readonly database: DatabaseConfig | null;
   readonly redis: RedisConfig | null;
+  readonly auth: AuthConfig;
+  readonly rateLimit: RateLimitConfig;
+  readonly secrets: CredentialSecretsConfig;
+  readonly webauthn: WebAuthnConfig;
 }
 
 export const DEFAULT_HTTP_PORT = 3001;
 
 export const DEFAULT_DATABASE_POOL_SIZE = 10;
 export const DEFAULT_REDIS_DB = 0;
+
+/** Authentication defaults; the env overrides are defined in `readAuthConfig`. */
+export const DEFAULT_SESSION_TTL_SECONDS = 12 * 60 * 60;
+export const DEFAULT_SESSION_COOKIE_NAME = 'hris_session';
+export const DEFAULT_MAX_FAILED_ATTEMPTS = 5;
+export const DEFAULT_LOCKOUT_SECONDS = 15 * 60;
+export const DEFAULT_LOGIN_RATE_LIMIT_PER_MINUTE = 20;
+export const DEFAULT_API_RATE_LIMIT_PER_MINUTE = 600;
 
 /** Defaults shared with `@hris/database` so the two cannot disagree about ports. */
 const POSTGRES_DEFAULTS = {
@@ -119,6 +195,15 @@ const readString = (env: EnvSource, key: string, fallback: string): string => {
   const raw = env[key];
   if (raw === undefined || raw.trim() === '') {
     return fallback;
+  }
+  return raw.trim();
+};
+
+/** Reads a string as `null` when unset or blank, so an absent secret is explicit. */
+const readNullable = (env: EnvSource, key: string): string | null => {
+  const raw = env[key];
+  if (raw === undefined || raw.trim() === '') {
+    return null;
   }
   return raw.trim();
 };
@@ -215,7 +300,12 @@ export function parseConfiguration(env: EnvSource = process.env): AppConfigurati
   const http: HttpConfig = {
     host,
     port: readInteger(env, 'API_PORT', DEFAULT_HTTP_PORT, { min: 1, max: 65535 }, problems),
-    corsOrigins: readList(env, 'CORS_ORIGINS', ['http://localhost:3000']),
+    corsOrigins: readList(env, 'CORS_ORIGINS', [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://localhost:3100',
+      'http://127.0.0.1:3100',
+    ]),
     globalPrefix: 'api',
     defaultVersion: DEFAULT_API_VERSION,
     // NestJS matches these patterns against the unprefixed route path.
@@ -243,11 +333,81 @@ export function parseConfiguration(env: EnvSource = process.env): AppConfigurati
   const database = readDatabaseConfig(env, problems);
   const redis = readRedisConfig(env, problems);
 
+  const auth: AuthConfig = {
+    sessionTtlSeconds: readInteger(
+      env,
+      'AUTH_SESSION_TTL_SECONDS',
+      DEFAULT_SESSION_TTL_SECONDS,
+      { min: 60, max: 30 * 24 * 60 * 60 },
+      problems,
+    ),
+    cookieName: readString(env, 'AUTH_SESSION_COOKIE_NAME', DEFAULT_SESSION_COOKIE_NAME),
+    maxFailedAttempts: readInteger(
+      env,
+      'AUTH_MAX_FAILED_ATTEMPTS',
+      DEFAULT_MAX_FAILED_ATTEMPTS,
+      { min: 1, max: 100 },
+      problems,
+    ),
+    lockoutSeconds: readInteger(
+      env,
+      'AUTH_LOCKOUT_SECONDS',
+      DEFAULT_LOCKOUT_SECONDS,
+      { min: 1, max: 7 * 24 * 60 * 60 },
+      problems,
+    ),
+    loginRateLimitPerMinute: readInteger(
+      env,
+      'AUTH_LOGIN_RATE_LIMIT_PER_MINUTE',
+      DEFAULT_LOGIN_RATE_LIMIT_PER_MINUTE,
+      { min: 1, max: 1000 },
+      problems,
+    ),
+  };
+
+  const rateLimit: RateLimitConfig = {
+    apiRequestsPerMinute: readInteger(
+      env,
+      'API_RATE_LIMIT_PER_MINUTE',
+      DEFAULT_API_RATE_LIMIT_PER_MINUTE,
+      { min: 0, max: 100_000 },
+      problems,
+    ),
+  };
+
+  const secrets: CredentialSecretsConfig = {
+    mfaEncryptionKey: readNullable(env, 'AUTH_MFA_ENCRYPTION_KEY'),
+    ssoEncryptionKey: readNullable(env, 'SSO_ENCRYPTION_KEY'),
+    webhookEncryptionKey: readNullable(env, 'WEBHOOK_ENCRYPTION_KEY'),
+    externalBaseUrl: readNullable(env, 'API_PUBLIC_URL'),
+  };
+
+  const webAppUrl = readString(env, 'WEB_APP_URL', 'http://localhost:3000');
+
+  const webauthn: WebAuthnConfig = {
+    enabled: readBoolean(env, 'WEBAUTHN_ENABLED', false),
+    rpId: readString(env, 'WEBAUTHN_RP_ID', 'localhost'),
+    rpName: readString(env, 'WEBAUTHN_RP_NAME', 'HRIS'),
+    origin: readString(env, 'WEBAUTHN_ORIGIN', 'http://localhost:3000'),
+  };
+
   if (problems.length > 0) {
     throw new ConfigurationError(problems);
   }
 
-  return { environment, http, logging, swagger, database, redis };
+  return {
+    environment,
+    webAppUrl,
+    http,
+    logging,
+    swagger,
+    database,
+    redis,
+    auth,
+    rateLimit,
+    secrets,
+    webauthn,
+  };
 }
 
 /** Converts the configured level into the cumulative level list NestJS expects. */

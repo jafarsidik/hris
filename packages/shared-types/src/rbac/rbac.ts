@@ -18,6 +18,7 @@ export const ACTIONS = [
   'export',
   'download',
   'manage',
+  'view_sensitive',
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];
@@ -42,6 +43,7 @@ export const DATA_SCOPE_RANK: Readonly<Record<DataScope, number>> = Object.freez
 
 /** Business resources exposed by the platform modules M00-M09. */
 export const RESOURCES = [
+  'setting',
   'user',
   'role',
   'permission',
@@ -65,6 +67,12 @@ export const RESOURCES = [
   'audit-log',
   'analytics',
   'ai',
+  'queue',
+  'identity-provider',
+  'approval-authority',
+  'registry',
+  'api-client',
+  'integration',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

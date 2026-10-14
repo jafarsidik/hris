@@ -1,13 +1,14 @@
 import helmet from 'helmet';
 import { ValidationPipe, VersioningType, type INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { CorrelationIdMiddleware } from './common/http/correlation-id.middleware';
 import { AccessLogInterceptor } from './common/interceptors/access-log.interceptor';
 import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
 import type { AppConfiguration } from './config/app-configuration';
+import { buildOpenApiDocument } from './openapi';
 
 /**
  * Applies the platform-wide HTTP configuration to a Nest application.
@@ -24,7 +25,13 @@ export function configureApp(app: INestApplication, config: AppConfiguration): v
     origin: [...config.http.corsOrigins],
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-Id', 'X-Request-Id'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Correlation-Id',
+      'X-Request-Id',
+      'X-Requested-With',
+    ],
     exposedHeaders: ['X-Correlation-Id'],
     maxAge: 600,
   });
@@ -74,17 +81,7 @@ export function configureApp(app: INestApplication, config: AppConfiguration): v
   }
 
   if (config.swagger.enabled) {
-    const document = SwaggerModule.createDocument(
-      app,
-      new DocumentBuilder()
-        .setTitle('HRIS API')
-        .setDescription(
-          'Enterprise HRIS REST API. Authorization for entity-sensitive resources is enforced server-side.',
-        )
-        .setVersion(config.http.defaultVersion)
-        .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'access-token')
-        .build(),
-    );
+    const document = buildOpenApiDocument(app, config);
     SwaggerModule.setup(config.swagger.path, app, document, {
       swaggerOptions: { persistAuthorization: false },
     });

@@ -202,6 +202,24 @@ so RLS is not the thing standing between an audit row and an edit. Purging one r
 disabling the trigger as the owner, which is deliberate and leaves an obvious trace in
 the logs.
 
+### Enterprise security tables
+
+The System menu (M00) adds tenant-scoped tables for notifications, second factors,
+identity providers, SSO identities, passkeys and approval authority. All are RLS-enabled
+with the standard four policies; append-only tables such as `notifications` match the
+`audit_logs` pattern (no `updated_at`, no `deleted_at`). Regenerating the schema and the
+tenant-isolation tests keep this in step with `schema.prisma`.
+
+Two `SECURITY DEFINER` functions back the pre-session SSO flow, where there is no tenant
+context to set:
+
+- `app_sso_find_provider(provider_id uuid)` — resolves one enabled provider by id.
+- `app_sso_find_providers_for_email(email citext)` — matches providers by email domain
+  (`domains ? lower(domain)`).
+
+They are owned by the schema owner, `EXECUTE` is revoked from `PUBLIC`, and the app role
+is granted `EXECUTE` only through the same `db:grant` step that grants table privileges.
+
 ## Connection pooling
 
 PgBouncer is **not** in phase 1. The application uses a bounded pool sized well below

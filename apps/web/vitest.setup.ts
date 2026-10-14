@@ -48,3 +48,14 @@ class ResizeObserverStub {
 }
 
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver;
+
+/*
+ * Base UI's checkbox dispatches an augmented click that constructs a `PointerEvent`
+ * (to carry the keyboard-modifier state of the click). jsdom ships no PointerEvent
+ * constructor, so the synthetic event falls over before the click is handled. MouseEvent
+ * is assignable to PointerEvent for a test runtime: both expose type, target, and the
+ * module flags the framework reads back off the event.
+ */
+if (typeof window.PointerEvent === 'undefined') {
+  window.PointerEvent = MouseEvent as unknown as typeof PointerEvent;
+}
