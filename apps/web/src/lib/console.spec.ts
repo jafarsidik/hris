@@ -64,14 +64,18 @@ describe('CONSOLE_SECTIONS', () => {
     }
   });
 
-  it('has unique item labels and paths', () => {
-    const labels = ITEMS.map((item) => item.label);
-    const hrefs = ITEMS.map((item) => item.href).filter(
-      (href): href is string => href !== undefined,
-    );
+  it('gives every section unique item labels and links', () => {
+    // The specification names a few surfaces in two domains (the Resource Registry,
+    // Access Reviews), so uniqueness is required within a section, not across the console.
+    for (const section of CONSOLE_SECTIONS) {
+      const labels = section.items.map((item) => item.label);
+      const hrefs = section.items
+        .map((item) => item.href)
+        .filter((href): href is string => href !== undefined);
 
-    expect(new Set(labels).size, labels.join(', ')).toBe(labels.length);
-    expect(new Set(hrefs).size, hrefs.join(', ')).toBe(hrefs.length);
+      expect(new Set(labels).size, section.label).toBe(labels.length);
+      expect(new Set(hrefs).size, section.label).toBe(hrefs.length);
+    }
   });
 
   it('gives every item a description and a status', () => {
@@ -123,14 +127,17 @@ describe('consoleFor', () => {
     expect(identity.isEmpty).toBe(false);
   });
 
-  it('flags a section as empty when none of its items are visible', () => {
+  it('keeps the roadmap visible to an unprivileged caller', () => {
+    // Planned surfaces carry no permission, so they stay visible even with no grants: the
+    // console is a map of the platform, and a section must never look empty just because a
+    // caller cannot open its built entries yet.
     const sections = consoleFor([]);
-    const emptyIds = sections.filter((section) => section.isEmpty).map((section) => section.id);
 
     expect(sections).toHaveLength(10);
-    expect(emptyIds).toContain('identity');
-    expect(emptyIds).toContain('configuration');
-    // A section with ungated items stays populated for an unprivileged caller.
-    expect(emptyIds).not.toContain('account');
+    expect(sections.every((section) => !section.isEmpty)).toBe(true);
+
+    const identity = must(sections.find((section) => section.id === 'identity'));
+    expect(identity.items.some((item) => item.label === 'Users')).toBe(false);
+    expect(identity.items.some((item) => item.status === 'planned')).toBe(true);
   });
 });

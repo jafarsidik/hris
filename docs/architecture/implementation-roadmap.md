@@ -62,14 +62,18 @@ touching core resource code.
   database predicates. Covered by `apps/api/test/records.e2e-spec.ts`.
 - **Delivered:** the administration console — a fixed ten-section map
   (`apps/web/src/lib/console.ts`, `apps/web/src/features/console/console-home.tsx`,
-  `apps/web/src/app/(app)/setup/page.tsx`): Identity & Access, Metadata, Security,
-  Notifications, Configuration, Operations, Observability, My Account, People and
-  Platform. Each item is a shortcut into a built route and is shown only when the caller
-  holds the permission the backing API enforces (`user.view`, `role.view`, …), so the
-  console cannot link to a page the caller cannot use or a route that 404s (asserted by
-  `console.spec.ts`, including the fixed count of ten). A "Console Home" entry in the
-  sidebar gives the whole surface one entry point.
-- **Delivered:** the console's `Applications & Metadata` section is now derived from the
+  `apps/web/src/app/(app)/setup/page.tsx`), reorganised to the master prompt's setup
+  navigation: Identity & Access, API & Developers, AI Services, Workflow & Automation,
+  Integrations & Communication, Application & Metadata, System Configuration, Audit &
+  Security, Operations & Observability and Tenant Management. Each item is a shortcut into
+  a built route **or an explicit `planned` roadmap entry**, and a built item is shown only
+  when the caller holds the permission the backing API enforces (`user.view`,
+  `role.view`, …), so the console cannot link to a page the caller cannot use or a route
+  that 404s (asserted by `console.spec.ts`, including the fixed count of ten). Each section
+  carries a `built/total` status badge and each item a check/dashed marker, so what exists
+  and what is planned is visible at a glance. A "Console Home" entry in the sidebar gives
+  the whole surface one entry point.
+- **Delivered:** the console's `Application & Metadata` section is now derived from the
   live registry. `registryConsoleItems` (`apps/web/src/lib/registry-console.ts`) turns
   every active, CRUD-enabled resource the caller may `view` into a console entry pointing
   at the Resource Registry filtered to it, so a resource registered at runtime appears

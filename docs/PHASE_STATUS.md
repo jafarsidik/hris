@@ -177,7 +177,7 @@ navigation — and covered by the e2e suite (`apps/api/test`: 7 suites, 58 tests
 
 | Capability | Status | Evidence |
 | ---------- | ------ | -------- |
-| Administration console hub | Complete | `/setup` is a hub of ten sections (`apps/web/src/lib/console.ts`, `apps/web/src/features/console/console-home.tsx`); every item is gated on the effective permission the backing API enforces and links only a built route, so no section can 404. Count and routes asserted by `console.spec.ts` |
+| Administration console hub | Complete | `/setup` is a hub of ten sections (`apps/web/src/lib/console.ts`, `apps/web/src/features/console/console-home.tsx`) reorganised to the master prompt's setup navigation; each section shows a `built/total` status badge and each item a built/planned marker, a built item is gated on the effective permission the backing API enforces and links only a built route (planned entries carry no link), so no section can 404. Count and routes asserted by `console.spec.ts` |
 | Notification centre with delivery status | Complete | `apps/api/src/modules/notifications`, `apps/web/src/features/platform/notifications-screen.tsx`; recipients scoped to the caller, template maintenance gated on `notification:*` |
 | Background worker and queue monitoring | Complete | `apps/worker`, `apps/api/src/modules/queue`; separate `queue:view` and `queue:manage` grants |
 | Multi-factor authentication (TOTP) | Complete | `apps/api/src/modules/mfa`; encrypted secrets, hashed recovery codes, single-use Redis challenge |

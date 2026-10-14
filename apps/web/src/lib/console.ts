@@ -3,11 +3,17 @@ import type { EffectivePermission, PermissionKey } from '@hris/shared-types';
 /**
  * The administration console: ten sections, one place to configure the platform.
  *
- * The console is a curated view over the same built routes the sidebar exposes, so it
- * cannot drift from what actually exists: a section links a route, and a `planned` item
- * carries no `href` by design (see `navigation.ts`). Items are gated on the effective
- * permission the surface's API enforces; UI gating is cosmetic and the API remains the
- * boundary.
+ * The shape follows the master specification's "Setup Administration Navigation": ten
+ * named domains, each listing the surfaces that belong to it. The console is a curated
+ * view over the same built routes the sidebar exposes, so it cannot drift from what
+ * actually exists: a section links a route, and a `planned` item carries no `href` by
+ * design (see `navigation.ts`). Items are gated on the effective permission the
+ * surface's API enforces; UI gating is cosmetic and the API remains the boundary.
+ *
+ * The specification names a few surfaces in two domains (the Resource Registry under both
+ * *Identity & Access* and *Application & Metadata*, Access Reviews under both *Identity &
+ * Access* and *Audit & Security*). Those repeats are kept, because each domain is read on
+ * its own; uniqueness is therefore required within a section, not across the console.
  *
  * Keeping the count fixed at ten is a product requirement, so it is asserted by a test
  * rather than left to reviewer memory.
@@ -35,7 +41,7 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
   {
     id: 'identity',
     label: 'Identity & Access',
-    description: 'Accounts, roles, permissions and approval authority.',
+    description: 'Accounts, groups, roles, permissions and the access review cycle.',
     items: [
       {
         label: 'Users',
@@ -45,6 +51,11 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
         permission: 'user.view',
       },
       {
+        label: 'User Groups',
+        description: 'Group users for bulk access assignment',
+        status: 'planned',
+      },
+      {
         label: 'Roles',
         description: 'Role definitions and access profiles',
         href: '/setup/roles',
@@ -52,26 +63,12 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
         permission: 'role.view',
       },
       {
-        label: 'Permissions',
-        description: 'Fine-grained permissions and data access',
+        label: 'Permission Manager',
+        description: 'Resource × action × scope grants',
         href: '/setup/permissions',
         status: 'built',
         permission: 'permission.view',
       },
-      {
-        label: 'Approval Authority',
-        description: 'Approval limits and delegation authority',
-        href: '/setup/approval-authority',
-        status: 'built',
-        permission: 'approval-authority.view',
-      },
-    ],
-  },
-  {
-    id: 'metadata',
-    label: 'Applications & Metadata',
-    description: 'Register applications, modules, resources, fields and actions.',
-    items: [
       {
         label: 'Resource Registry',
         description: 'Applications, modules and registered resources',
@@ -79,13 +76,22 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
         status: 'built',
         permission: 'registry.view',
       },
-    ],
-  },
-  {
-    id: 'security',
-    label: 'Sign-in & Security',
-    description: 'Authentication policy, SSO, multi-factor and security activity.',
-    items: [
+      {
+        label: 'Access Policies',
+        description: 'Least-privilege and conditional access policy',
+        status: 'planned',
+      },
+      {
+        label: 'Service Accounts',
+        description: 'Non-human identities for automation',
+        status: 'planned',
+      },
+      {
+        label: 'Sessions',
+        description: 'Active sessions and login devices',
+        href: '/setup/account/sessions',
+        status: 'built',
+      },
       {
         label: 'Sign In Policy',
         description: 'Password, passkey and enterprise sign-in policy',
@@ -94,39 +100,141 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
         permission: 'user.view',
       },
       {
-        label: 'SSO',
-        description: 'Enterprise SSO and identity provider integration',
+        label: 'MFA & SSO',
+        description: 'Multi-factor authentication and enterprise single sign-on',
         href: '/setup/security/sso',
         status: 'built',
         permission: 'identity-provider.view',
       },
       {
-        label: 'Login History',
-        description: 'Authentication and login activity',
-        href: '/setup/login-history',
-        status: 'built',
-        permission: 'user.view',
-      },
-      {
-        label: 'Security Audit',
-        description: 'Security events and access audit trail',
-        href: '/setup/security-audit',
-        status: 'built',
-        permission: 'audit-log.view',
+        label: 'Access Reviews',
+        description: 'Periodic certification of existing access',
+        status: 'planned',
       },
     ],
   },
   {
-    id: 'notifications',
-    label: 'Notifications',
-    description: 'In-app notifications, templates and delivery preferences.',
+    id: 'api',
+    label: 'API & Developers',
+    description: 'Machine credentials, OAuth applications, webhooks and API documentation.',
     items: [
       {
-        label: 'Notifications',
-        description: 'In-app notifications and delivery status',
-        href: '/notifications',
-        status: 'built',
-        permission: 'notification.view',
+        label: 'API Clients',
+        description: 'Programmatic clients with scoped credentials',
+        status: 'planned',
+      },
+      {
+        label: 'API Credentials',
+        description: 'Keys and secrets issued to API clients',
+        status: 'planned',
+      },
+      {
+        label: 'OAuth Applications',
+        description: 'OAuth clients, redirect URIs and consent',
+        status: 'planned',
+      },
+      {
+        label: 'API Scopes',
+        description: 'Grantable scopes for machine access',
+        status: 'planned',
+      },
+      {
+        label: 'API Usage',
+        description: 'Request volume and error rates by client',
+        status: 'planned',
+      },
+      {
+        label: 'Webhooks',
+        description: 'Outbound event subscriptions and delivery',
+        status: 'planned',
+      },
+      {
+        label: 'API Documentation',
+        description: 'The published OpenAPI reference',
+        status: 'planned',
+      },
+    ],
+  },
+  {
+    id: 'ai',
+    label: 'AI Services',
+    description: 'Providers, models, prompts and the agents built on them.',
+    items: [
+      { label: 'Providers', description: 'Configured AI model providers', status: 'planned' },
+      {
+        label: 'Models',
+        description: 'Available models and their capabilities',
+        status: 'planned',
+      },
+      { label: 'Prompts', description: 'Versioned prompt templates', status: 'planned' },
+      { label: 'Agents', description: 'Autonomous assistants and their tools', status: 'planned' },
+      { label: 'Tools', description: 'Callable functions an agent may use', status: 'planned' },
+      {
+        label: 'Knowledge Sources',
+        description: 'Documents and data grounding AI answers',
+        status: 'planned',
+      },
+      { label: 'Usage & Cost', description: 'Token consumption and spend', status: 'planned' },
+      {
+        label: 'AI Logs',
+        description: 'Model requests and responses for audit',
+        status: 'planned',
+      },
+    ],
+  },
+  {
+    id: 'workflow',
+    label: 'Workflow & Automation',
+    description: 'Workflow definitions, business rules and automation history.',
+    items: [
+      {
+        label: 'Workflow Definitions',
+        description: 'Versioned approval and routing definitions',
+        status: 'planned',
+      },
+      {
+        label: 'Business Rules',
+        description: 'Conditional logic evaluated at runtime',
+        status: 'planned',
+      },
+      {
+        label: 'Event Registry',
+        description: 'Domain events a rule or workflow may react to',
+        status: 'planned',
+      },
+      {
+        label: 'Scheduled Actions',
+        description: 'Recurring and time-based automation',
+        status: 'planned',
+      },
+      {
+        label: 'Execution History',
+        description: 'Past workflow runs and their outcomes',
+        status: 'planned',
+      },
+    ],
+  },
+  {
+    id: 'integrations',
+    label: 'Integrations & Communication',
+    description: 'External connections, messaging channels and notification delivery.',
+    items: [
+      {
+        label: 'Integrations',
+        description: 'External integration health and delivery log',
+        status: 'planned',
+        permission: 'integration.view',
+      },
+      { label: 'Connections', description: 'Reusable outbound connections', status: 'planned' },
+      {
+        label: 'Email',
+        description: 'Outbound email transport and sender identity',
+        status: 'planned',
+      },
+      {
+        label: 'Messaging Channels',
+        description: 'SMS, chat and push delivery channels',
+        status: 'planned',
       },
       {
         label: 'Notification Templates',
@@ -138,12 +246,62 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
         description: 'Channel preferences and quiet hours',
         status: 'planned',
       },
+      { label: 'Delivery Logs', description: 'Per-message delivery outcomes', status: 'planned' },
+      {
+        label: 'Integration Monitor',
+        description: 'External integration health and errors',
+        status: 'planned',
+      },
     ],
   },
   {
-    id: 'configuration',
-    label: 'Configuration',
-    description: 'System parameters and platform-wide settings.',
+    id: 'metadata',
+    label: 'Application & Metadata',
+    description: 'Register applications, modules, resources, fields and extensions.',
+    items: [
+      {
+        label: 'Application Registry',
+        description: 'Deployed applications on the platform',
+        status: 'planned',
+      },
+      {
+        label: 'Module Registry',
+        description: 'Modules owned by each application',
+        status: 'planned',
+      },
+      {
+        label: 'Resource Registry',
+        description: 'Applications, modules and registered resources',
+        href: '/setup/registry',
+        status: 'built',
+        permission: 'registry.view',
+      },
+      {
+        label: 'Custom Fields',
+        description: 'Tenant-defined fields on registered resources',
+        status: 'planned',
+      },
+      {
+        label: 'Configuration Schemas',
+        description: 'Validated configuration shapes per resource',
+        status: 'planned',
+      },
+      {
+        label: 'Feature Flags',
+        description: 'Feature rollout and configuration',
+        status: 'planned',
+      },
+      {
+        label: 'Extension Registry',
+        description: 'Third-party and customer extensions',
+        status: 'planned',
+      },
+    ],
+  },
+  {
+    id: 'system',
+    label: 'System Configuration',
+    description: 'Platform parameters, localization, storage and data policy.',
     items: [
       {
         label: 'System Parameters',
@@ -152,32 +310,32 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
         status: 'built',
         permission: 'setting.view',
       },
-    ],
-  },
-  {
-    id: 'operations',
-    label: 'Operations',
-    description: 'Background jobs and external integrations.',
-    items: [
       {
-        label: 'Queue Monitor',
-        description: 'Background queue health and failed jobs',
-        href: '/setup/operations/queues',
-        status: 'built',
-        permission: 'queue.view',
-      },
-      {
-        label: 'Integrations',
-        description: 'External integration health and delivery log',
+        label: 'Localization',
+        description: 'Languages, locales and formatting',
         status: 'planned',
-        permission: 'integration.view',
+      },
+      {
+        label: 'File Storage',
+        description: 'Object storage backends and retention',
+        status: 'planned',
+      },
+      {
+        label: 'Data Policies',
+        description: 'Classification and handling rules',
+        status: 'planned',
+      },
+      {
+        label: 'System Defaults',
+        description: 'Company and platform default values',
+        status: 'planned',
       },
     ],
   },
   {
-    id: 'observability',
-    label: 'Observability & Audit',
-    description: 'Audit trail and application logs.',
+    id: 'audit',
+    label: 'Audit & Security',
+    description: 'Audit trail, security events and data retention.',
     items: [
       {
         label: 'Audit Log',
@@ -187,6 +345,47 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
         permission: 'audit-log.view',
       },
       {
+        label: 'Security Events',
+        description: 'Security events and access audit trail',
+        href: '/setup/security-audit',
+        status: 'built',
+        permission: 'audit-log.view',
+      },
+      {
+        label: 'Login History',
+        description: 'Authentication and login activity',
+        href: '/setup/login-history',
+        status: 'built',
+        permission: 'user.view',
+      },
+      {
+        label: 'API Access Log',
+        description: 'Requests made by machine clients',
+        status: 'planned',
+      },
+      {
+        label: 'Access Reviews',
+        description: 'Periodic certification of existing access',
+        status: 'planned',
+      },
+      { label: 'Data Retention', description: 'Retention and purge schedules', status: 'planned' },
+    ],
+  },
+  {
+    id: 'operations',
+    label: 'Operations & Observability',
+    description: 'Queues, scheduled jobs, logs and platform health.',
+    items: [
+      {
+        label: 'Queue Monitor',
+        description: 'Background queue health and failed jobs',
+        href: '/setup/operations/queues',
+        status: 'built',
+        permission: 'queue.view',
+      },
+      { label: 'Scheduled Jobs', description: 'Recurring job schedule', status: 'planned' },
+      { label: 'Failed Jobs', description: 'Dead-lettered jobs and retries', status: 'planned' },
+      {
         label: 'System Logs',
         description: 'Application and integration logs',
         href: '/setup/logs',
@@ -194,61 +393,40 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
         permission: 'audit-log.view',
       },
       {
-        label: 'System Activity',
-        description: 'Platform activity and operational events',
+        label: 'Health Monitor',
+        description: 'Live dependency probes',
+        href: '/status',
+        status: 'built',
+      },
+      {
+        label: 'Performance Metrics',
+        description: 'Latency, throughput and saturation',
+        status: 'planned',
+      },
+      {
+        label: 'Backup & Restore',
+        description: 'Backup schedules and restore points',
         status: 'planned',
       },
     ],
   },
   {
-    id: 'account',
-    label: 'My Account',
-    description: 'Your personal profile and security.',
+    id: 'tenants',
+    label: 'Tenant Management',
+    description: 'Tenants, entitlements, quotas and cross-tenant activity.',
     items: [
+      { label: 'Tenants', description: 'Customer tenants on the platform', status: 'planned' },
+      { label: 'Tenant Settings', description: 'Per-tenant configuration', status: 'planned' },
       {
-        label: 'My Account',
-        description: 'Personal account and security settings',
-        href: '/setup/account',
-        status: 'built',
+        label: 'Modules & Entitlements',
+        description: 'Which modules each tenant may use',
+        status: 'planned',
       },
+      { label: 'Usage & Quotas', description: 'Consumption limits per tenant', status: 'planned' },
       {
-        label: 'Sessions',
-        description: 'Active sessions and login devices',
-        href: '/setup/account/sessions',
-        status: 'built',
-      },
-    ],
-  },
-  {
-    id: 'people',
-    label: 'People',
-    description: 'The employee directory and workforce records.',
-    items: [
-      {
-        label: 'Employees',
-        description: 'Employee master directory',
-        href: '/employees',
-        status: 'built',
-        permission: 'employee.view',
-      },
-    ],
-  },
-  {
-    id: 'platform',
-    label: 'Platform',
-    description: 'Platform overview and live dependency status.',
-    items: [
-      {
-        label: 'Overview',
-        description: 'What the platform foundation delivers',
-        href: '/',
-        status: 'built',
-      },
-      {
-        label: 'Health',
-        description: 'Live dependency probes',
-        href: '/status',
-        status: 'built',
+        label: 'Tenant Activity',
+        description: 'Cross-tenant operational activity',
+        status: 'planned',
       },
     ],
   },
