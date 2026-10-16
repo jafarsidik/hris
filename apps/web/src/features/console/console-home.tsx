@@ -6,9 +6,12 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type { ResourceSummary } from '@hris/shared-types';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useSession } from '@/features/auth/session-context';
 import { platformApi } from '@/features/platform/platform-api';
 import { consoleFor, holdsPermission, type ConsoleItem } from '@/lib/console';
@@ -65,25 +68,19 @@ export function ConsoleHome() {
 
   if (state.status === 'loading') {
     return (
-      <div className="space-y-6">
+      <PageBody>
         <PageHeader title="Console" description="Configure and operate the platform." />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }, (_, index) => (
-            <div key={index} className="rounded-xl border p-6 shadow-sm">
-              <div className="space-y-2">
-                <div className="h-4 w-1/3 rounded bg-muted" />
-                <div className="h-4 w-1/2 rounded bg-muted" />
-                <div className="h-4 w-2/3 rounded bg-muted" />
-              </div>
-            </div>
+            <Skeleton key={index} className="h-40 w-full rounded-xl" />
           ))}
         </div>
-      </div>
+      </PageBody>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <PageBody>
       <PageHeader
         title="Console"
         description="Ten sections covering every administrative surface of the platform."
@@ -92,8 +89,8 @@ export function ConsoleHome() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {sections.map((section) => (
           <section key={section.id} aria-labelledby={section.id} className="min-w-0">
-            <Card className="h-full">
-              <CardHeader>
+            <Card className="h-full gap-0">
+              <CardHeader className="bg-card pb-4">
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle id={section.id} className="text-base">
                     {section.label}
@@ -102,7 +99,8 @@ export function ConsoleHome() {
                 </div>
                 <CardDescription>{section.description}</CardDescription>
               </CardHeader>
-              <CardContent>
+              <Separator />
+              <CardContent className="pt-4">
                 {section.isEmpty ? (
                   <p className="text-sm text-muted-foreground">
                     Nothing here is available to your account.
@@ -121,7 +119,7 @@ export function ConsoleHome() {
           </section>
         ))}
       </div>
-    </div>
+    </PageBody>
   );
 }
 

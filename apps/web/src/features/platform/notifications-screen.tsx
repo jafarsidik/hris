@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import type { NotificationKind, NotificationReadModel } from '@hris/shared-types';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -84,7 +85,7 @@ export function NotificationsScreen() {
   const rows: readonly NotificationReadModel[] = notifications.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageBody>
       <PageHeader
         title="Notifications"
         description="In-app notifications and delivery status."
@@ -168,6 +169,6 @@ export function NotificationsScreen() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageBody>
   );
 }

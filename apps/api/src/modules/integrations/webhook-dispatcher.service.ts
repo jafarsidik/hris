@@ -52,21 +52,29 @@ export class WebhookDispatcher implements OnModuleInit {
     const queue = this.queues.getQueue(QUEUE_NAMES.WEBHOOKS);
     await Promise.all(
       targets.map((integrationId) =>
-        queue.add(WEBHOOK_DELIVERY_JOB, {
-          companyId: event.companyId,
-          integrationId,
-          event: {
-            // Stable across retries so a receiver can de-duplicate.
-            id: `${event.resourceId}:${event.type}:${event.occurredAt.getTime()}:${integrationId}`,
-            type: event.type,
+        queue.add(
+          WEBHOOK_DELIVERY_JOB,
+          {
             companyId: event.companyId,
-            resource: event.resource,
-            resourceId: event.resourceId,
-            actorUserId: event.actorUserId,
-            occurredAt: event.occurredAt.toISOString(),
-            data: event.payload,
+            integrationId,
+            event: {
+              // Stable across retries so a receiver can de-duplicate.
+              id: `${event.resourceId}:${event.type}:${event.occurredAt.getTime()}:${integrationId}`,
+              type: event.type,
+              companyId: event.companyId,
+              resource: event.resource,
+              resourceId: event.resourceId,
+              actorUserId: event.actorUserId,
+              occurredAt: event.occurredAt.toISOString(),
+              data: event.payload,
+            },
+          } satisfies WebhookDeliveryJob,
+          // Deterministic per event and endpoint, so a retry of the same domain event
+          // collapses onto the in-flight job instead of enqueueing a duplicate delivery.
+          {
+            jobId: `${event.type}-${event.resourceId}-${event.occurredAt.getTime()}-${integrationId}`,
           },
-        } satisfies WebhookDeliveryJob),
+        ),
       ),
     );
   }

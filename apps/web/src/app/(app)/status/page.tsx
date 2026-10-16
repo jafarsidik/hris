@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -62,7 +63,7 @@ export default async function StatusPage() {
   const allHealthy = outcomes.every((outcome) => outcome.healthy);
 
   return (
-    <div className="grid gap-6">
+    <PageBody>
       <PageHeader
         title="Platform status"
         description="Live probe results from the HRIS API, executed on every request."
@@ -130,6 +131,6 @@ export default async function StatusPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </PageBody>
   );
 }

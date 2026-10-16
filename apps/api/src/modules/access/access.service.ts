@@ -5,9 +5,6 @@ import {
   type DataScope,
   type SessionInfo,
   LOG_EVENT_TYPES,
-  TRANSACTIONAL_EMAIL_JOB,
-  type TransactionalEmailJob,
-  type TransactionalEmailTemplate,
   buildPage,
   cursorFingerprint,
   isAction,
@@ -27,7 +24,6 @@ import { resolveScope, canGrant, type ScopeDecision } from '../../common/auth/da
 import { PasswordService } from '../../common/auth/password.service';
 import { SESSION_STORE, type SessionStore } from '../../common/auth/session.store';
 import { type SessionPrincipal } from '../../common/auth/permission.service';
-import { QueueService, QUEUE_NAMES } from '../queue/queue.service';
 import {
   ConflictError,
   NotFoundError,
@@ -45,6 +41,13 @@ export interface UserSummary {
   readonly status: 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'DISABLED';
   readonly hasVerifiedEmail: boolean;
   readonly lastLoginAt: string | null;
+  readonly organizationalUnitId: string | null;
+  readonly organizationalUnit: {
+    readonly id: string;
+    readonly code: string;
+    readonly name: string;
+    readonly type: string;
+  } | null;
   readonly roles: readonly { readonly key: string; readonly name: string }[];
   readonly createdAt: string;
 }
@@ -76,9 +79,21 @@ export interface PermissionRow {
   readonly action: string;
 }
 
-const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-
 const USER_SORT = { createdAt: 'desc', id: 'desc' } as const;
+
+/** The user projection every read path shares, including the placed unit. */
+const USER_SELECT = {
+  id: true,
+  email: true,
+  displayName: true,
+  status: true,
+  hasVerifiedEmail: true,
+  lastLoginAt: true,
+  organizationalUnitId: true,
+  createdAt: true,
+  unit: { select: { id: true, code: true, name: true, type: true } },
+  roles: { select: { role: { select: { key: true, name: true } } } },
+} as const;
 
 /**
  * Administration of users, roles and permissions (brief, Administration).
@@ -95,7 +110,6 @@ export class AccessService {
     @Inject(LogService) private readonly logs: LogService,
     @Inject(PasswordService) private readonly passwords: PasswordService,
     @Inject(SESSION_STORE) private readonly sessionStore: SessionStore,
-    @Inject(QueueService) private readonly queue: QueueService,
     @Inject(NotificationService) private readonly notifications: NotificationService,
   ) {}
 
@@ -110,6 +124,7 @@ export class AccessService {
       search?: string;
       status?: 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'DISABLED';
       roleKey?: string;
+      organizationalUnitId?: string;
     },
     params: PageParams,
   ): Promise<Paginated<UserSummary>> {
@@ -140,21 +155,15 @@ export class AccessService {
           ...(filter.search ? { OR: searchWhere(filter.search) } : {}),
           ...(filter.status ? { status: filter.status } : {}),
           ...(filter.roleKey ? { roles: { some: { role: { key: filter.roleKey } } } } : {}),
+          ...(filter.organizationalUnitId
+            ? { organizationalUnitId: filter.organizationalUnitId }
+            : {}),
           ...(resolved.cursor.position.values.length > 0
             ? afterUserCursor(resolved.cursor.position.values)
             : {}),
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: {
-          id: true,
-          email: true,
-          displayName: true,
-          status: true,
-          hasVerifiedEmail: true,
-          lastLoginAt: true,
-          createdAt: true,
-          roles: { select: { role: { select: { key: true, name: true } } } },
-        },
+        select: USER_SELECT,
       });
     });
 
@@ -192,16 +201,7 @@ export class AccessService {
           deletedAt: null,
           ...scopeWhere,
         },
-        select: {
-          id: true,
-          email: true,
-          displayName: true,
-          status: true,
-          hasVerifiedEmail: true,
-          lastLoginAt: true,
-          createdAt: true,
-          roles: { select: { role: { select: { key: true, name: true } } } },
-        },
+        select: USER_SELECT,
       });
     });
     if (!user) {
@@ -211,16 +211,23 @@ export class AccessService {
   }
 
   /**
-   * Invites a user: creates an INVITED account with the chosen roles and hands back a
-   * single-use invite token (mirroring the reset-token column the register endpoint
-   * reads). The email itself is enqueued; the returned token lets an administrator
-   * share the invite link when email delivery has not been configured.
+   * Creates an active user with the chosen roles and an administrator-set password.
+   *
+   * There is no invitation step: the account is usable the moment it is created, so the
+   * administrator must share the initial password out of band and the new member changes
+   * it themselves afterwards.
    */
   async createUser(
     companyId: string,
     principal: SessionPrincipal,
-    input: { email: string; displayName: string; roleIds: readonly string[] },
-  ): Promise<{ user: UserSummary; inviteToken: string }> {
+    input: {
+      email: string;
+      displayName: string;
+      roleIds: readonly string[];
+      password: string;
+      organizationalUnitId?: string | null;
+    },
+  ): Promise<UserSummary> {
     const client = this.prisma.getClient();
     const actorUserId = principal.user.id;
     const email = input.email.trim().toLowerCase();
@@ -230,31 +237,23 @@ export class AccessService {
       throw new ConflictError('A user with this email already exists.');
     }
 
-    const inviteToken = this.passwords.generateOpaqueToken();
-    const inviteTokenHash = this.passwords.sha256Hex(inviteToken);
-    const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+    const passwordHash = await this.passwords.hashPassword(input.password);
 
     const user = await withTenantContext(client, companyId, async (tx) => {
+      const unitId = await this.resolveAssignableUnit(tx, companyId, principal, input);
       const created = await tx.user.create({
         data: {
           companyId,
           email,
           displayName: input.displayName,
-          status: 'INVITED',
-          passwordResetTokenHash: inviteTokenHash,
-          passwordResetExpiresAt: expiresAt,
-          createdBy: actorUserId,
-        },
-        select: {
-          id: true,
-          email: true,
-          displayName: true,
-          status: true,
+          status: 'ACTIVE',
           hasVerifiedEmail: true,
-          lastLoginAt: true,
-          createdAt: true,
-          roles: { select: { role: { select: { key: true, name: true } } } },
+          passwordHash,
+          passwordChangedAt: new Date(),
+          createdBy: actorUserId,
+          ...(unitId === undefined ? {} : { organizationalUnitId: unitId }),
         },
+        select: USER_SELECT,
       });
 
       await this.syncUserRoles(tx, created.id, companyId, principal, input.roleIds);
@@ -269,15 +268,6 @@ export class AccessService {
       resourceId: user.id,
       status: 'SUCCESS',
     });
-    await this.logs.recordEvent(companyId, {
-      category: 'AUTHENTICATION',
-      eventType: LOG_EVENT_TYPES['user.invited'],
-      actorUserId,
-      resource: 'user',
-      resourceId: user.id,
-      status: 'PENDING',
-      metadata: { inviteExpiresAt: expiresAt.toISOString() },
-    });
     await this.logs.writeAudit(companyId, {
       actorUserId,
       action: 'user.create',
@@ -286,21 +276,24 @@ export class AccessService {
       payload: { email, displayName: input.displayName, roles: input.roleIds },
     });
 
-    await this.queueEmail({
-      companyId,
-      to: email,
-      template: 'user-invite',
-      context: { inviteToken, inviteExpiresAt: expiresAt.toISOString() },
+    await this.notifications.emit(companyId, user.id, {
+      eventKey: 'user.welcome',
+      userId: user.id,
+      href: '/dashboard',
     });
 
-    return { user: toUserSummary(user), inviteToken };
+    return toUserSummary(user);
   }
 
   async updateUser(
     companyId: string,
     principal: SessionPrincipal,
     userId: string,
-    input: { displayName?: string; roleIds?: readonly string[] },
+    input: {
+      displayName?: string;
+      roleIds?: readonly string[];
+      organizationalUnitId?: string | null;
+    },
   ): Promise<UserSummary> {
     const client = this.prisma.getClient();
     const actorUserId = principal.user.id;
@@ -313,22 +306,15 @@ export class AccessService {
         throw new NotFoundError('The user does not exist.');
       }
 
+      const unitId = await this.resolveAssignableUnit(tx, companyId, principal, input, 'update');
       const updated = await tx.user.update({
         where: { id: userId },
         data: {
           ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+          ...(unitId === undefined ? {} : { organizationalUnitId: unitId }),
           createdBy: actorUserId,
         },
-        select: {
-          id: true,
-          email: true,
-          displayName: true,
-          status: true,
-          hasVerifiedEmail: true,
-          lastLoginAt: true,
-          createdAt: true,
-          roles: { select: { role: { select: { key: true, name: true } } } },
-        },
+        select: USER_SELECT,
       });
 
       if (input.roleIds !== undefined) {
@@ -347,6 +333,7 @@ export class AccessService {
       metadata: {
         displayNameChanged: input.displayName !== undefined,
         rolesReplaced: input.roleIds !== undefined,
+        unitChanged: input.organizationalUnitId !== undefined,
       },
     });
     await this.logs.writeAudit(companyId, {
@@ -354,7 +341,12 @@ export class AccessService {
       action: 'user.update',
       resource: 'user',
       resourceId: userId,
-      payload: { ...(input.displayName !== undefined ? { displayName: input.displayName } : {}) },
+      payload: {
+        ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+        ...(input.organizationalUnitId !== undefined
+          ? { organizationalUnitId: input.organizationalUnitId }
+          : {}),
+      },
     });
 
     if (input.roleIds !== undefined) {
@@ -366,6 +358,74 @@ export class AccessService {
     }
 
     return toUserSummary(user);
+  }
+
+  /**
+   * Resolves the unit to place a user in, returning `undefined` when the caller did not
+   * specify one (so the column is left untouched), `null` when they explicitly cleared it,
+   * and the validated id otherwise.
+   *
+   * A non-null unit must exist in the tenant *and* fall inside the caller's `user` data
+   * scope: a delegated administrator who can only see their own subtree must not be able
+   * to place a member outside it. `self` scope confines the placement to the caller's own
+   * unit; `subtree`/`entity` resolve through the organizational tree.
+   */
+  private async resolveAssignableUnit(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    principal: SessionPrincipal,
+    input: { readonly organizationalUnitId?: string | null },
+    action: 'create' | 'update' = 'create',
+  ): Promise<string | null | undefined> {
+    if (input.organizationalUnitId === undefined) {
+      return undefined;
+    }
+    if (input.organizationalUnitId === null) {
+      return null;
+    }
+
+    const unit = await tx.organizationalUnit.findFirst({
+      where: { id: input.organizationalUnitId, companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!unit) {
+      throw new ValidationError('The selected organizational unit does not exist.');
+    }
+
+    const decision = resolveScope(principal.permissions, 'user', action, {
+      userId: principal.user.id,
+      unitId: principal.user.organizationalUnitId,
+    });
+    switch (decision.kind) {
+      case 'all':
+        return unit.id;
+      case 'self':
+        if (unit.id !== principal.user.organizationalUnitId) {
+          throw new OutOfScopeError('You can only place users in your own organizational unit.');
+        }
+        return unit.id;
+      case 'subtree': {
+        const subtree = await findOrgUnitSubtree(tx, decision.rootUnitId);
+        if (!subtree.includes(unit.id)) {
+          throw new OutOfScopeError('That organizational unit is outside your permitted scope.');
+        }
+        return unit.id;
+      }
+      case 'entity': {
+        const [rootEntity, unitEntity] = await Promise.all([
+          findOrgUnitEntity(tx, decision.rootUnitId),
+          findOrgUnitEntity(tx, unit.id),
+        ]);
+        if (rootEntity === null || rootEntity !== unitEntity) {
+          throw new OutOfScopeError('That organizational unit is outside your permitted scope.');
+        }
+        return unit.id;
+      }
+      default:
+        throw new OutOfScopeError(
+          `Your "${decision.scope ?? 'unresolved'}" scope cannot place users.`,
+        );
+    }
   }
 
   async changeUserStatus(
@@ -886,20 +946,6 @@ export class AccessService {
       });
     }
   }
-
-  private async queueEmail(input: {
-    companyId: string;
-    to: string;
-    template: TransactionalEmailTemplate;
-    context: Readonly<Record<string, string>>;
-  }): Promise<void> {
-    if (!this.queue.isConfigured) {
-      return;
-    }
-    await this.queue
-      .getQueue(QUEUE_NAMES.NOTIFICATIONS)
-      .add(TRANSACTIONAL_EMAIL_JOB, input satisfies TransactionalEmailJob);
-  }
 }
 
 async function userScopeWhere(
@@ -950,7 +996,14 @@ function toUserSummary(row: {
   status: 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'DISABLED';
   hasVerifiedEmail: boolean;
   lastLoginAt: Date | null;
+  organizationalUnitId: string | null;
   createdAt: Date;
+  unit: {
+    readonly id: string;
+    readonly code: string;
+    readonly name: string;
+    readonly type: string;
+  } | null;
   roles: readonly { readonly role: { readonly key: string; readonly name: string } }[];
 }): UserSummary {
   return {
@@ -960,6 +1013,8 @@ function toUserSummary(row: {
     status: row.status,
     hasVerifiedEmail: row.hasVerifiedEmail,
     lastLoginAt: row.lastLoginAt?.toISOString() ?? null,
+    organizationalUnitId: row.organizationalUnitId,
+    organizationalUnit: row.unit,
     createdAt: row.createdAt.toISOString(),
     roles: row.roles.map((membership) => membership.role),
   };

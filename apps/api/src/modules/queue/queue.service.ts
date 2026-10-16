@@ -1,5 +1,5 @@
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
-import { QUEUE_NOTIFICATIONS, QUEUE_WEBHOOKS } from '@hris/shared-types';
+import { QUEUE_NOTIFICATIONS, QUEUE_WEBHOOKS, QUEUE_WORKFLOW } from '@hris/shared-types';
 import { Queue, type JobsOptions } from 'bullmq';
 
 import { APP_CONFIG } from '../../config/app-configuration.module';
@@ -18,6 +18,8 @@ export const QUEUE_NAMES = {
   NOTIFICATIONS: QUEUE_NOTIFICATIONS,
   /** Signed webhook deliveries to tenant endpoints. */
   WEBHOOKS: QUEUE_WEBHOOKS,
+  /** Delayed SLA timers that escalate overdue workflow tasks. */
+  WORKFLOW: QUEUE_WORKFLOW,
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];

@@ -134,7 +134,6 @@ describe('consoleFor', () => {
     const sections = consoleFor([]);
 
     expect(sections).toHaveLength(10);
-    expect(sections.every((section) => !section.isEmpty)).toBe(true);
 
     const identity = must(sections.find((section) => section.id === 'identity'));
     expect(identity.items.some((item) => item.label === 'Users')).toBe(false);

@@ -70,8 +70,9 @@ workflow, integration, AI, or separate `tenant` table.
 
 - Opaque session token in an httpOnly cookie; `sha256(token)` keyed in Redis with a
   durable `sessions.token_hash` row (ADR 0010). Argon2id passwords.
-- Flows: login, logout, register/invite, forgot/reset password, verify email,
-  change password, session list/revoke, CSRF guard for cookie state changes.
+- Flows: login, logout, forgot/reset password, verify email, change password, session
+  list/revoke, CSRF guard for cookie state changes. Administrators create users with an
+  initial password directly; there is no invitation flow.
 - Global guard order: `CsrfGuard` → `AuthenticationGuard` → `AuthorizationGuard`.
 - MFA (TOTP + recovery codes), SSO (OIDC + SAML), passkeys (WebAuthn) all implemented
   with encrypted secrets and single-use Redis challenges.

@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { Section } from '@/components/layout/section';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { FormErrorSummary } from '@/components/ui/form-field';
@@ -120,7 +122,7 @@ export function SettingsScreen({
   const editableChanges = dirtyItems().length;
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageBody>
       <PageHeader
         title={title}
         description={description}
@@ -160,15 +162,16 @@ export function SettingsScreen({
           {Array.from(byGroup.entries())
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([groupName, settings]) => (
-              <section key={groupName} className="flex flex-col gap-3">
-                <h2 className="text-sm font-semibold tracking-tight first-letter:uppercase">
-                  {groupName}
-                </h2>
+              <Section
+                key={groupName}
+                title={groupName.charAt(0).toUpperCase() + groupName.slice(1)}
+                bodyClassName="p-0"
+              >
                 <div className="flex flex-col">
                   {settings.map((setting, index) => (
                     <div
                       key={setting.key}
-                      className={`grid items-center gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_280px] ${
+                      className={`grid items-center gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_280px] sm:px-5 ${
                         index > 0 ? 'border-t border-border' : ''
                       }`}
                     >
@@ -193,10 +196,10 @@ export function SettingsScreen({
                     </div>
                   ))}
                 </div>
-              </section>
+              </Section>
             ))}
         </div>
       )}
-    </div>
+    </PageBody>
   );
 }

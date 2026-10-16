@@ -128,7 +128,7 @@ describe('Integrations (e2e)', () => {
     await api()
       .post(integrationPath())
       .set(asAdmin())
-      .send({ key: `bucket_${suffix}`, name: 'Archive', kind: 'STORAGE', provider: 's3' })
+      .send({ key: `bucket_${suffix}`, name: 'Archive', kind: 'OTHER', provider: 'custom' })
       .expect(400);
   });
 

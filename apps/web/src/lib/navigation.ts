@@ -14,6 +14,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
+import { CONSOLE_SECTIONS } from './console';
+
 /**
  * Navigation model for the web tier.
  *
@@ -66,6 +68,11 @@ export interface ModuleMenu {
 const MODULE_META: Readonly<
   Record<ModuleId, { label: string; description: string; icon: LucideIcon }>
 > = {
+  PLATFORM: {
+    label: 'Platform',
+    description: 'Platform health, monitoring, jobs and operational status',
+    icon: Gauge,
+  },
   M00_AUTHENTICATION: {
     // MASTER_PRD §6 names M00 "Authentication & Base System". Every system-administration
     // surface built in phase 3 — users, roles, permissions, sessions, settings, audit and
@@ -129,15 +136,67 @@ const MODULE_META: Readonly<
     description: 'Workforce intelligence, HR analytics, forecasting and AI insights',
     icon: ChartNoAxesCombined,
   },
-
-  PLATFORM: {
-    label: 'Platform',
-    description: 'Platform health, monitoring, jobs and operational status',
-    icon: Gauge,
-  },
 };
 
 export const moduleLabel = (module: ModuleId): string => MODULE_META[module].label;
+
+/**
+ * The System module's groups, derived from the administration console.
+ *
+ * The console (`apps/web/src/lib/console.ts`) and this sidebar are two views of the same
+ * thing — every administrative surface of the platform — so the sidebar is built from the
+ * console's sections rather than restated. Deriving rather than copying is what stops the
+ * two from drifting: a section added to the console appears in the sidebar with no second
+ * edit, and a status corrected in one is correct in both.
+ *
+ * The console repeats a few surfaces across domains (the Resource Registry in Identity &
+ * Access and Application & Metadata). The sidebar must not: two links to one page in one
+ * module make the active state ambiguous, and `MODULE_MENUS` is asserted to hold unique
+ * paths. The first occurrence of an href wins, so the repeat is dropped.
+ */
+const CONSOLE_GROUPS: readonly MenuGroup[] = buildConsoleGroups();
+
+function buildConsoleGroups(): readonly MenuGroup[] {
+  const seen = new Set<string>();
+
+  const sections = CONSOLE_SECTIONS.map((section) => ({
+    id: `M00_${section.id.toUpperCase()}`,
+    label: section.label,
+    items: section.items.flatMap((item): MenuItem[] => {
+      if (item.href !== undefined) {
+        if (seen.has(item.href)) {
+          return [];
+        }
+        seen.add(item.href);
+      }
+
+      return [
+        {
+          label: item.label,
+          description: item.description,
+          href: item.href,
+          status: item.status,
+        },
+      ];
+    }),
+  }));
+
+  return [
+    {
+      id: 'M00_CONSOLE',
+      label: 'Console',
+      items: [
+        {
+          label: 'Console Home',
+          description: 'Every administrative surface in ten sections',
+          href: '/setup',
+          status: 'built',
+        },
+      ],
+    },
+    ...sections,
+  ];
+}
 
 /**
  * The group and item definitions for each module, keyed by `ModuleId`.
@@ -152,190 +211,7 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
    * M00 - IDENTITY & ACCESS
    * ============================================================
    */
-  M00_AUTHENTICATION: [
-    {
-      id: 'M00_CONSOLE',
-      label: 'Console',
-      items: [
-        {
-          label: 'Console Home',
-          description: 'Every administrative surface in ten sections',
-          href: '/setup',
-          status: 'built',
-        },
-      ],
-    },
-    {
-      id: 'M00_IDENTITY',
-      label: 'Identity',
-      items: [
-        {
-          label: 'Sign In Policy',
-          description: 'Password, passkey and enterprise sign-in policy',
-          href: '/setup/sign-in-policy',
-          status: 'built',
-        },
-        {
-          label: 'My Account',
-          description: 'Personal account and security settings',
-          href: '/setup/account',
-          status: 'built',
-        },
-        {
-          label: 'Sessions',
-          description: 'Active sessions and login devices',
-          href: '/setup/account/sessions',
-          status: 'built',
-        },
-      ],
-    },
-    {
-      id: 'M00_ACCESS',
-      label: 'Access Management',
-      items: [
-        {
-          label: 'Users',
-          description: 'System users and employee accounts',
-          href: '/setup/users',
-          status: 'built',
-        },
-        {
-          label: 'Roles',
-          description: 'Role definitions and access profiles',
-          href: '/setup/roles',
-          status: 'built',
-        },
-        {
-          label: 'Permissions',
-          description: 'Fine-grained permissions and data access',
-          href: '/setup/permissions',
-          status: 'built',
-        },
-        {
-          label: 'Approval Authority',
-          description: 'Approval limits and delegation authority',
-          href: '/setup/approval-authority',
-          status: 'built',
-        },
-      ],
-    },
-    {
-      id: 'M00_APPLICATIONS',
-      label: 'Application & Metadata',
-      items: [
-        {
-          label: 'Resource Registry',
-          description: 'Applications, modules and registered resources',
-          href: '/setup/registry',
-          status: 'built',
-        },
-      ],
-    },
-    {
-      id: 'M00_SECURITY',
-      label: 'Security',
-      items: [
-        {
-          label: 'MFA & Passkeys',
-          description: 'Multi-factor authentication and passkey management',
-          href: '/setup/account/security',
-          status: 'built',
-        },
-        {
-          label: 'SSO',
-          description: 'Enterprise SSO and identity provider integration',
-          href: '/setup/security/sso',
-          status: 'built',
-        },
-        {
-          label: 'Login History',
-          description: 'Authentication and login activity',
-          href: '/setup/login-history',
-          status: 'built',
-        },
-        {
-          label: 'Security Audit',
-          description: 'Security events and access audit trail',
-          href: '/setup/security-audit',
-          status: 'built',
-        },
-      ],
-    },
-    {
-      id: 'M00_COMMUNICATION',
-      label: 'Communication',
-      items: [
-        {
-          label: 'Notifications',
-          description: 'In-app notifications and delivery status',
-          href: '/notifications',
-          status: 'built',
-        },
-        {
-          label: 'Notification Templates',
-          description: 'Email and in-app message templates',
-          status: 'planned',
-        },
-        {
-          label: 'Notification Preferences',
-          description: 'Channel preferences and quiet hours',
-          status: 'planned',
-        },
-      ],
-    },
-    {
-      id: 'M00_CONFIGURATION',
-      label: 'Configuration',
-      items: [
-        {
-          label: 'System Parameters',
-          description: 'System-wide settings and configuration',
-          href: '/setup/settings',
-          status: 'built',
-        },
-      ],
-    },
-    {
-      id: 'M00_OPERATIONS',
-      label: 'Operations',
-      items: [
-        {
-          label: 'Queue Monitor',
-          description: 'Background queue health and failed jobs',
-          href: '/setup/operations/queues',
-          status: 'built',
-        },
-        {
-          label: 'Integration Monitor',
-          description: 'External integration health and errors',
-          status: 'planned',
-        },
-      ],
-    },
-    {
-      id: 'M00_OBSERVABILITY',
-      label: 'Observability',
-      items: [
-        {
-          label: 'Audit Log',
-          description: 'System-wide audit trail',
-          href: '/setup/logs/audit',
-          status: 'built',
-        },
-        {
-          label: 'System Logs',
-          description: 'Application and integration logs',
-          href: '/setup/logs',
-          status: 'built',
-        },
-        {
-          label: 'System Activity',
-          description: 'Platform activity and operational events',
-          status: 'planned',
-        },
-      ],
-    },
-  ],
+  M00_AUTHENTICATION: CONSOLE_GROUPS,
 
   /**
    * ============================================================
@@ -1221,6 +1097,12 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
       label: 'Workflow',
       items: [
         {
+          label: 'My Approvals',
+          description: 'Workflow tasks awaiting your decision',
+          href: '/approvals',
+          status: 'built',
+        },
+        {
           label: 'Approval Workflow',
           description: 'HR approval workflows',
           status: 'planned',
@@ -1566,12 +1448,6 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
           label: 'Overview',
           description: 'What the platform foundation delivers',
           href: '/',
-          status: 'built',
-        },
-        {
-          label: 'Health',
-          description: 'Live dependency probes',
-          href: '/status',
           status: 'built',
         },
       ],

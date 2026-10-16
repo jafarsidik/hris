@@ -355,7 +355,7 @@ describe('breadcrumbTrail', () => {
   });
 
   it('prefers a known label over the derived one', () => {
-    expect(breadcrumbTrail('/status')[0]?.label).toBe('Health');
+    expect(breadcrumbTrail('/status')[0]?.label).toBe('Health Monitor');
   });
 
   it('ignores surrounding whitespace', () => {

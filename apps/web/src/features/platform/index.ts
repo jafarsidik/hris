@@ -4,4 +4,8 @@ export { IdentityProvidersScreen } from './identity-providers-screen';
 export { NotificationsScreen } from './notifications-screen';
 export { QueueMonitorScreen } from './queue-monitor-screen';
 export { ResourceRegistryScreen } from './resource-registry-screen';
+export { BackupRestoreScreen } from './backup-restore-screen';
+export { ApplicationsScreen } from './applications-screen';
+export { ModulesScreen } from './modules-screen';
 export { platformApi } from './platform-api';
+export { backupRestoreApi } from './backup-restore-api';

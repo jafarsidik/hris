@@ -159,7 +159,7 @@ export function DataTableToolbar<TRow extends { readonly id: string }>({
           {chips.map((chip) => (
             <span
               key={chip.id}
-              className="inline-flex h-6 items-center gap-1 rounded-full border border-border bg-muted/60 py-0 pr-1 pl-2.5 text-xs text-foreground"
+              className="inline-flex h-6 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 py-0 pr-1 pl-2.5 text-xs font-medium text-primary"
             >
               {chip.label}
               <button

@@ -87,22 +87,18 @@ describe('Privilege escalation (e2e)', () => {
       .expect(200);
     targetRoleId = targetRole.body.data.id as string;
 
-    // Invite the delegate with the delegated role, then activate and sign in.
-    const invite = await api()
+    // Create the delegate with the delegated role and an admin-set password, then sign in.
+    const created = await api()
       .post('/api/v1/users')
       .set({ Authorization: `Bearer ${adminToken}` })
       .send({
         email: delegateEmail,
         displayName: 'Delegated Admin',
+        password,
         roleIds: [delegateRole.body.data.id as string],
       })
       .expect(200);
-    delegateUserId = invite.body.data.user.id as string;
-
-    await api()
-      .post('/api/v1/auth/register')
-      .send({ inviteToken: invite.body.data.inviteToken, password })
-      .expect(200);
+    delegateUserId = created.body.data.id as string;
 
     delegateToken = await login(delegateEmail);
   });

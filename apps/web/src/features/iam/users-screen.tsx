@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { PageToolbar } from '@/components/layout/page-toolbar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,6 +39,7 @@ import { useSession, useCan } from '@/features/auth/session-context';
 import { getIam } from '@/features/iam';
 import type { UserSummary } from '@/features/iam/iam-types';
 import { useIamLoad } from '@/features/iam/use-iam-data';
+import { UnitPicker } from '@/features/organization/unit-picker';
 import { ApiRequestError } from '@/lib/api/http-client';
 import { CalendarDays, Plus } from 'lucide-react';
 
@@ -59,12 +62,14 @@ function humanDate(value: string | null): string {
   );
 }
 
-function InviteUserDialog({ onInvited }: { onInvited: () => void }) {
+function CreateUserDialog({ onCreated }: { onCreated: () => void }) {
   const repository = getIam();
   const roles = useIamLoad(() => repository.listRoles(), []);
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
   const [roleId, setRoleId] = useState('');
+  const [unitId, setUnitId] = useState<string | null>(null);
   const [error, setError] = useState<string | undefined>();
   const [pending, setPending] = useState(false);
   const [open, setOpen] = useState(false);
@@ -76,15 +81,19 @@ function InviteUserDialog({ onInvited }: { onInvited: () => void }) {
       await repository.createUser({
         email,
         displayName,
+        password,
         roleIds: roleId ? [roleId] : [],
+        organizationalUnitId: unitId,
       });
       setOpen(false);
       setEmail('');
       setDisplayName('');
+      setPassword('');
       setRoleId('');
-      onInvited();
+      setUnitId(null);
+      onCreated();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : 'The invitation could not be sent.');
+      setError(err instanceof ApiRequestError ? err.message : 'The user could not be created.');
     } finally {
       setPending(false);
     }
@@ -96,15 +105,16 @@ function InviteUserDialog({ onInvited }: { onInvited: () => void }) {
         render={
           <Button variant="default">
             <Plus aria-hidden="true" className="size-4" />
-            Invite user
+            Add user
           </Button>
         }
       />
       <DialogContent aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>Invite a user</DialogTitle>
+          <DialogTitle>Add a user</DialogTitle>
           <DialogDescription>
-            The person receives an invitation email with a link to set their password.
+            Creates an active account right away. Share the password with the person; they can
+            change it after signing in.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -118,13 +128,13 @@ function InviteUserDialog({ onInvited }: { onInvited: () => void }) {
           {error !== undefined && <FormErrorSummary>{error}</FormErrorSummary>}
           <FormField
             label="Email"
-            htmlFor="invite-email"
+            htmlFor="create-user-email"
             required
             error={undefined}
-            errorId="invite-email-error"
+            errorId="create-user-email-error"
           >
             <Input
-              id="invite-email"
+              id="create-user-email"
               type="email"
               autoComplete="off"
               value={email}
@@ -134,22 +144,39 @@ function InviteUserDialog({ onInvited }: { onInvited: () => void }) {
           </FormField>
           <FormField
             label="Display name"
-            htmlFor="invite-name"
+            htmlFor="create-user-name"
             error={undefined}
-            errorId="invite-name-error"
+            errorId="create-user-name-error"
           >
             <Input
-              id="invite-name"
+              id="create-user-name"
               autoComplete="off"
               value={displayName}
               onChange={(event) => setDisplayName(event.currentTarget.value)}
             />
           </FormField>
           <FormField
-            label="Role"
-            htmlFor="invite-role"
+            label="Password"
+            htmlFor="create-user-password"
+            required
             error={undefined}
-            errorId="invite-role-error"
+            errorId="create-user-password-error"
+            hint="At least 8 characters with an uppercase letter, a lowercase letter and a digit."
+          >
+            <Input
+              id="create-user-password"
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.currentTarget.value)}
+              required
+            />
+          </FormField>
+          <FormField
+            label="Role"
+            htmlFor="create-user-role"
+            error={undefined}
+            errorId="create-user-role-error"
           >
             <Select
               value={roleId}
@@ -159,7 +186,7 @@ function InviteUserDialog({ onInvited }: { onInvited: () => void }) {
                 }
               }}
             >
-              <SelectTrigger id="invite-role" className="w-full">
+              <SelectTrigger id="create-user-role" className="w-full">
                 <SelectValue placeholder="Choose a role" />
               </SelectTrigger>
               <SelectContent>
@@ -171,9 +198,18 @@ function InviteUserDialog({ onInvited }: { onInvited: () => void }) {
               </SelectContent>
             </Select>
           </FormField>
+          <FormField
+            label="Organizational unit"
+            htmlFor="create-user-unit"
+            error={undefined}
+            errorId="create-user-unit-error"
+            hint="Optional. Data scopes such as team and department resolve through this placement."
+          >
+            <UnitPicker id="create-user-unit" value={unitId} onChange={setUnitId} />
+          </FormField>
           <DialogFooter>
-            <FormSubmitButton pending={pending} pendingText="Sending invitation…">
-              Send invitation
+            <FormSubmitButton pending={pending} pendingText="Creating…">
+              Create user
             </FormSubmitButton>
           </DialogFooter>
         </form>
@@ -248,13 +284,13 @@ export function UsersScreen() {
   }, [search]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageBody>
       <PageHeader
         title="Users"
         description="System users and employee accounts."
-        actions={<InviteUserDialog onInvited={list.reload} />}
+        actions={<CreateUserDialog onCreated={list.reload} />}
       />
-      <div className="flex flex-wrap items-center gap-2">
+      <PageToolbar>
         <Input
           aria-label="Search users"
           placeholder="Search by name or email"
@@ -277,7 +313,7 @@ export function UsersScreen() {
             <SelectItem value="DISABLED">Disabled</SelectItem>
           </SelectContent>
         </Select>
-      </div>
+      </PageToolbar>
 
       {list.loading ? (
         <div className="flex flex-col gap-2">
@@ -295,6 +331,7 @@ export function UsersScreen() {
             <TableRow>
               <TableHead>User</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Unit</TableHead>
               <TableHead>Roles</TableHead>
               <TableHead>Last login</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -311,6 +348,9 @@ export function UsersScreen() {
                 </TableCell>
                 <TableCell>
                   <Badge variant={STATUS_VARIANT[user.status]}>{user.status}</Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {user.organizationalUnit?.name ?? '—'}
                 </TableCell>
                 <TableCell>
                   <span className="flex flex-wrap gap-1">
@@ -334,7 +374,7 @@ export function UsersScreen() {
             ))}
             {(list.data?.items.length ?? 0) === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
+                <TableCell colSpan={6} className="text-center text-muted-foreground">
                   No users match this filter.
                 </TableCell>
               </TableRow>
@@ -342,6 +382,6 @@ export function UsersScreen() {
           </TableBody>
         </Table>
       )}
-    </div>
+    </PageBody>
   );
 }

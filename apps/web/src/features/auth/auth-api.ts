@@ -26,13 +26,6 @@ export async function logout(): Promise<void> {
   await apiRequestV1<never>('/auth/logout', { method: 'POST' });
 }
 
-export async function register(input: {
-  inviteToken: string;
-  password: string;
-}): Promise<CurrentSession> {
-  return apiRequestV1<CurrentSession>('/auth/register', { method: 'POST', body: input });
-}
-
 export async function forgotPassword(input: { email: string }): Promise<void> {
   await apiRequestV1<never>('/auth/forgot-password', { method: 'POST', body: input });
 }

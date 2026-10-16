@@ -32,6 +32,15 @@ export const WORKFLOW_STEP_TYPES = ['SEQUENTIAL', 'PARALLEL', 'CONDITIONAL'] as 
 
 export type WorkflowStepType = (typeof WORKFLOW_STEP_TYPES)[number];
 
+/** How a step decides whether it applies to a given workflow instance. */
+export const WORKFLOW_STEP_DECISION_TYPES = [
+  'ALL_PREDECESSORS',
+  'ANY_PREDECESSOR',
+  'CONDITION',
+] as const;
+
+export type WorkflowStepDecisionType = (typeof WORKFLOW_STEP_DECISION_TYPES)[number];
+
 /** The lifecycle of a workflow version. Only the `ACTIVE` version runs new instances. */
 export const WORKFLOW_VERSION_STATUSES = ['DRAFT', 'ACTIVE', 'ARCHIVED'] as const;
 
@@ -54,6 +63,7 @@ export interface WorkflowTransitionDefinition {
   readonly requiredPermission: string | null;
   readonly requiresApproval: boolean;
   readonly sortOrder: number;
+  readonly condition?: string | null;
 }
 
 /** A workflow definition with its latest version facts, for list/detail screens. */
@@ -74,8 +84,58 @@ export interface WorkflowVersionSummary {
   readonly status: WorkflowVersionStatus;
   readonly states: readonly WorkflowStateDefinition[];
   readonly transitions: readonly WorkflowTransitionDefinition[];
+  readonly steps?: readonly WorkflowStepDefinition[] | null;
   readonly publishedAt: string | null;
   readonly createdAt: string;
+}
+
+/** A node/step in a workflow version (optional, backward compatible). */
+export interface WorkflowStepDefinition {
+  readonly key: string;
+  readonly name: string;
+  readonly type: WorkflowStepType;
+  readonly decisionType: WorkflowStepDecisionType;
+  readonly requiredPermission: string | null;
+  readonly requiresApproval: boolean;
+  readonly sortOrder: number;
+  readonly predecessorKeys: readonly string[];
+  readonly nextKeys: readonly string[];
+  readonly condition?: string | null;
+  readonly timeoutMinutes?: number | null;
+  readonly escalationPolicy?: string | null;
+  /** The state-machine state this step mirrors when it is the current step. */
+  readonly stateKey?: string | null;
+}
+
+/** The decisions an assignee may take on a task. */
+export const WORKFLOW_TASK_DECISIONS = ['APPROVE', 'REJECT', 'SKIP'] as const;
+
+export type WorkflowTaskDecision = (typeof WORKFLOW_TASK_DECISIONS)[number];
+
+/** One unit of work an approver is asked to act on while an instance waits at a step. */
+export interface WorkflowTaskSummary {
+  readonly id: string;
+  readonly instanceId: string;
+  readonly stepKey: string;
+  readonly stateKey: string | null;
+  readonly status: WorkflowTaskStatus;
+  readonly assigneeUserId: string | null;
+  readonly requiredPermission: string | null;
+  readonly dueAt: string | null;
+  readonly escalationAt: string | null;
+  readonly escalatedAt: string | null;
+  readonly claimedAt: string | null;
+  readonly decidedAt: string | null;
+  readonly decisionComment: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/** An instance together with the tasks and transition history that surround it. */
+export interface WorkflowInstanceDetail {
+  readonly instance: WorkflowInstanceSummary;
+  readonly tasks: readonly WorkflowTaskSummary[];
+  readonly history: readonly WorkflowTransitionEventSummary[];
 }
 
 /** A running instance of a workflow. */
@@ -87,6 +147,9 @@ export interface WorkflowInstanceSummary {
   readonly resourceId: string | null;
   readonly currentStateKey: string;
   readonly status: WorkflowInstanceStatus;
+  readonly stepKey?: string | null;
+  readonly dueAt?: string | null;
+  readonly escalationAt?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }

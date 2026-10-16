@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -83,7 +84,7 @@ export function ApprovalAuthorityScreen() {
   }, [delegation, delegations]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageBody>
       <PageHeader
         title="Approval authority"
         description="Approval limits and temporary delegation of approval rights."
@@ -263,6 +264,6 @@ export function ApprovalAuthorityScreen() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageBody>
   );
 }

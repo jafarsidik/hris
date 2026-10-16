@@ -63,6 +63,10 @@ export class AuthenticationGuard implements CanActivate {
       if (resolved === null) {
         throw new UnauthenticatedError('The API key is invalid or revoked');
       }
+      // Set before the rate limit so a throttled request is still attributed to its
+      // client; the usage writer keys on the client id after the response is sent.
+      request.apiClientId = resolved.principal.user.id;
+      request.apiClientCompanyId = resolved.principal.user.companyId;
       await this.enforceApiClientRateLimit(resolved.principal.user.id);
       request.auth = {
         userId: resolved.principal.user.id,

@@ -15,20 +15,10 @@ describe('renderTransactionalEmail', () => {
     expect(email.text).toContain('Sent by Acme HRIS.');
   });
 
-  it('renders an invite acceptance link from the token', () => {
-    const email = renderTransactionalEmail(
-      'user-invite',
-      { inviteToken: 'invite-token', inviteExpiresAt: '2030-01-01T00:00:00.000Z' },
-      options,
-    );
-    expect(email.subject).toBe('Your Acme HRIS invitation');
-    expect(email.html).toContain('https://app.example.com/accept-invite?token=invite-token');
-  });
-
   it('escapes HTML in interpolated values', () => {
     const email = renderTransactionalEmail(
-      'user-invite',
-      { inviteToken: 'x' },
+      'password-reset',
+      { resetToken: 'x' },
       { webBaseUrl: 'https://app.example.com', appName: '<script>alert(1)</script>' },
     );
     expect(email.html).not.toContain('<script>alert(1)</script>');

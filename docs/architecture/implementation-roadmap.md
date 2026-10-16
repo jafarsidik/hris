@@ -82,7 +82,7 @@ touching core resource code.
   stays a fixed map and the registry read is best-effort so a failure leaves the curated
   sections intact. Covered by `console.spec.ts` and `registry-console.spec.ts`.
 
-## Phase 3 — Dynamic authorization hardening — in progress
+## Phase 3 — Dynamic authorization hardening — DONE
 
 - **Delivered:** `Permission` rows are generated from the registry
   (`database/seeds/rbac.ts` → `buildPermissionRowsFromRegistry`, reading
@@ -109,12 +109,34 @@ touching core resource code.
   `scopeId` anchors the scope at a specific unit; an org scope with nothing to resolve
   default-denies. `EffectivePermission` carries the optional `scopeId`. Covered by the
   extended `apps/api/test/data-scope.e2e-spec.ts` (TEAM, DEPARTMENT, ENTITY).
-- **Pending:** apply the resolver to the remaining bespoke resources (today `user.view`
-  and the generic `records` layer); place users in the hierarchy from the API (currently
-  set directly).
-- **Pending:** field-level/attribute access (sensitive field read masking).
+- **Delivered:** field-level read masking. `view_sensitive` is a first-class action
+  (`Action` enum + migration `20261014110000_view_sensitive_action`); the records layer
+  redacts every `ResourceField.isSensitive` value from a caller without the matching
+  `view_sensitive` grant, so a sensitive field is stored and returned only to those who may
+  read it.
+- **Delivered:** the scope resolver adopted on a bespoke resource. The integrations list and
+  detail reads resolve `integration.view` through `resolveScope`, so a scoped administrator
+  cannot enumerate a sibling subtree
+  (`apps/api/src/modules/integrations/integrations.service.ts`, e2e in
+  `apps/api/test/integrations.e2e-spec.ts`).
+- **Delivered:** full organizational-structure CRUD and user placement. A new
+  `apps/api/src/modules/organization` module exposes `/api/v1/organization/entities` and
+  `/api/v1/organization/units` (create/read/update/delete), each gated by its
+  `organization.*` action and narrowed on read by `resolveScope`; placement is validated
+  against the actor's subtree, entity and self scopes. `AccessService` accepts
+  `organizationalUnitId` on user create/update, so users are placed in the hierarchy through
+  the API rather than directly. Covered by `apps/api/test/organization.e2e-spec.ts`.
+- **Delivered:** the data-scope resolver applied to the log surface. `LogService.listEvents`
+  and `listAudit` take the caller's principal: `GLOBAL`/`COMPANY` see the whole tenant,
+  `SELF` sees only its own actor rows, and any other org scope default-denies (the log has
+  no organizational dimension), with the scope folded into the cursor fingerprint so paging
+  cannot leak. Covered by `apps/api/test/logs.e2e-spec.ts`.
+- **Delivered:** the web surface. `/setup/organization` (under the console's Identity &
+  Access section, gated on `organization.view`) manages legal entities and the unit tree
+  through a repository seam (`apps/web/src/features/organization/*`); the Add-user dialog
+  offers an organizational-unit picker and the users table shows each user's unit.
 
-## Phase 4 — API & developer platform — in progress
+## Phase 4 — API & developer platform — DONE
 
 - **Delivered:** API clients / machine credentials. An operator can create a client with
   a scope set (`api-client` resource, management API `/api/v1/developers/clients`). The
@@ -125,6 +147,12 @@ touching core resource code.
   to exactly its granted scopes (each validated as a real `resource.action` and against
   what the creator may grant). Rotation, disable and delete revoke immediately. Covered
   by `apps/api/test/api-clients.e2e-spec.ts`.
+- **Delivered:** the API-client management web surface. `/setup/api/clients` lists the
+  tenant's machine identities and lets an administrator create, edit, rotate (secret shown
+  once), disable/enable and delete them, with a registry-backed scope picker
+  (`apps/web/src/features/developers/*`). Reads require `api-client.view`, each mutation its
+  own `api-client.*` permission. Covered by
+  `apps/web/src/features/developers/developer-repository.spec.ts`.
 - **Delivered:** per-client rate limiting. A `RateLimiter` fixed-window limiter
   (`apps/api/src/common/rate-limit/rate-limiter.service.ts`, Redis-backed) now caps each
   developer API client at `API_RATE_LIMIT_PER_MINUTE` requests (`AuthGuard`), and the
@@ -137,8 +165,31 @@ touching core resource code.
   `api-key` `X-API-Key`) and the module tags. `apps/api/test/openapi.e2e-spec.ts` re-reads
   the served document so a refactor cannot silently drop a route or scheme, and asserts it
   is absent when `SWAGGER_ENABLED=false`.
-- **Pending:** usage/access-log surfacing and signed webhooks with delivery attempts and
-  retries.
+- **Delivered:** signed webhooks with delivery attempts and retries. Domain events dispatch
+  to subscribed endpoints, the worker signs and retries deliveries, and the signing secret is
+  encrypted at rest (`database/migrations/20261014100000_webhook_delivery`,
+  `apps/api/src/modules/integrations/webhook-dispatcher.service.ts`,
+  `apps/worker/src/webhook-{processor,crypto}.ts`), covered by
+  `apps/api/test/integrations.e2e-spec.ts`.
+- **Delivered:** API usage and access-log surfaces. Every authenticated machine request is
+  recorded in `api_request_log` (append-only, tenant RLS, `ON DELETE CASCADE` from the
+  client) with the method, path, status, duration and correlation id — never the query
+  string or body (`apps/api/src/modules/api-usage/*`,
+  `database/migrations/20261015120000_api_request_log`). `GET /api/v1/developers/usage`
+  returns a windowed per-client rollup aggregated server-side; `GET
+  /api/v1/developers/requests` returns the newest-first log under the shared cursor
+  contract. The web surfaces `/setup/api/usage` and `/setup/api/access-log` (console API
+  and audit sections, gated on `api-client.view`) read them through the same repository
+  seam. Covered by `apps/api/test/api-usage.e2e-spec.ts` and
+  `apps/web/src/features/developers/developer-repository.spec.ts`.
+- **Delivered:** the developer-facing web surfaces. `/setup/api/docs` links the served
+  OpenAPI explorer and raw document (gated on `api-client.view`); `/setup/api/webhooks`
+  and `/setup/integrations` (+ `/setup/integrations/[id]`) list, register, edit, delete
+  and test integrations, open one for its delivery log, edit a webhook's event
+  subscriptions and rotate its signing secret (`apps/web/src/features/integrations/*`,
+  gated on `integration.view`/`integration.*`). The webhook surface reuses the integration
+  feature filtered to `WEBHOOK`. Covered by
+  `apps/web/src/features/integrations/integration-repository.spec.ts`.
 
 ## Phase 5 — Workflow & integration
 
@@ -166,10 +217,21 @@ touching core resource code.
   `/api/v1/integrations` (`integration:view/create/update/delete`, with the connection
   test gated on `integration:manage`). Covered by `apps/api/test/integrations.e2e-spec.ts`
   (`apps/api/src/modules/integrations/*`).
-- **Pending:** conditional/parallel routing, multi-level approval steps, escalation/SLA
-  timers and task assignment (the existing `WORKFLOW_TASK_STATUSES` vocabulary), plus
-  webhook/storage/analytics adapters, scheduled jobs, idempotency and an outbox for
-  exactly-once delivery.
+- **Step-driven routing + task assignment delivered.** A version may declare `steps`
+  (`SEQUENTIAL`/`PARALLEL`/`CONDITIONAL`, `ALL_PREDECESSORS`/`ANY_PREDECESSOR`, optional
+  `condition`, `timeoutMinutes`, `escalationPolicy`). The engine materializes one task per
+  candidate approver for each step an instance enters, mirrors the step's state onto the
+  instance, and advances only when the step's decision rule is satisfied; a rejection on any
+  step terminates the instance. Versions without `steps` keep the transition-driven engine.
+  Covered by `apps/api/test/workflow-tasks.e2e-spec.ts`
+  (`database/migrations/20261017090000_workflow_tasks`, `apps/api/src/modules/workflows/*`).
+- **Escalation/SLA delivered.** Entering a step arms a delayed job on the workflow queue; the
+  worker (`apps/worker/src/workflow-processor.ts`, `QUEUE_WORKFLOW`) expires the
+  timed-out task, re-routes it to holders of the step's `escalationPolicy` (default
+  `workflow.manage`), notifies them and records the escalation. The timer is idempotent and
+  lives in Redis, so escalation survives an API restart.
+- **Pending:** webhook/storage/analytics adapter breadth, scheduled jobs beyond SLA timers,
+  idempotency keys, and an outbox for exactly-once delivery.
 
 ## Phase 5b — Example domain application (Project/Task)
 

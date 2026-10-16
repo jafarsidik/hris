@@ -135,12 +135,22 @@ services:
       AI_ENABLED: ${AI_ENABLED:-false}
       AI_PROVIDER: ${AI_PROVIDER:-openai}
       AI_API_KEY: ${AI_API_KEY:-}
+      # Object storage. The API reaches RustFS over the private network, but a presigned
+      # URL is signed for the host-facing address (STORAGE_PUBLIC_ENDPOINT), because the
+      # browser — not the API — is what follows it.
+      STORAGE_ENDPOINT: http://rustfs:9000
+      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-http://localhost:${STORAGE_PORT:-9000}}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-hris-documents}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}
     ports:
       - '${API_PORT:-3001}:3001'
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rustfs:
         condition: service_healthy
     # Drops the cached host lookups. The API performs no outbound HTTP in phase 0,
     # but IAM and notification providers will, and a static resolver in a

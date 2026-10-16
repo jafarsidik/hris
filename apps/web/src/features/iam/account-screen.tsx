@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -78,7 +79,7 @@ export function AccountScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageBody>
       <PageHeader title="My Account" description="Your profile and authentication details." />
 
       <Card>
@@ -213,6 +214,6 @@ export function AccountScreen() {
           </Button>
         </CardContent>
       </Card>
-    </div>
+    </PageBody>
   );
 }

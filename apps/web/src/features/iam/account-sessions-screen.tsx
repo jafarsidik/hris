@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -57,7 +58,7 @@ export function AccountSessionsScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageBody>
       <PageHeader
         title="Active Sessions"
         description="Devices currently signed into your account."
@@ -135,6 +136,6 @@ export function AccountSessionsScreen() {
           Return to My Account
         </Link>
       </p>
-    </div>
+    </PageBody>
   );
 }

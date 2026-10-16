@@ -17,6 +17,7 @@ export const SETTING_GROUPS = [
   'localization',
   'files',
   'logging',
+  'backup',
   'sessions',
   'api',
 ] as const;
@@ -249,5 +250,19 @@ export const SYSTEM_SETTING_DEFAULTS: readonly SystemSettingDefault[] = [
     value: 43200,
     valueType: 'NUMBER',
     description: 'Absolute session lifetime in seconds',
+  },
+  {
+    group: 'backup',
+    key: 'backup.schedule',
+    value: 'daily',
+    valueType: 'STRING',
+    description: 'Automated backup frequency',
+  },
+  {
+    group: 'backup',
+    key: 'backup.retentionDays',
+    value: 30,
+    valueType: 'NUMBER',
+    description: 'Days to retain automated backups',
   },
 ];

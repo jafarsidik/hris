@@ -129,6 +129,42 @@ export interface WebAuthnConfig {
   readonly origin: string;
 }
 
+/**
+ * S3-compatible object storage (RustFS in development).
+ *
+ * Two endpoints, not one: the API reaches storage over the private network while the
+ * browser reaches it through the published host port, so a presigned URL must be signed
+ * for the endpoint the *browser* will call, not the one the API uses. `publicEndpoint`
+ * defaults to `endpoint`, which is correct whenever both run on the same host.
+ */
+export interface StorageConfig {
+  /** Endpoint used for server-side HEAD/DELETE requests. */
+  readonly endpoint: string;
+  /** Endpoint embedded in presigned URLs returned to the browser. */
+  readonly publicEndpoint: string;
+  readonly bucket: string;
+  readonly region: string;
+  readonly accessKey: string;
+  readonly secretKey: string;
+  /** Lifetime of a presigned URL, in seconds. */
+  readonly signedUrlTtlSeconds: number;
+}
+
+export interface AiConfig {
+  /** Global master switch. When false, all AI calls return UNAVAILABLE. */
+  readonly enabled: boolean;
+  /** Provider id (openai/azure/bedrock/local). */
+  readonly provider: string;
+  /** Provider API key (only required when enabled). */
+  readonly apiKey: string | null;
+  /** Pinned model id. */
+  readonly model: string;
+  /** Base URL for OpenAI-compatible endpoints. */
+  readonly baseUrl: string;
+  /** Hard timeout per request in ms. */
+  readonly timeoutMs: number;
+}
+
 export interface AppConfiguration {
   readonly environment: NodeEnvironment;
   /**
@@ -152,6 +188,13 @@ export interface AppConfiguration {
   readonly rateLimit: RateLimitConfig;
   readonly secrets: CredentialSecretsConfig;
   readonly webauthn: WebAuthnConfig;
+  /**
+   * `null` when object storage credentials are absent. Optional for the same reason as
+   * the database: a process that refuses to boot cannot report itself unhealthy. A file
+   * route then answers 503 rather than failing at startup.
+   */
+  readonly storage: StorageConfig | null;
+  readonly ai: AiConfig;
 }
 
 export const DEFAULT_HTTP_PORT = 3001;
@@ -391,6 +434,8 @@ export function parseConfiguration(env: EnvSource = process.env): AppConfigurati
     origin: readString(env, 'WEBAUTHN_ORIGIN', 'http://localhost:3000'),
   };
 
+  const storage = readStorageConfig(env, problems);
+
   if (problems.length > 0) {
     throw new ConfigurationError(problems);
   }
@@ -407,6 +452,8 @@ export function parseConfiguration(env: EnvSource = process.env): AppConfigurati
     rateLimit,
     secrets,
     webauthn,
+    storage,
+    ai: readAiConfig(env),
   };
 }
 
@@ -488,6 +535,62 @@ function readRedisConfig(env: EnvSource, problems: string[]): RedisConfig | null
   };
 }
 
+/**
+ * Reads the object-storage settings, or `null` when `STORAGE_ACCESS_KEY`/`_SECRET_KEY`
+ * are absent. Half-configured credentials are an error for the same reason a half-
+ * configured database is: a missing half is a typo, and silently disabling storage turns
+ * it into a runtime 503 instead of a boot failure.
+ *
+ * The endpoint defaults to localhost because that is where RustFS publishes during local
+ * development; `STORAGE_PUBLIC_ENDPOINT` overrides only the origin used inside presigned
+ * URLs, so a containerised API can sign for the host-facing address.
+ */
+function readStorageConfig(env: EnvSource, problems: string[]): StorageConfig | null {
+  const accessKey = env['STORAGE_ACCESS_KEY']?.trim() ?? '';
+  const secretKey = env['STORAGE_SECRET_KEY']?.trim() ?? '';
+
+  if (accessKey === '' && secretKey === '') {
+    return null;
+  }
+
+  if (accessKey === '' || secretKey === '') {
+    problems.push(
+      'STORAGE_ACCESS_KEY and STORAGE_SECRET_KEY must be set together ' +
+        '(object storage is disabled otherwise)',
+    );
+    return null;
+  }
+
+  const endpoint = readString(env, 'STORAGE_ENDPOINT', 'http://localhost:9000').replace(/\/+$/, '');
+
+  return {
+    endpoint,
+    publicEndpoint: readString(env, 'STORAGE_PUBLIC_ENDPOINT', endpoint).replace(/\/+$/, ''),
+    bucket: readString(env, 'STORAGE_BUCKET', 'hris-documents'),
+    region: readString(env, 'STORAGE_REGION', 'us-east-1'),
+    accessKey,
+    secretKey,
+    signedUrlTtlSeconds: readInteger(
+      env,
+      'STORAGE_SIGNED_URL_TTL_SECONDS',
+      900,
+      { min: 60, max: 604800 },
+      problems,
+    ),
+  };
+}
+
 export function isProduction(config: AppConfiguration): boolean {
   return config.environment === 'production';
+}
+
+function readAiConfig(env: EnvSource): AiConfig {
+  return {
+    enabled: readBoolean(env, 'AI_ENABLED', false),
+    provider: readString(env, 'AI_PROVIDER', 'openai').trim().toLowerCase(),
+    apiKey: readNullable(env, 'AI_API_KEY'),
+    model: readString(env, 'AI_MODEL', 'gpt-4.1-mini'),
+    baseUrl: readString(env, 'AI_BASE_URL', 'https://api.openai.com/v1').replace(/\/+$/, ''),
+    timeoutMs: readInteger(env, 'AI_TIMEOUT_MS', 60000, { min: 1000, max: 300000 }, []),
+  };
 }

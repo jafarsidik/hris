@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 
 import { LogModule } from '../logs/log.module';
 import { SettingsModule } from '../settings/settings.module';
+import { AnalyticsAdapter } from './analytics.adapter';
 import { EmailAdapter } from './email.adapter';
 import { IntegrationsController } from './integrations.controller';
 import { IntegrationsService } from './integrations.service';
+import { StorageAdapter } from './storage.adapter';
 import { WebhookDispatcher } from './webhook-dispatcher.service';
 
 /**
@@ -16,7 +18,13 @@ import { WebhookDispatcher } from './webhook-dispatcher.service';
 @Module({
   imports: [LogModule, SettingsModule],
   controllers: [IntegrationsController],
-  providers: [EmailAdapter, IntegrationsService, WebhookDispatcher],
+  providers: [
+    EmailAdapter,
+    StorageAdapter,
+    AnalyticsAdapter,
+    IntegrationsService,
+    WebhookDispatcher,
+  ],
   exports: [IntegrationsService],
 })
 export class IntegrationsModule {}

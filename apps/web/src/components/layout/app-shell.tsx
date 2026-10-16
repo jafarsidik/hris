@@ -188,11 +188,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
 
         <div className="flex-1 p-4 sm:p-6">
-          <div className="mx-auto w-full max-w-[1600px]">{children}</div>
+          <div className="mx-auto w-full max-w-(--content-max-width)">{children}</div>
         </div>
 
         <footer className="border-t border-border bg-card px-4 py-4 text-sm text-muted-foreground sm:px-6">
-          Enterprise HRIS &middot; foundation phase
+          Enterprise HRIS
         </footer>
       </SidebarInset>
     </SidebarProvider>

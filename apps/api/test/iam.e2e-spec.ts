@@ -91,14 +91,6 @@ describe('IAM (e2e)', () => {
       expect(response.body.error.message).toBe('Invalid email or password.');
       expect(response.body.error.code).toBe('UNAUTHENTICATED');
     });
-
-    it('rejects register with an invalid invite token', async () => {
-      const response = await api()
-        .post('/api/v1/auth/register')
-        .send({ inviteToken: 'not-a-real-token', password: 'Str0ng-Passw0rd!' })
-        .expect(400);
-      expect(response.body.error.code).toBe('VALIDATION_ERROR');
-    });
   });
 
   describe('session lifecycle', () => {
@@ -180,23 +172,18 @@ describe('IAM (e2e)', () => {
 
   describe('authorisation gate', () => {
     it('denies a capability the caller does not have', async () => {
-      // A fresh HR_OFFICER has no grants at all (only SYSTEM_ADMIN is seeded with
+      // A newly created user has no grants at all (only SYSTEM_ADMIN is seeded with
       // grants), so even role.view must be refused.
       const { token } = await loginAs(adminEmail, adminPassword);
 
-      const invite = await bearer(token)(api().post('/api/v1/users'))
+      const officerEmail = `officer-${randomUUID().slice(0, 8)}@hris.test`;
+      await bearer(token)(api().post('/api/v1/users'))
         .send({
-          email: `officer-${randomUUID().slice(0, 8)}@hris.test`,
+          email: officerEmail,
           displayName: 'HR Officer',
+          password: 'Str0ng-Passw0rd!',
           roleIds: [],
         })
-        .expect(200);
-      const officerEmail = invite.body.data.user.email as string;
-      const inviteToken = invite.body.data.inviteToken as string;
-
-      await api()
-        .post('/api/v1/auth/register')
-        .send({ inviteToken, password: 'Str0ng-Passw0rd!' })
         .expect(200);
 
       const officerSession = await loginAs(officerEmail, 'Str0ng-Passw0rd!');
@@ -223,43 +210,54 @@ describe('IAM (e2e)', () => {
       expect(items.some((item) => item.email === adminEmail)).toBe(true);
     });
 
-    it('invites a user and the invite activates the account', async () => {
+    it('creates an active user that can sign in with the password set by the admin', async () => {
       const email = `crew-${randomUUID().slice(0, 8)}@hris.test`;
       const create = await bearer(token)(api().post('/api/v1/users'))
-        .send({ email, displayName: 'Crew Member', roleIds: [] })
+        .send({
+          email,
+          displayName: 'Crew Member',
+          password: 'Str0ng-Passw0rd!',
+          roleIds: [],
+        })
         .expect(200);
-      expect(create.body.data.inviteToken).toBeTruthy();
-      expect(create.body.data.user.status).toBe('INVITED');
-
-      await api()
-        .post('/api/v1/auth/register')
-        .send({ inviteToken: create.body.data.inviteToken, password: 'Str0ng-Passw0rd!' })
-        .expect(200);
+      expect(create.body.data.status).toBe('ACTIVE');
 
       const session = await loginAs(email, 'Str0ng-Passw0rd!');
       const me = await bearer(session.token)(api().get('/api/v1/auth/me')).expect(200);
       expect((me.body.data as { user: { status: string } }).user.status).toBe('ACTIVE');
     });
 
-    it('does not allow a duplicate invite email', async () => {
-      const create = await bearer(token)(api().post('/api/v1/users'))
+    it('does not allow a duplicate email', async () => {
+      const email = `dup-${randomUUID().slice(0, 8)}@hris.test`;
+      await bearer(token)(api().post('/api/v1/users'))
         .send({
-          email: `dup-${randomUUID().slice(0, 8)}@hris.test`,
+          email,
           displayName: 'Dup',
+          password: 'Str0ng-Passw0rd!',
           roleIds: [],
         })
         .expect(200);
       await bearer(token)(api().post('/api/v1/users'))
-        .send({ email: create.body.data.user.email, displayName: 'Dup Two', roleIds: [] })
+        .send({
+          email,
+          displayName: 'Dup Two',
+          password: 'Str0ng-Passw0rd!',
+          roleIds: [],
+        })
         .expect(409);
     });
 
     it('suspends a user and blocks sign-in', async () => {
       const email = `away-${randomUUID().slice(0, 8)}@hris.test`;
       const create = await bearer(token)(api().post('/api/v1/users'))
-        .send({ email, displayName: 'Away', roleIds: [] })
+        .send({
+          email,
+          displayName: 'Away',
+          password: 'Str0ng-Passw0rd!',
+          roleIds: [],
+        })
         .expect(200);
-      const userId = create.body.data.user.id as string;
+      const userId = create.body.data.id as string;
 
       await bearer(token)(api().post(`/api/v1/users/${userId}/status`))
         .send({ status: 'SUSPENDED' })

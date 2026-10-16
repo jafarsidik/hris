@@ -55,17 +55,6 @@ export class LoginDto {
   password!: string;
 }
 
-export class RegisterDto {
-  @IsString()
-  @MinLength(10, { message: 'The invitation link looks incomplete.' })
-  @MaxLength(300)
-  inviteToken!: string;
-
-  @IsString()
-  @IsHrisPassword()
-  password!: string;
-}
-
 export class ForgotPasswordDto {
   @IsEmail({}, { message: 'Enter a valid email address.' })
   email!: string;

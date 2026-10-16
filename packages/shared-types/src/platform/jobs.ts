@@ -13,8 +13,28 @@ export const QUEUE_NOTIFICATIONS = 'hris.notifications';
 /** The BullMQ queue that carries every outbound webhook delivery. */
 export const QUEUE_WEBHOOKS = 'hris.webhooks';
 
+/** The BullMQ queue that carries workflow SLA/escalation jobs. */
+export const QUEUE_WORKFLOW = 'hris.workflow';
+
 /** Delivers one domain event to one subscribed webhook endpoint. */
 export const WEBHOOK_DELIVERY_JOB = 'webhook.deliver';
+
+/** Evaluates an SLA timer (due or escalation) for a workflow task. */
+export const WORKFLOW_SLA_JOB = 'workflow.sla';
+
+/** Kind of SLA evaluation to perform. */
+export const WORKFLOW_SLA_KINDS = ['DUE', 'ESCALATION'] as const;
+
+export type WorkflowSlaKind = (typeof WORKFLOW_SLA_KINDS)[number];
+
+/** Payload for {@link WORKFLOW_SLA_JOB}. */
+export interface WorkflowSlaJob {
+  readonly companyId: string;
+  readonly instanceId: string;
+  readonly taskId: string;
+  readonly stepKey: string;
+  readonly kind: WorkflowSlaKind;
+}
 
 /**
  * The signed payload a webhook receiver sees.
@@ -61,11 +81,11 @@ export const WEBHOOK_SIGNATURE_TOLERANCE_SECONDS = 300;
 /** Sends a rendered notification email; written back to a `notifications` row. */
 export const NOTIFICATION_EMAIL_JOB = 'notification.email';
 
-/** Sends a transactional email (invite, password reset) with no persisted row. */
+/** Sends a transactional email (password reset) with no persisted row. */
 export const TRANSACTIONAL_EMAIL_JOB = 'send-email';
 
 /** Transactional email template names the API may enqueue. */
-export const TRANSACTIONAL_EMAIL_TEMPLATES = ['password-reset', 'user-invite'] as const;
+export const TRANSACTIONAL_EMAIL_TEMPLATES = ['password-reset'] as const;
 
 export type TransactionalEmailTemplate = (typeof TRANSACTIONAL_EMAIL_TEMPLATES)[number];
 

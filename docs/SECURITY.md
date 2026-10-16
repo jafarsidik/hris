@@ -208,11 +208,16 @@ for a `resource.action` is turned into a query constraint by
 - The check raises `OUT_OF_SCOPE` (403) when a scope cannot be resolved; a row outside a
   resolved scope is simply not returned (404 on a single read, absent from a list).
 
-Enforcement is applied today to `user.view` (`AccessService.listUsers`/`getUser`) and to
-the generic `records` layer for every registry-declared, `supportsCrud` resource, and is
-covered by `apps/api/test/data-scope.e2e-spec.ts` (SELF, COMPANY, TEAM, DEPARTMENT,
-ENTITY, unresolved default-deny, and cross-tenant). Other bespoke resources adopt the
-resolver as their read paths are hardened.
+Enforcement is applied to every bespoke read that carries an organizational dimension:
+`user.view` (`AccessService.listUsers`/`getUser`), the integration list/detail
+(`integration.view`), the organization entity/unit reads (`organization.view`), and the log
+surface (`audit-log.view` — `GET /logs` and `GET /logs/audit`), plus the generic `records`
+layer for every registry-declared, `supportsCrud` resource. It is covered by
+`apps/api/test/data-scope.e2e-spec.ts` (SELF, COMPANY, TEAM, DEPARTMENT, ENTITY, unresolved
+default-deny, and cross-tenant), `apps/api/test/organization.e2e-spec.ts` (scoped unit
+management) and `apps/api/test/logs.e2e-spec.ts` (GLOBAL sees all actors, SELF sees only
+its own). User placement is itself re-validated against the actor's scope: a delegated
+administrator cannot place a user outside the subtree, entity or self scope they hold.
 
 Custom record actions are authorised the same way: the generic action route resolves the
 handler's declared `resource.action` from the caller's live permissions (and rejects a
@@ -252,8 +257,16 @@ Developer API clients are the platform's first non-human principals.
 - The client principal is synthetic (`roles: [API_CLIENT]`) and its permissions are the
   granted scopes at `COMPANY` breadth; it has no user placement, so org-scoped resources
   are out of reach until narrower machine scopes are modelled.
+- Every authenticated machine request is recorded in `api_request_log` (append-only,
+  tenant row-level security, `ON DELETE CASCADE` from `api_clients`). Only the method,
+  path, status, duration and correlation id are stored — never the query string or
+  request body — so a key in a URL or a payload is not duplicated into the log. The row
+  is written after the response finishes, from the client id the guard stamped on the
+  request, so throttled (`429`) requests are attributed too, and a write failure is
+  swallowed rather than failing an otherwise successful response.
 
-Covered by `apps/api/test/api-clients.e2e-spec.ts`.
+Covered by `apps/api/test/api-clients.e2e-spec.ts` and
+`apps/api/test/api-usage.e2e-spec.ts`.
 
 ## Workflow transition authorisation (Phase 5)
 

@@ -35,7 +35,6 @@ const fieldErrorExtractors: readonly (readonly string[])[] = [
   ['password'],
   ['currentPassword'],
   ['newPassword'],
-  ['inviteToken'],
   ['resetToken'],
   ['verificationToken'],
   ['displayName'],

@@ -21,6 +21,7 @@ import {
   INTEGRATION_DELIVERY_STATUSES,
   INTEGRATION_KINDS,
   INTEGRATION_STATUSES,
+  ORGANIZATIONAL_UNIT_TYPES,
   RESOURCES,
   SYSTEM_ROLE_KEYS,
   WORKFLOW_INSTANCE_STATUSES,
@@ -76,6 +77,12 @@ describe('schema contract with @hris/shared-types', () => {
   it('exposes exactly the shared workflow instance statuses', () => {
     expect(new Set(enumMembers('WorkflowInstanceStatus'))).toEqual(
       new Set(WORKFLOW_INSTANCE_STATUSES),
+    );
+  });
+
+  it('exposes exactly the shared organizational unit types', () => {
+    expect(new Set(enumMembers('OrganizationalUnitType'))).toEqual(
+      new Set(ORGANIZATIONAL_UNIT_TYPES),
     );
   });
 

@@ -148,6 +148,14 @@ export async function apiRequest<TData>(
 ): Promise<TData> {
   const { status, payload } = await requestJson(baseUrl, path, options);
 
+  // A successful response may legitimately carry no body: HTTP forbids a payload on
+  // `204 No Content`, which is the conventional answer to a DELETE. Returning
+  // `undefined` keeps the caller's `void` contract instead of reporting a correct
+  // deletion as a malformed response.
+  if (payload === undefined) {
+    return undefined as TData;
+  }
+
   if (typeof payload !== 'object' || payload === null || !('success' in payload)) {
     throw new ApiRequestError({
       code: DEFAULT_CODE,

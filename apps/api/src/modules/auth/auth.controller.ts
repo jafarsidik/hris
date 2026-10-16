@@ -34,7 +34,6 @@ import {
   ForgotPasswordDto,
   LoginDto,
   MfaVerifyDto,
-  RegisterDto,
   ResetPasswordDto,
   VerifyEmailDto,
 } from './auth.dto';
@@ -130,16 +129,6 @@ export class AuthController {
     // The principal is resolved fresh on every request by the guard, so this is a
     // zero-extra-database-read mirror of the caller.
     return this.auth.me(principal);
-  }
-
-  @Public()
-  @Post('register')
-  @HttpCode(HttpStatus.OK)
-  async register(
-    @Req() request: RequestWithCorrelationId & Request,
-    @Body() dto: RegisterDto,
-  ): Promise<void> {
-    await this.auth.register(dto.inviteToken, dto.password, this.contextFrom(request));
   }
 
   @Public()

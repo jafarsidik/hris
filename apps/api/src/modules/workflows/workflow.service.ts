@@ -7,9 +7,17 @@ import {
   type WorkflowInstanceStatus,
   type WorkflowInstanceSummary,
   type WorkflowStateDefinition,
+  type WorkflowStepDefinition,
+  type WorkflowTaskStatus,
   type WorkflowTransitionDefinition,
   type WorkflowTransitionEventSummary,
   type WorkflowVersionSummary,
+  type WorkflowTaskSummary,
+  type WorkflowSlaJob,
+  WORKFLOW_SLA_JOB,
+  WORKFLOW_STEP_DECISION_TYPES,
+  WORKFLOW_STEP_TYPES,
+  WORKFLOW_TASK_DECISIONS,
 } from '@hris/shared-types';
 
 import { can } from '../../common/auth/authorization.guard';
@@ -23,6 +31,8 @@ import {
 } from '../../common/errors/app-error';
 import { PrismaService } from '../database/prisma.service';
 import { LogService } from '../logs/log.service';
+import { NotificationService } from '../notifications/notification.service';
+import { QUEUE_NAMES, QueueService } from '../queue/queue.service';
 
 /** The caller attributes the workflow engine needs, drawn from the session principal. */
 export interface WorkflowActor {
@@ -48,6 +58,23 @@ export interface TransitionInput {
   readonly requiredPermission?: string | null;
   readonly requiresApproval?: boolean;
   readonly sortOrder?: number;
+  readonly condition?: string | null;
+}
+
+export interface StepInput {
+  readonly key?: string;
+  readonly name?: string;
+  readonly type?: string;
+  readonly decisionType?: string;
+  readonly requiredPermission?: string | null;
+  readonly requiresApproval?: boolean;
+  readonly sortOrder?: number;
+  readonly predecessorKeys?: string[];
+  readonly nextKeys?: string[];
+  readonly condition?: string | null;
+  readonly timeoutMinutes?: number | null;
+  readonly escalationPolicy?: string | null;
+  readonly stateKey?: string | null;
 }
 
 export interface StartInstanceInput {
@@ -65,6 +92,15 @@ const VERSION_INCLUDE = { version: { select: { version: true } } } as const;
 
 type InstanceRow = Prisma.WorkflowInstanceGetPayload<{ include: typeof VERSION_INCLUDE }>;
 
+/** The subset of instance facts the step router needs while it walks the graph. */
+interface RoutingInstance {
+  readonly id: string;
+  readonly companyId: string;
+  readonly versionId: string;
+  readonly resource: string | null;
+  readonly currentStateKey: string;
+}
+
 /**
  * The workflow engine.
  *
@@ -80,6 +116,8 @@ export class WorkflowService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(LogService) private readonly logs: LogService,
+    @Inject(NotificationService) private readonly notifications: NotificationService,
+    @Inject(QueueService) private readonly queue: QueueService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -254,6 +292,7 @@ export class WorkflowService {
           status: 'DRAFT',
           states: (latest?.states ?? []) as never,
           transitions: (latest?.transitions ?? []) as never,
+          steps: (latest?.steps ?? []) as never,
           createdBy: actor.userId,
         },
       });
@@ -265,11 +304,13 @@ export class WorkflowService {
     actor: WorkflowActor,
     definitionId: string,
     version: number,
-    input: { states?: StateInput[]; transitions?: TransitionInput[] },
+    input: { states?: StateInput[]; transitions?: TransitionInput[]; steps?: StepInput[] },
   ): Promise<WorkflowVersionSummary> {
     const states = normalizeStates(input.states ?? []);
     const transitions = normalizeTransitions(input.transitions ?? [], states);
+    const steps = normalizeSteps(input.steps ?? [], states);
     assertStateMachine(states, transitions);
+    assertStepGraph(steps);
 
     const client = this.prisma.getClient();
     return withTenantContext(client, actor.companyId, async (tx) => {
@@ -285,6 +326,7 @@ export class WorkflowService {
         data: {
           states: states as never,
           transitions: transitions as never,
+          steps: steps as never,
           createdBy: actor.userId,
         },
       });
@@ -361,6 +403,7 @@ export class WorkflowService {
     id: string,
   ): Promise<{
     instance: WorkflowInstanceSummary;
+    tasks: readonly WorkflowTaskSummary[];
     history: readonly WorkflowTransitionEventSummary[];
   }> {
     const client = this.prisma.getClient();
@@ -372,11 +415,21 @@ export class WorkflowService {
       if (instance === null) {
         throw new NotFoundError('The workflow instance does not exist.');
       }
-      const events = await tx.workflowTransitionEvent.findMany({
-        where: { instanceId: id },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      });
-      return { instance: toInstanceSummary(instance), history: events.map(toEventSummary) };
+      const [events, taskRows] = await Promise.all([
+        tx.workflowTransitionEvent.findMany({
+          where: { instanceId: id },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        }),
+        tx.workflowTask.findMany({
+          where: { instanceId: id },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        }),
+      ]);
+      return {
+        instance: toInstanceSummary(instance),
+        tasks: taskRows.map(toTaskSummary),
+        history: events.map(toEventSummary),
+      };
     });
   }
 
@@ -398,10 +451,14 @@ export class WorkflowService {
       if (active === null) {
         throw new ConflictError('The workflow has no published version to start.');
       }
-      const initial = readStates(active.states).find((state) => state.isInitial);
+      const states = readStates(active.states);
+      const initial = states.find((state) => state.isInitial);
       if (initial === undefined) {
         throw new ConflictError('The active workflow version has no initial state.');
       }
+
+      const steps = readSteps(active.steps);
+      const hasSteps = steps.length > 0;
 
       const instance = await tx.workflowInstance.create({
         data: {
@@ -433,6 +490,17 @@ export class WorkflowService {
         resourceId: instance.id,
         payload: { definitionKey: definition.key },
       });
+
+      if (hasSteps) {
+        await this.enterInitialSteps(tx, actor, instance, states, steps);
+        // Reload instance to get stepKey/dueAt/escalationAt
+        const updated = await tx.workflowInstance.findFirstOrThrow({
+          where: { id: instance.id },
+          include: VERSION_INCLUDE,
+        });
+        return toInstanceSummary(updated);
+      }
+
       return toInstanceSummary(instance);
     });
   }
@@ -552,6 +620,491 @@ export class WorkflowService {
   }
 
   // ---------------------------------------------------------------------------
+  // Tasks (step-driven routing, Phase 5.2a)
+  // ---------------------------------------------------------------------------
+
+  async listTasks(
+    companyId: string,
+    filter: { instanceId?: string; status?: WorkflowTaskStatus; assigneeUserId?: string } = {},
+  ): Promise<readonly WorkflowTaskSummary[]> {
+    const client = this.prisma.getClient();
+    return withTenantContext(client, companyId, async (tx) => {
+      const rows = await tx.workflowTask.findMany({
+        where: {
+          ...(filter.instanceId === undefined ? {} : { instanceId: filter.instanceId }),
+          ...(filter.status === undefined ? {} : { status: filter.status }),
+          ...(filter.assigneeUserId === undefined ? {} : { assigneeUserId: filter.assigneeUserId }),
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      });
+      return rows.map(toTaskSummary);
+    });
+  }
+
+  async getTask(companyId: string, id: string): Promise<WorkflowTaskSummary> {
+    const client = this.prisma.getClient();
+    return withTenantContext(client, companyId, async (tx) => {
+      const row = await tx.workflowTask.findFirst({ where: { id } });
+      if (row === null) {
+        throw new NotFoundError('The workflow task does not exist.');
+      }
+      return toTaskSummary(row);
+    });
+  }
+
+  async claimTask(actor: WorkflowActor, taskId: string): Promise<WorkflowTaskSummary> {
+    const client = this.prisma.getClient();
+    return withTenantContext(client, actor.companyId, async (tx) => {
+      const task = await tx.workflowTask.findFirst({ where: { id: taskId } });
+      if (task === null) {
+        throw new NotFoundError('The workflow task does not exist.');
+      }
+      if (task.status !== 'PENDING') {
+        throw new ConflictError('Only a pending task can be claimed.');
+      }
+      await this.assertStepPermission(tx, actor, task.stepKey, task.instanceId);
+
+      const claimed = await tx.workflowTask.update({
+        where: { id: taskId },
+        data: { status: 'CLAIMED', assigneeUserId: actor.userId, claimedAt: new Date() },
+      });
+      await this.logs.writeAudit(actor.companyId, {
+        actorUserId: actor.userId,
+        action: 'workflow.task.claim',
+        resource: 'workflow',
+        resourceId: taskId,
+      });
+      return toTaskSummary(claimed);
+    });
+  }
+
+  async decideTask(
+    actor: WorkflowActor,
+    taskId: string,
+    input: { decision?: string; comment?: string | null },
+  ): Promise<WorkflowInstanceSummary> {
+    const decision = String(input.decision ?? '').toUpperCase();
+    if (!(WORKFLOW_TASK_DECISIONS as readonly string[]).includes(decision)) {
+      throw new ValidationError('The decision must be APPROVE, REJECT or SKIP.');
+    }
+
+    const client = this.prisma.getClient();
+    return withTenantContext(client, actor.companyId, async (tx) => {
+      const task = await tx.workflowTask.findFirst({ where: { id: taskId } });
+      if (task === null) {
+        throw new NotFoundError('The workflow task does not exist.');
+      }
+      if (task.status !== 'PENDING' && task.status !== 'CLAIMED') {
+        throw new ConflictError('The task has already been decided.');
+      }
+      const instance = await tx.workflowInstance.findFirst({
+        where: { id: task.instanceId },
+        include: VERSION_INCLUDE,
+      });
+      if (instance === null) {
+        throw new NotFoundError('The workflow instance does not exist.');
+      }
+      if (instance.status !== 'IN_PROGRESS') {
+        throw new ConflictError('The workflow instance is no longer in progress.');
+      }
+      const version = await tx.workflowVersion.findFirst({ where: { id: instance.versionId } });
+      if (version === null) {
+        throw new NotFoundError('The workflow version does not exist.');
+      }
+      const steps = readSteps(version.steps);
+      const step = steps.find((candidate) => candidate.key === task.stepKey);
+      if (step === undefined) {
+        throw new UnprocessableEntityError('The task references an unknown step.');
+      }
+
+      await this.assertStepPermission(tx, actor, task.stepKey, instance.id, step);
+      if (
+        step.requiresApproval &&
+        !(await this.isEffectiveApprover(tx, actor, instance.resource))
+      ) {
+        throw new ForbiddenError('You are not an authorized approver for this workflow.');
+      }
+
+      const status: WorkflowTaskStatus =
+        decision === 'APPROVE' ? 'APPROVED' : decision === 'REJECT' ? 'REJECTED' : 'SKIPPED';
+      await tx.workflowTask.update({
+        where: { id: taskId },
+        data: {
+          status,
+          assigneeUserId: actor.userId,
+          decidedAt: new Date(),
+          comment: input.comment ?? null,
+          ...(task.claimedAt === null ? { claimedAt: new Date() } : {}),
+        },
+      });
+      await this.logs.writeAudit(actor.companyId, {
+        actorUserId: actor.userId,
+        action: 'workflow.task.decide',
+        resource: 'workflow',
+        resourceId: taskId,
+        payload: { decision, stepKey: task.stepKey },
+      });
+
+      return this.advanceAfterDecision(tx, actor, instance, version, steps, step, decision);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Step routing internals
+  // ---------------------------------------------------------------------------
+
+  /** Enters every entry step (no predecessors) of a freshly started instance. */
+  private async enterInitialSteps(
+    tx: Prisma.TransactionClient,
+    actor: WorkflowActor,
+    instance: RoutingInstance,
+    states: readonly WorkflowStateDefinition[],
+    steps: readonly WorkflowStepDefinition[],
+  ): Promise<void> {
+    const entry = steps.filter((step) => step.predecessorKeys.length === 0);
+    for (const step of entry) {
+      await this.enterStep(tx, actor, instance, states, step);
+    }
+  }
+
+  /**
+   * Puts the instance at one step: mirrors the step's state, sets the SLA
+   * timestamps, and materializes one task per candidate approver. Steps that do
+   * not require approval satisfy immediately and advance past themselves.
+   */
+  private async enterStep(
+    tx: Prisma.TransactionClient,
+    actor: WorkflowActor,
+    instance: RoutingInstance,
+    states: readonly WorkflowStateDefinition[],
+    step: WorkflowStepDefinition,
+  ): Promise<void> {
+    void states;
+    if (step.condition != null && !evaluateCondition(step.condition, instance)) {
+      return;
+    }
+
+    const now = new Date();
+    const dueAt =
+      step.timeoutMinutes != null && step.timeoutMinutes > 0
+        ? new Date(now.getTime() + step.timeoutMinutes * 60_000)
+        : null;
+    const escalationAt = dueAt;
+
+    await tx.workflowInstance.update({
+      where: { id: instance.id },
+      data: {
+        ...(step.stateKey != null ? { currentStateKey: step.stateKey } : {}),
+        stepKey: step.key,
+        dueAt,
+        escalationAt,
+      },
+    });
+
+    if (!step.requiresApproval) {
+      await this.satisfyStepAutomatically(tx, actor, instance, step);
+      return;
+    }
+
+    const candidates = await this.resolveCandidates(tx, step.requiredPermission);
+    if (candidates.length === 0) {
+      const created = await tx.workflowTask.create({
+        data: {
+          companyId: actor.companyId,
+          instanceId: instance.id,
+          stepKey: step.key,
+          stateKey: step.stateKey ?? null,
+          status: 'PENDING',
+          assigneeUserId: null,
+          requiredPermission: step.requiredPermission ?? null,
+          dueAt,
+          escalationAt,
+        },
+      });
+      await this.enqueueSlaJob(actor.companyId, instance.id, created.id, step.key, escalationAt);
+      return;
+    }
+
+    for (const userId of candidates) {
+      const created = await tx.workflowTask.create({
+        data: {
+          companyId: actor.companyId,
+          instanceId: instance.id,
+          stepKey: step.key,
+          stateKey: step.stateKey ?? null,
+          status: 'PENDING',
+          assigneeUserId: userId,
+          requiredPermission: step.requiredPermission ?? null,
+          dueAt,
+          escalationAt,
+        },
+      });
+      await this.enqueueSlaJob(actor.companyId, instance.id, created.id, step.key, escalationAt);
+      await this.notifications.emit(actor.companyId, actor.userId, {
+        eventKey: 'workflow.task_assigned',
+        userId,
+        metadata: {
+          detail: `Step "${step.name}" requires your approval.`,
+        },
+        correlationId: instance.id,
+      });
+      await this.logs.writeAudit(actor.companyId, {
+        actorUserId: actor.userId,
+        action: 'workflow.task.assign',
+        resource: 'workflow',
+        resourceId: instance.id,
+        payload: { stepKey: step.key, assigneeUserId: userId },
+      });
+    }
+  }
+
+  /**
+   * Arms the delayed SLA timer for one task.
+   *
+   * The job is the escalation trigger: when it comes due the worker inspects the
+   * task and, if it is still open, hands it to a higher authority. A deterministic
+   * `jobId` keeps re-entering a step from stacking duplicate timers, and the whole
+   * enqueue is best-effort — an instance is still valid without a worker attached.
+   */
+  private async enqueueSlaJob(
+    companyId: string,
+    instanceId: string,
+    taskId: string,
+    stepKey: string,
+    escalationAt: Date | null,
+  ): Promise<void> {
+    if (escalationAt === null || !this.queue.isConfigured) {
+      return;
+    }
+    const payload: WorkflowSlaJob = {
+      companyId,
+      instanceId,
+      taskId,
+      stepKey,
+      kind: 'ESCALATION',
+    };
+    await this.queue.getQueue(QUEUE_NAMES.WORKFLOW).add(WORKFLOW_SLA_JOB, payload, {
+      delay: Math.max(0, escalationAt.getTime() - Date.now()),
+      jobId: `workflow-sla-${taskId}`,
+      removeOnComplete: true,
+      removeOnFail: 500,
+    });
+  }
+
+  /** Records a no-approval step as satisfied and moves on to its successors. */
+  private async satisfyStepAutomatically(
+    tx: Prisma.TransactionClient,
+    actor: WorkflowActor,
+    instance: RoutingInstance,
+    step: WorkflowStepDefinition,
+  ): Promise<void> {
+    await tx.workflowTask.create({
+      data: {
+        companyId: actor.companyId,
+        instanceId: instance.id,
+        stepKey: step.key,
+        stateKey: step.stateKey ?? null,
+        status: 'SKIPPED',
+        assigneeUserId: null,
+        requiredPermission: null,
+        decidedAt: new Date(),
+        comment: 'auto-satisfied',
+      },
+    });
+    await this.advanceFrom(tx, actor, instance, step);
+  }
+
+  /**
+   * After a decision on one task of a step, applies the step's decision rule and,
+   * when the step is satisfied, advances the instance to its successors.
+   */
+  private async advanceAfterDecision(
+    tx: Prisma.TransactionClient,
+    actor: WorkflowActor,
+    instance: RoutingInstance,
+    version: { states: unknown },
+    steps: readonly WorkflowStepDefinition[],
+    step: WorkflowStepDefinition,
+    decision: string,
+  ): Promise<WorkflowInstanceSummary> {
+    void steps;
+    const states = readStates(version.states);
+
+    if (decision === 'REJECT') {
+      return this.completeInstance(tx, actor, instance, 'REJECTED', step, states);
+    }
+
+    const siblingTasks = await tx.workflowTask.findMany({
+      where: { instanceId: instance.id, stepKey: step.key },
+    });
+    // Escalation supersedes a task: the escalated/expired rows stay for the audit
+    // trail but are no longer counted, so the step is judged only on the tasks an
+    // approver can still act on.
+    const actionable = siblingTasks.filter(
+      (task) => task.status !== 'ESCALATED' && task.status !== 'EXPIRED',
+    );
+    const decided = actionable.filter(
+      (task) => task.status === 'APPROVED' || task.status === 'SKIPPED',
+    );
+    const satisfied =
+      step.decisionType === 'ANY_PREDECESSOR'
+        ? decided.length > 0
+        : actionable.length > 0 && decided.length === actionable.length;
+
+    if (!satisfied) {
+      const updated = await tx.workflowInstance.findFirstOrThrow({
+        where: { id: instance.id },
+        include: VERSION_INCLUDE,
+      });
+      return toInstanceSummary(updated);
+    }
+
+    // Cancel any still-open sibling tasks; the step is settled.
+    await tx.workflowTask.updateMany({
+      where: {
+        instanceId: instance.id,
+        stepKey: step.key,
+        status: { in: ['PENDING', 'CLAIMED'] },
+      },
+      data: { status: 'SKIPPED', decidedAt: new Date(), comment: 'step settled' },
+    });
+
+    return this.advanceFrom(tx, actor, instance, step);
+  }
+
+  /** Enters the step's successors, or completes the instance at a terminal step. */
+  private async advanceFrom(
+    tx: Prisma.TransactionClient,
+    actor: WorkflowActor,
+    instance: RoutingInstance,
+    step: WorkflowStepDefinition,
+  ): Promise<WorkflowInstanceSummary> {
+    const version = await tx.workflowVersion.findFirst({ where: { id: instance.versionId } });
+    if (version === null) {
+      throw new NotFoundError('The workflow version does not exist.');
+    }
+    const steps = readSteps(version.steps);
+    const states = readStates(version.states);
+    const successors = step.nextKeys
+      .map((key) => steps.find((candidate) => candidate.key === key))
+      .filter((candidate): candidate is WorkflowStepDefinition => candidate != null);
+
+    if (successors.length === 0) {
+      return this.completeInstance(tx, actor, instance, 'COMPLETED', step, states);
+    }
+
+    for (const successor of successors) {
+      await this.enterStep(tx, actor, instance, states, successor);
+    }
+
+    const updated = await tx.workflowInstance.findFirstOrThrow({
+      where: { id: instance.id },
+      include: VERSION_INCLUDE,
+    });
+    return toInstanceSummary(updated);
+  }
+
+  /** Settles the instance: terminal status, mirrored final state, cancelled tasks. */
+  private async completeInstance(
+    tx: Prisma.TransactionClient,
+    actor: WorkflowActor,
+    instance: RoutingInstance,
+    status: 'COMPLETED' | 'APPROVED' | 'REJECTED',
+    step: WorkflowStepDefinition,
+    states: readonly WorkflowStateDefinition[],
+  ): Promise<WorkflowInstanceSummary> {
+    const finalState =
+      step.stateKey ?? states.find((state) => state.isFinal)?.key ?? instance.currentStateKey;
+    const updated = await tx.workflowInstance.update({
+      where: { id: instance.id },
+      data: { status, currentStateKey: finalState, stepKey: step.key },
+      include: VERSION_INCLUDE,
+    });
+    await tx.workflowTask.updateMany({
+      where: { instanceId: instance.id, status: { in: ['PENDING', 'CLAIMED'] } },
+      data: { status: 'SKIPPED', decidedAt: new Date(), comment: 'instance settled' },
+    });
+    await tx.workflowTransitionEvent.create({
+      data: {
+        companyId: actor.companyId,
+        instanceId: instance.id,
+        fromStateKey: instance.currentStateKey,
+        toStateKey: finalState,
+        transitionName: status,
+        actorUserId: actor.userId,
+      },
+    });
+    await this.logs.writeAudit(actor.companyId, {
+      actorUserId: actor.userId,
+      action: 'workflow.instance.complete',
+      resource: 'workflow',
+      resourceId: instance.id,
+      payload: { status, stepKey: step.key },
+    });
+    return toInstanceSummary(updated);
+  }
+
+  /** Users active in the company whose roles grant the given `resource.action` key. */
+  private async resolveCandidates(
+    tx: Prisma.TransactionClient,
+    permission: string | null,
+  ): Promise<readonly string[]> {
+    if (permission == null) {
+      return [];
+    }
+    const parsed = parsePermissionKey(permission);
+    if (parsed === null) {
+      return [];
+    }
+    const rolePermissions = await tx.rolePermission.findMany({
+      where: { permission: { resource: parsed.resource, action: parsed.action } },
+      select: { roleId: true },
+    });
+    const roleIds = [...new Set(rolePermissions.map((row) => row.roleId))];
+    if (roleIds.length === 0) {
+      return [];
+    }
+    const memberships = await tx.userRole.findMany({
+      where: { roleId: { in: roleIds } },
+      select: { userId: true },
+    });
+    const userIds = [...new Set(memberships.map((row) => row.userId))];
+    if (userIds.length === 0) {
+      return [];
+    }
+    const users = await tx.user.findMany({
+      where: { id: { in: userIds }, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    return users.map((user) => user.id);
+  }
+
+  /** Checks the actor holds the step's required permission (when one is named). */
+  private async assertStepPermission(
+    tx: Prisma.TransactionClient,
+    actor: WorkflowActor,
+    stepKey: string,
+    instanceId: string,
+    step?: WorkflowStepDefinition,
+  ): Promise<void> {
+    void tx;
+    void instanceId;
+    const required = step?.requiredPermission;
+    if (required == null) {
+      return;
+    }
+    const parsed = parsePermissionKey(required);
+    if (parsed === null) {
+      throw new UnprocessableEntityError(`Step "${stepKey}" requires an unknown permission.`);
+    }
+    if (!can(actor.permissions, parsed.resource, parsed.action)) {
+      throw new ForbiddenError(
+        `You do not have the "${parsed.action}" permission on "${parsed.resource}" to act on this task.`,
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------
 
@@ -658,6 +1211,10 @@ function readTransitions(value: unknown): WorkflowTransitionDefinition[] {
   return Array.isArray(value) ? (value as WorkflowTransitionDefinition[]) : [];
 }
 
+function readSteps(value: unknown): WorkflowStepDefinition[] {
+  return Array.isArray(value) ? (value as WorkflowStepDefinition[]) : [];
+}
+
 function normalizeStates(input: readonly StateInput[]): WorkflowStateDefinition[] {
   const states = input.map((state, index) => {
     const key = (state.key ?? '').trim().toLowerCase();
@@ -752,6 +1309,29 @@ function assertStateMachine(
   }
 }
 
+/** When a version carries steps, the graph must be closed and have entry points. */
+function assertStepGraph(steps: readonly WorkflowStepDefinition[]): void {
+  if (steps.length === 0) {
+    return;
+  }
+  const keys = new Set(steps.map((step) => step.key));
+  for (const step of steps) {
+    for (const predecessor of step.predecessorKeys) {
+      if (!keys.has(predecessor)) {
+        throw new ValidationError(`Step "${step.key}" has unknown predecessor "${predecessor}".`);
+      }
+    }
+    for (const next of step.nextKeys) {
+      if (!keys.has(next)) {
+        throw new ValidationError(`Step "${step.key}" has unknown successor "${next}".`);
+      }
+    }
+  }
+  if (!steps.some((step) => step.predecessorKeys.length === 0)) {
+    throw new ValidationError('The step graph needs at least one step without predecessors.');
+  }
+}
+
 function matchesResource(ruleResource: string | null, resource: string | null): boolean {
   return ruleResource === null || resource === null || ruleResource === resource;
 }
@@ -796,6 +1376,7 @@ function toVersionSummary(version: {
   status: string;
   states: unknown;
   transitions: unknown;
+  steps?: unknown;
   publishedAt: Date | null;
   createdAt: Date;
 }): WorkflowVersionSummary {
@@ -805,6 +1386,7 @@ function toVersionSummary(version: {
     status: version.status as WorkflowVersionSummary['status'],
     states: readStates(version.states),
     transitions: readTransitions(version.transitions),
+    steps: readSteps(version.steps),
     publishedAt: version.publishedAt === null ? null : version.publishedAt.toISOString(),
     createdAt: version.createdAt.toISOString(),
   };
@@ -819,6 +1401,9 @@ function toInstanceSummary(instance: InstanceRow): WorkflowInstanceSummary {
     resourceId: instance.resourceId,
     currentStateKey: instance.currentStateKey,
     status: instance.status as WorkflowInstanceStatus,
+    stepKey: instance.stepKey,
+    dueAt: instance.dueAt === null ? null : instance.dueAt.toISOString(),
+    escalationAt: instance.escalationAt === null ? null : instance.escalationAt.toISOString(),
     createdAt: instance.createdAt.toISOString(),
     updatedAt: instance.updatedAt.toISOString(),
   };
@@ -842,4 +1427,127 @@ function toEventSummary(event: {
     comment: event.comment,
     createdAt: event.createdAt.toISOString(),
   };
+}
+
+function toTaskSummary(task: {
+  id: string;
+  instanceId: string;
+  stepKey: string;
+  stateKey: string | null;
+  status: WorkflowTaskStatus;
+  assigneeUserId: string | null;
+  requiredPermission: string | null;
+  dueAt: Date | null;
+  escalationAt: Date | null;
+  escalatedAt: Date | null;
+  claimedAt: Date | null;
+  decidedAt: Date | null;
+  comment: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): WorkflowTaskSummary {
+  return {
+    id: task.id,
+    instanceId: task.instanceId,
+    stepKey: task.stepKey,
+    stateKey: task.stateKey,
+    status: task.status,
+    assigneeUserId: task.assigneeUserId,
+    requiredPermission: task.requiredPermission,
+    dueAt: task.dueAt === null ? null : task.dueAt.toISOString(),
+    escalationAt: task.escalationAt === null ? null : task.escalationAt.toISOString(),
+    escalatedAt: task.escalatedAt === null ? null : task.escalatedAt.toISOString(),
+    claimedAt: task.claimedAt === null ? null : task.claimedAt.toISOString(),
+    decidedAt: task.decidedAt === null ? null : task.decidedAt.toISOString(),
+    decisionComment: task.comment,
+    createdAt: task.createdAt.toISOString(),
+    updatedAt: task.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * A minimal condition evaluator: `truthy` / `falsy` literals, and
+ * `field==value` / `field!=value` comparisons against the instance payload.
+ * Anything unrecognised evaluates to true (the step applies).
+ */
+function evaluateCondition(condition: string, instance: { resource: string | null }): boolean {
+  const trimmed = condition.trim();
+  if (trimmed.length === 0) {
+    return true;
+  }
+  if (trimmed === 'truthy') {
+    return true;
+  }
+  if (trimmed === 'falsy') {
+    return false;
+  }
+  const comparison = /^([a-zA-Z0-9_.]+)\s*(==|!=)\s*(.+)$/.exec(trimmed);
+  if (comparison === null) {
+    return true;
+  }
+  const [, field, operator, rawValue] = comparison as unknown as [
+    string,
+    string,
+    '==' | '!=',
+    string,
+  ];
+  const expected = rawValue.trim().replace(/^['"]|['"]$/g, '');
+  const actual = field === 'resource' ? (instance.resource ?? '') : '';
+  return operator === '==' ? actual === expected : actual !== expected;
+}
+
+function normalizeSteps(
+  input: readonly StepInput[],
+  states: readonly WorkflowStateDefinition[] = [],
+): WorkflowStepDefinition[] {
+  const keys = new Set<string>();
+  const stateKeys = new Set(states.map((state) => state.key));
+  return input.map((s, idx) => {
+    const key = (s.key ?? '').trim();
+    if (key.length === 0) throw new ValidationError('Step key is required.');
+    if (keys.has(key)) throw new ValidationError(`Duplicate step key "${key}".`);
+    keys.add(key);
+    const t = String(s.type ?? 'SEQUENTIAL').toUpperCase();
+    const d = String(s.decisionType ?? 'ALL_PREDECESSORS').toUpperCase();
+    if (!(WORKFLOW_STEP_TYPES as readonly string[]).includes(t))
+      throw new ValidationError('Invalid step type.');
+    if (!(WORKFLOW_STEP_DECISION_TYPES as readonly string[]).includes(d))
+      throw new ValidationError('Invalid step decision type.');
+    const predecessors = Array.isArray(s.predecessorKeys)
+      ? s.predecessorKeys.map((x) => String(x))
+      : [];
+    const nextKeys = Array.isArray(s.nextKeys) ? s.nextKeys.map((x) => String(x)) : [];
+    let timeout: number | null = null;
+    if (s.timeoutMinutes !== undefined && s.timeoutMinutes !== null) {
+      timeout = Number(s.timeoutMinutes);
+      if (!Number.isFinite(timeout) || timeout < 0) timeout = null;
+    }
+    const stateKey = s.stateKey != null ? String(s.stateKey).trim() : null;
+    if (stateKey != null && stateKeys.size > 0 && !stateKeys.has(stateKey)) {
+      throw new ValidationError(`Step "${key}" refers to unknown state "${stateKey}".`);
+    }
+    if (s.requiredPermission != null) {
+      const parsed = parsePermissionKey(s.requiredPermission);
+      if (parsed === null) {
+        throw new ValidationError(
+          `"${s.requiredPermission}" is not a valid resource.action permission.`,
+        );
+      }
+    }
+    return {
+      key,
+      name: (s.name ?? key).trim(),
+      type: t as WorkflowStepDefinition['type'],
+      decisionType: d as WorkflowStepDefinition['decisionType'],
+      requiredPermission: s.requiredPermission ?? null,
+      requiresApproval: s.requiresApproval === true,
+      sortOrder: s.sortOrder ?? idx,
+      predecessorKeys: predecessors,
+      nextKeys,
+      condition: s.condition ?? null,
+      timeoutMinutes: timeout,
+      escalationPolicy: s.escalationPolicy ?? null,
+      stateKey,
+    };
+  });
 }

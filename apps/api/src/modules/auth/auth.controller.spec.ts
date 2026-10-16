@@ -8,7 +8,6 @@ import {
   ChangePasswordDto,
   ForgotPasswordDto,
   LoginDto,
-  RegisterDto,
   ResetPasswordDto,
   VerifyEmailDto,
 } from './auth.dto';
@@ -19,7 +18,6 @@ const paramtypesOf = (method: string): readonly unknown[] =>
 
 const BODY_ENDPOINTS: readonly (readonly [string, number, unknown])[] = [
   ['login', 2, LoginDto],
-  ['register', 1, RegisterDto],
   ['forgotPassword', 1, ForgotPasswordDto],
   ['resetPassword', 1, ResetPasswordDto],
   ['verifyEmail', 1, VerifyEmailDto],

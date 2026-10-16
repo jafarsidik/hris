@@ -188,6 +188,29 @@ managed under `/api/v1/developers/clients` gated on `api-client:*`; rotation, di
 and deletion take effect on the next request. The secret is returned only when a client
 is created or rotated — it is never readable again.
 
+### API usage and request log
+
+Two read-only developer surfaces, both gated on `api-client:view`, expose how the
+machine clients are being used. They cover only requests that authenticated with a key:
+browser traffic is not attributed to a client and is recorded by the ordinary access
+log instead.
+
+- `GET /api/v1/developers/usage` — a per-client rollup for a window. Optional `from`
+  and `to` (ISO-8601, inclusive) bound the window; `clientId` narrows to one client. The
+  response carries one row per client (`requestCount`, `errorCount`, `avgDurationMs`;
+  errors counted as status `>= 400`), plus `totalRequests` and `totalErrors`. The whole
+  window is aggregated server-side, so the totals are complete rather than a page of
+  them.
+- `GET /api/v1/developers/requests` — the individual recorded requests, newest first,
+  cursor-paginated under the shared contract. Accepts the same `from`/`to`/`clientId`
+  filters plus `cursor`/`limit`. Each entry records the method, path, status code,
+  duration and correlation id. **Only the path is stored, never the query string or
+  request body**, so query-borne secrets are not persisted.
+
+The log is append-only and pruned by deleting the client: rows reference
+`api_clients` with `ON DELETE CASCADE`, and the table is under the same tenant row-level
+security policy as every other tenant table.
+
 ### Generic resources
 
 A registry resource with `supportsCrud` is served by a single generic surface,
@@ -246,18 +269,50 @@ non-secret record per configured adapter instance for a tenant:
 
 - `GET /integrations`, `GET /integrations/:id` — list and read configured integrations.
 - `POST /integrations` — create one (`key`, `name`, `kind`, `provider`, optional
-  `config`, `isEnabled`). The `kind` must have a registered adapter; only `EMAIL`
-  exists today, so other kinds are rejected until an adapter ships.
+  `config`, `isEnabled`, and for a webhook an `events` list). The `kind` must have a
+  registered adapter; `EMAIL` and `WEBHOOK` ship today, so other kinds are rejected until an
+  adapter ships.
 - `PATCH` / `DELETE /integrations/:id` — update or soft-delete.
 - `POST /integrations/:id/test` — run the adapter's connection test (`integration:manage`),
   record the outcome and update the integration's `status`/`lastCheckedAt`/`lastMessage`.
 - `GET /integrations/:id/deliveries` — the append-only operation ledger (connection
-  tests and outbound email deliveries), newest first, capped at 100 rows.
+  tests and outbound deliveries), newest first, capped at 100 rows.
+- `GET /integrations/:id/subscriptions`, `PUT /integrations/:id/subscriptions`
+  (`integration:update`) — read and replace a webhook's event-type subscriptions; `*`
+  subscribes to every event.
+- `POST /integrations/:id/secret` (`integration:manage`) — mint a new webhook signing
+  secret, returned exactly once.
 
 `config` is validated to reject credential-like keys, so secrets stay in encrypted
 System Settings. The email adapter resolves the tenant's SMTP relay from the `email.smtpHost`
 and `email.smtpPort` settings (or an explicit `host`/`port` override in `config`) and
-probes it over TCP; secrets are never read from the integration record.
+probes it over TCP; a webhook requires an absolute `config.url`. Secrets are never read
+from the integration record.
+
+### Organizations
+
+The organizational structure is served under `/api/v1/organization`, gated on
+`organization:*`:
+
+- `GET /organization/entities`, `GET /organization/entities/:id` — legal entities.
+- `POST /organization/entities` (`organization:create`) — create one (`code`, `name`,
+  `countryCode`, `currencyCode`).
+- `PATCH /organization/entities/:id` (`organization:update`), `DELETE` (`organization:delete`).
+  An entity that still has units cannot be deleted (`409`).
+- `GET /organization/units`, `GET /organization/units/:id` — the unit tree, filterable by
+  `entityId`, `parentId`, `type` and `search`.
+- `POST /organization/units` (`organization:create`) — create one (`code`, `name`, `type`,
+  optional `entityId`, `parentId`). Placement is validated against the caller's scope; a
+  cycle (a unit parented under its own descendant) is rejected (`400`).
+- `PATCH /organization/units/:id` (`organization:update`), `DELETE` (`organization:delete`).
+  A unit with children or assigned users cannot be deleted (`409`).
+
+Every read is narrowed by the caller's data scope, so a delegated administrator sees only
+their subtree. Users are placed on a unit through `organizationalUnitId` on
+`POST`/`PATCH /users`, resolved and re-validated server-side rather than trusted from the
+body. The same scope resolver narrows `GET /logs` and `GET /logs/audit`: `GLOBAL`/`COMPANY`
+callers see the whole tenant, `SELF` sees only their own actor rows, and any narrower org
+scope default-denies because the log carries no organizational dimension.
 
 ## OpenAPI
 
@@ -272,6 +327,10 @@ human session (`access-token`, an opaque bearer token also accepted from the
 `hris_session` cookie) and a developer API key (`api-key`, sent as `X-API-Key` or as
 `Authorization: Bearer hris_ak_...`). The public health probes are `@ApiExcludeEndpoint()`
 and intentionally absent.
+
+The console's **API Documentation** page (`/setup/api/docs`, gated on `api-client.view`)
+links to the served explorer and the raw document rather than restating the spec; if the
+explorer is disabled on an environment the page says so instead of appearing broken.
 
 Spec drift is a real risk when documentation is generated and then diverges. Two
 measures keep it honest: the spec is generated from the code that serves the requests,

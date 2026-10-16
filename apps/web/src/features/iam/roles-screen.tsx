@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 
 import { DATA_SCOPES, type DataScope } from '@hris/shared-types';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -447,7 +449,7 @@ export function RolesScreen() {
   }, [state.status, router]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageBody>
       <PageHeader
         title="Roles"
         description="Role definitions and access profiles."
@@ -498,13 +500,16 @@ export function RolesScreen() {
         </TableBody>
       </Table>
       {!list.loading && (list.data?.length ?? 0) === 0 && (
-        <p className="text-sm text-muted-foreground">No roles are defined yet.</p>
+        <EmptyState
+          title="No roles are defined yet"
+          description="Create a role to group permissions and assign them to users."
+        />
       )}
       {list.error !== undefined && (
         <p className="text-sm text-destructive" role="alert">
           {list.error}
         </p>
       )}
-    </div>
+    </PageBody>
   );
 }

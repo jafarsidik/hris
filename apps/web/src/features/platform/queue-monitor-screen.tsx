@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import type { QueueJobState, QueueSummary } from '@hris/shared-types';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -71,7 +72,7 @@ export function QueueMonitorScreen() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageBody>
       <PageHeader title="Background jobs" description="Queue health and failed job recovery." />
 
       {error !== undefined && (
@@ -162,6 +163,6 @@ export function QueueMonitorScreen() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageBody>
   );
 }

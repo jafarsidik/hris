@@ -1,3 +1,4 @@
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -45,7 +46,7 @@ export default async function EmployeesPage({
   });
 
   return (
-    <div className="space-y-6">
+    <PageBody>
       <PageHeader
         title="Employees"
         description="Search the directory, filter by status, department or type, and save views you come back to."
@@ -73,6 +74,6 @@ export default async function EmployeesPage({
         initialSort={toInitialSort(params)}
         initialCreateOpen={autoCreate}
       />
-    </div>
+    </PageBody>
   );
 }

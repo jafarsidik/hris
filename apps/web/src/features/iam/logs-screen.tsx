@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { PageToolbar } from '@/components/layout/page-toolbar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -126,10 +128,10 @@ function EventsView({ presetCategory, title, description }: LogViewProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageBody>
       <PageHeader title={title} description={description} />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <PageToolbar>
         <Select
           value={category}
           onValueChange={(value) => {
@@ -176,7 +178,7 @@ function EventsView({ presetCategory, title, description }: LogViewProps) {
           </Select>
         )}
         <span className="ml-auto text-sm text-muted-foreground">Operational event log</span>
-      </div>
+      </PageToolbar>
 
       {list.loading ? (
         <div className="flex flex-col gap-2">
@@ -235,7 +237,7 @@ function EventsView({ presetCategory, title, description }: LogViewProps) {
           />
         </>
       )}
-    </div>
+    </PageBody>
   );
 }
 
@@ -271,12 +273,12 @@ function AuditView({ title, description }: LogViewProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageBody>
       <PageHeader title={title} description={description} />
 
-      <div className="flex items-center gap-2">
+      <PageToolbar>
         <span className="ml-auto text-sm text-muted-foreground">Hash-chained audit trail</span>
-      </div>
+      </PageToolbar>
 
       {list.loading ? (
         <div className="flex flex-col gap-2">
@@ -352,7 +354,7 @@ function AuditView({ title, description }: LogViewProps) {
           />
         </>
       )}
-    </div>
+    </PageBody>
   );
 }
 

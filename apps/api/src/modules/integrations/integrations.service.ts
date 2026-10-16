@@ -27,6 +27,8 @@ import { PrismaService } from '../database/prisma.service';
 import { LogService } from '../logs/log.service';
 import { EmailAdapter } from './email.adapter';
 import type { IntegrationAdapter } from './integration.adapter';
+import { AnalyticsAdapter } from './analytics.adapter';
+import { StorageAdapter } from './storage.adapter';
 import { readUrl, WebhookAdapter } from './webhook.adapter';
 
 export interface IntegrationActor {
@@ -68,11 +70,15 @@ export class IntegrationsService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(LogService) private readonly logs: LogService,
     @Inject(EmailAdapter) private readonly emailAdapter: EmailAdapter,
+    @Inject(StorageAdapter) private readonly storageAdapter: StorageAdapter,
+    @Inject(AnalyticsAdapter) private readonly analyticsAdapter: AnalyticsAdapter,
     @Inject(CredentialCipherService) private readonly cipher: CredentialCipherService,
   ) {
     this.adapters = new Map<IntegrationKind, IntegrationAdapter>([
       [this.emailAdapter.kind, this.emailAdapter],
       [WEBHOOK_ADAPTER.kind, WEBHOOK_ADAPTER],
+      [this.storageAdapter.kind, this.storageAdapter],
+      [this.analyticsAdapter.kind, this.analyticsAdapter],
     ]);
   }
 

@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { PageBody } from '@/components/layout/page-body';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -67,7 +68,7 @@ function ProfileBody({ employee }: { employee: Employee }) {
   const status = describeStatus(employee.status);
 
   return (
-    <div className="space-y-6">
+    <PageBody>
       <Link
         href="/employees"
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
@@ -213,7 +214,7 @@ function ProfileBody({ employee }: { employee: Employee }) {
           />
         </TabsContent>
       </Tabs>
-    </div>
+    </PageBody>
   );
 }
 

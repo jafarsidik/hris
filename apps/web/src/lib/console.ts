@@ -51,9 +51,18 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
         permission: 'user.view',
       },
       {
+        label: 'Organizations',
+        description: 'Legal entities and the organizational unit hierarchy',
+        href: '/setup/organization',
+        status: 'built',
+        permission: 'organization.view',
+      },
+      {
         label: 'User Groups',
         description: 'Group users for bulk access assignment',
-        status: 'planned',
+        href: '/setup/user-groups',
+        status: 'built',
+        permission: 'registry.view',
       },
       {
         label: 'Roles',
@@ -79,7 +88,9 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
       {
         label: 'Access Policies',
         description: 'Least-privilege and conditional access policy',
-        status: 'planned',
+        href: '/setup/access-policies',
+        status: 'built',
+        permission: 'registry.view',
       },
       {
         label: 'Service Accounts',
@@ -121,7 +132,9 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
       {
         label: 'API Clients',
         description: 'Programmatic clients with scoped credentials',
-        status: 'planned',
+        href: '/setup/api/clients',
+        status: 'built',
+        permission: 'api-client.view',
       },
       {
         label: 'API Credentials',
@@ -141,17 +154,23 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
       {
         label: 'API Usage',
         description: 'Request volume and error rates by client',
-        status: 'planned',
+        href: '/setup/api/usage',
+        status: 'built',
+        permission: 'api-client.view',
       },
       {
         label: 'Webhooks',
         description: 'Outbound event subscriptions and delivery',
-        status: 'planned',
+        href: '/setup/api/webhooks',
+        status: 'built',
+        permission: 'integration.view',
       },
       {
         label: 'API Documentation',
         description: 'The published OpenAPI reference',
-        status: 'planned',
+        href: '/setup/api/docs',
+        status: 'built',
+        permission: 'api-client.view',
       },
     ],
   },
@@ -172,7 +191,9 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
       {
         label: 'Knowledge Sources',
         description: 'Documents and data grounding AI answers',
-        status: 'planned',
+        href: '/ai/assistant',
+        status: 'built',
+        permission: 'ai.view',
       },
       { label: 'Usage & Cost', description: 'Token consumption and spend', status: 'planned' },
       {
@@ -190,27 +211,37 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
       {
         label: 'Workflow Definitions',
         description: 'Versioned approval and routing definitions',
-        status: 'planned',
+        href: '/setup/workflows',
+        status: 'built',
+        permission: 'workflow.view',
       },
       {
         label: 'Business Rules',
         description: 'Conditional logic evaluated at runtime',
-        status: 'planned',
+        href: '/setup/business-rules',
+        status: 'built',
+        permission: 'workflow.view',
       },
       {
         label: 'Event Registry',
         description: 'Domain events a rule or workflow may react to',
-        status: 'planned',
+        href: '/setup/events',
+        status: 'built',
+        permission: 'workflow.view',
       },
       {
         label: 'Scheduled Actions',
         description: 'Recurring and time-based automation',
-        status: 'planned',
+        href: '/setup/scheduled-actions',
+        status: 'built',
+        permission: 'workflow.view',
       },
       {
         label: 'Execution History',
         description: 'Past workflow runs and their outcomes',
-        status: 'planned',
+        href: '/setup/workflows/instances',
+        status: 'built',
+        permission: 'workflow.view',
       },
     ],
   },
@@ -222,7 +253,8 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
       {
         label: 'Integrations',
         description: 'External integration health and delivery log',
-        status: 'planned',
+        href: '/setup/integrations',
+        status: 'built',
         permission: 'integration.view',
       },
       { label: 'Connections', description: 'Reusable outbound connections', status: 'planned' },
@@ -262,12 +294,16 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
       {
         label: 'Application Registry',
         description: 'Deployed applications on the platform',
-        status: 'planned',
+        href: '/setup/applications',
+        status: 'built',
+        permission: 'registry.view',
       },
       {
         label: 'Module Registry',
         description: 'Modules owned by each application',
-        status: 'planned',
+        href: '/setup/modules',
+        status: 'built',
+        permission: 'registry.view',
       },
       {
         label: 'Resource Registry',
@@ -289,7 +325,9 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
       {
         label: 'Feature Flags',
         description: 'Feature rollout and configuration',
-        status: 'planned',
+        href: '/platform/feature-flags',
+        status: 'built',
+        permission: 'registry.view',
       },
       {
         label: 'Extension Registry',
@@ -318,12 +356,16 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
       {
         label: 'File Storage',
         description: 'Object storage backends and retention',
-        status: 'planned',
+        href: '/setup/files',
+        status: 'built',
+        permission: 'document.view',
       },
       {
         label: 'Data Policies',
         description: 'Classification and handling rules',
-        status: 'planned',
+        href: '/setup/data-policies',
+        status: 'built',
+        permission: 'registry.view',
       },
       {
         label: 'System Defaults',
@@ -361,14 +403,22 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
       {
         label: 'API Access Log',
         description: 'Requests made by machine clients',
-        status: 'planned',
+        href: '/setup/api/access-log',
+        status: 'built',
+        permission: 'api-client.view',
       },
       {
         label: 'Access Reviews',
         description: 'Periodic certification of existing access',
         status: 'planned',
       },
-      { label: 'Data Retention', description: 'Retention and purge schedules', status: 'planned' },
+      {
+        label: 'Data Retention',
+        description: 'Retention and purge schedules',
+        href: '/setup/data-retention',
+        status: 'built',
+        permission: 'document.view',
+      },
     ],
   },
   {
@@ -406,7 +456,9 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
       {
         label: 'Backup & Restore',
         description: 'Backup schedules and restore points',
-        status: 'planned',
+        href: '/setup/backup-restore',
+        status: 'built',
+        permission: 'setting.update',
       },
     ],
   },
@@ -415,7 +467,13 @@ export const CONSOLE_SECTIONS: readonly ConsoleSection[] = [
     label: 'Tenant Management',
     description: 'Tenants, entitlements, quotas and cross-tenant activity.',
     items: [
-      { label: 'Tenants', description: 'Customer tenants on the platform', status: 'planned' },
+      {
+        label: 'Tenants',
+        description: 'Customer tenants on the platform',
+        href: '/platform/tenants',
+        status: 'built',
+        permission: 'registry.view',
+      },
       { label: 'Tenant Settings', description: 'Per-tenant configuration', status: 'planned' },
       {
         label: 'Modules & Entitlements',

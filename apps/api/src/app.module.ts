@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { AppConfigurationModule } from './config/app-configuration.module';
 import { AuthInfraModule } from './common/auth/auth-infra.module';
@@ -9,23 +9,36 @@ import { AuthorizationGuard } from './common/auth/authorization.guard';
 import { CsrfGuard } from './common/auth/csrf.guard';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { AccessModule } from './modules/access/access.module';
+import { AiModule } from './modules/ai/ai.module';
 import { ApiClientsModule } from './modules/api-clients/api-clients.module';
+import { ApiUsageModule } from './modules/api-usage/api-usage.module';
 import { ApprovalModule } from './modules/approvals/approval.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BusinessRulesModule } from './modules/business-rules/business-rules.module';
 import { DatabaseModule } from './modules/database/database.module';
 import { ExampleProjectsModule } from './modules/example-projects/example-projects.module';
+import { DomainEventsModule } from './modules/events/domain-events.module';
+import { FilesModule } from './modules/files/files.module';
+import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
+import { DataRetentionModule } from './modules/data-retention/data-retention.module';
 import { HealthModule } from './modules/health/health.module';
+import { GovernanceModule } from './modules/governance/governance.module';
+import { IdempotencyModule } from './modules/idempotency/idempotency.module';
+import { IdempotencyInterceptor } from './modules/idempotency/idempotency.interceptor';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { LogModule } from './modules/logs/log.module';
 import { MfaModule } from './modules/mfa/mfa.module';
 import { NotificationModule } from './modules/notifications/notification.module';
+import { OrganizationModule } from './modules/organization/organization.module';
 import { PasskeyModule } from './modules/passkeys/passkey.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { RecordsModule } from './modules/records/records.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { RegistryModule } from './modules/registry/registry.module';
+import { ScheduledJobsModule } from './modules/scheduled-jobs/scheduled-jobs.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { SsoModule } from './modules/sso/sso.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
 import { WorkflowModule } from './modules/workflows/workflow.module';
 
 /**
@@ -64,25 +77,38 @@ import { WorkflowModule } from './modules/workflows/workflow.module';
     CryptoModule,
     AuthModule,
     AccessModule,
+    AiModule,
     ApiClientsModule,
+    ApiUsageModule,
     ApprovalModule,
+    BusinessRulesModule,
     WorkflowModule,
+    TenantsModule,
     IntegrationsModule,
     ExampleProjectsModule,
+    DomainEventsModule,
+    FilesModule,
+    FeatureFlagsModule,
+    DataRetentionModule,
+    IdempotencyModule,
     MfaModule,
     SsoModule,
     PasskeyModule,
     SettingsModule,
     NotificationModule,
+    OrganizationModule,
     LogModule,
     RegistryModule,
     RecordsModule,
+    ScheduledJobsModule,
     HealthModule,
+    GovernanceModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: CsrfGuard },
     { provide: APP_GUARD, useClass: AuthenticationGuard },
     { provide: APP_GUARD, useClass: AuthorizationGuard },
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
   ],
 })
 export class AppModule {}

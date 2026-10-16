@@ -25,6 +25,15 @@ declare global {
       auth?: AuthenticatedRequest;
       /** Present once the principal has been loaded by the AuthenticationGuard. */
       authPrincipal?: SessionPrincipal;
+      /**
+       * The developer API client that authenticated this request, if any. Set before the
+       * rate limit is enforced so a throttled request is still attributed to its client;
+       * absent for an ordinary session. The request-usage writer reads it after the
+       * response is sent.
+       */
+      apiClientId?: string;
+      /** The tenant of {@link apiClientId}, for usage rows written outside the auth path. */
+      apiClientCompanyId?: string;
     }
   }
 }

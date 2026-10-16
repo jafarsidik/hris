@@ -466,7 +466,7 @@ export function HrisDataTable<TRow extends { readonly id: string }>({
       {status === 'ready' && !noResults && (
         <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
           <Table containerClassName="max-h-[70vh] overflow-auto overscroll-contain">
-            <TableHeader className="sticky top-0 z-10 bg-muted/70 backdrop-blur-sm">
+            <TableHeader className="sticky top-0 z-10 bg-table-header backdrop-blur-sm">
               <TableRow className="hover:bg-transparent">
                 {selectable && (
                   <TableHead className="w-10 pl-4">
@@ -525,7 +525,7 @@ export function HrisDataTable<TRow extends { readonly id: string }>({
                   <TableRow
                     key={row.id}
                     aria-selected={isSelected || undefined}
-                    className={cn(isSelected && 'bg-primary/[0.04]', rowClassName?.(row))}
+                    className={cn(isSelected && 'bg-primary/[0.08]', rowClassName?.(row))}
                   >
                     {selectable && (
                       <TableCell className="pl-4">
@@ -627,7 +627,7 @@ function TableSkeleton({ columns, rows }: { columns: number; rows: number }) {
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
       <Table containerClassName="max-h-[70vh] overflow-auto overscroll-contain">
-        <TableHeader className="sticky top-0 z-10 bg-muted/70">
+        <TableHeader className="sticky top-0 z-10 bg-table-header">
           <TableRow className="hover:bg-transparent">
             {Array.from({ length: columns }, (_, index) => (
               <TableHead key={index} className={index === 0 ? 'pl-4' : undefined}>

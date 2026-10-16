@@ -20,6 +20,10 @@ export const NOTIFICATION_EVENT_KEYS = [
   'role.changed',
   'settings.changed',
   'workflow.task_assigned',
+  'workflow.task_claimed',
+  'workflow.task_decided',
+  'workflow.task_escalated',
+  'workflow.task_expired',
 ] as const;
 
 export type NotificationEventKey = (typeof NOTIFICATION_EVENT_KEYS)[number];
@@ -38,6 +42,10 @@ export const NOTIFICATION_EVENT_KINDS: Readonly<Record<NotificationEventKey, Not
   'role.changed': 'warning',
   'settings.changed': 'info',
   'workflow.task_assigned': 'info',
+  'workflow.task_claimed': 'info',
+  'workflow.task_decided': 'success',
+  'workflow.task_escalated': 'warning',
+  'workflow.task_expired': 'warning',
 };
 
 /**
@@ -133,6 +141,38 @@ export const NOTIFICATION_TEMPLATE_DEFAULTS: Readonly<
     },
     PUSH: { subjectTemplate: 'Approval required', bodyTemplate: '{{detail}}' },
   },
+  'workflow.task_claimed': {
+    IN_APP: { subjectTemplate: 'Task claimed', bodyTemplate: '{{detail}}' },
+    EMAIL: {
+      subjectTemplate: 'Task claimed',
+      bodyTemplate: '{{detail}}\n\nView the task at {{appUrl}}',
+    },
+    PUSH: { subjectTemplate: 'Task claimed', bodyTemplate: '{{detail}}' },
+  },
+  'workflow.task_decided': {
+    IN_APP: { subjectTemplate: 'Task decided', bodyTemplate: '{{detail}}' },
+    EMAIL: {
+      subjectTemplate: 'Task decided',
+      bodyTemplate: '{{detail}}\n\nView the task at {{appUrl}}',
+    },
+    PUSH: { subjectTemplate: 'Task decided', bodyTemplate: '{{detail}}' },
+  },
+  'workflow.task_escalated': {
+    IN_APP: { subjectTemplate: 'Task escalated', bodyTemplate: '{{detail}}' },
+    EMAIL: {
+      subjectTemplate: 'Task escalated — action required',
+      bodyTemplate: '{{detail}}\n\nOpen the task at {{appUrl}}',
+    },
+    PUSH: { subjectTemplate: 'Task escalated', bodyTemplate: '{{detail}}' },
+  },
+  'workflow.task_expired': {
+    IN_APP: { subjectTemplate: 'Task expired', bodyTemplate: '{{detail}}' },
+    EMAIL: {
+      subjectTemplate: 'Task expired — no action taken',
+      bodyTemplate: '{{detail}}\n\nView the task at {{appUrl}}',
+    },
+    PUSH: { subjectTemplate: 'Task expired', bodyTemplate: '{{detail}}' },
+  },
 };
 
 /** Whether an event is eligible for email delivery, applied for the EMAIL channel. */
@@ -143,6 +183,10 @@ export const NOTIFICATION_EMAIL_EVENTS: ReadonlySet<NotificationEventKey> = new 
   'user.security_alert',
   'role.changed',
   'workflow.task_assigned',
+  'workflow.task_claimed',
+  'workflow.task_decided',
+  'workflow.task_escalated',
+  'workflow.task_expired',
 ]);
 
 /** A notification as served to a client. `href` is null when nothing is reachable. */
@@ -177,4 +221,28 @@ export interface NotificationTemplateReadModel {
   readonly subjectTemplate: string;
   readonly bodyTemplate: string;
   readonly enabled: boolean;
+}
+
+/** Replaces `{{key}}` placeholders from the template context. */
+export function substitute(template: string, context: Record<string, unknown>): string {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (match, key: string) => {
+    const value = context[key];
+    if (value === undefined || value === null) {
+      return match;
+    }
+    return String(value);
+  });
+}
+
+/** Renders a notification message from templates and context. */
+export function renderNotificationMessage(
+  eventKey: NotificationEventKey,
+  channel: NotificationChannel,
+  template: { subjectTemplate: string; bodyTemplate: string },
+  context: Record<string, unknown>,
+): { readonly title: string; readonly description: string } {
+  return {
+    title: substitute(template.subjectTemplate, context),
+    description: substitute(template.bodyTemplate, context),
+  };
 }

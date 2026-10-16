@@ -4,6 +4,7 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   MinLength,
   ValidateNested,
@@ -36,6 +37,7 @@ import {
   type PermissionGrant,
 } from '@hris/shared-types';
 
+import { IsHrisPassword } from '../auth/auth.dto';
 import { CurrentAuth, CurrentPrincipal } from '../../common/auth/current.decorator';
 import { type AuthenticatedRequest } from '../../common/auth/request-auth';
 import { RequirePermission } from '../../common/auth/require-permission.decorator';
@@ -69,6 +71,10 @@ export class UsersQueryDto {
   roleKey?: string;
 
   @IsOptional()
+  @IsUUID()
+  organizationalUnitId?: string;
+
+  @IsOptional()
   limit?: number;
 
   @IsOptional()
@@ -84,8 +90,16 @@ export class CreateUserDto {
   @MaxLength(120)
   displayName!: string;
 
+  @IsString()
+  @IsHrisPassword()
+  password!: string;
+
   @IsArray()
   roleIds!: string[];
+
+  @IsOptional()
+  @IsUUID()
+  organizationalUnitId?: string | null;
 }
 
 export class UpdateUserDto {
@@ -98,6 +112,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsArray()
   roleIds?: string[];
+
+  @IsOptional()
+  @IsUUID()
+  organizationalUnitId?: string | null;
 }
 
 export class ChangeUserStatusDto {
@@ -187,6 +205,7 @@ export class AccessController {
         search: query.search,
         status: query.status,
         roleKey: query.roleKey,
+        organizationalUnitId: query.organizationalUnitId,
       },
       normalisePageParams(query),
     );
@@ -199,7 +218,7 @@ export class AccessController {
     @CurrentAuth() session: AuthenticatedRequest,
     @CurrentPrincipal() principal: SessionPrincipal,
     @Body() dto: CreateUserDto,
-  ): Promise<{ user: UserSummary; inviteToken: string }> {
+  ): Promise<UserSummary> {
     return this.access.createUser(session.companyId, principal, dto);
   }
 

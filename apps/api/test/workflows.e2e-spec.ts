@@ -113,6 +113,7 @@ describe('Workflow engine (e2e)', () => {
       .send(MACHINE)
       .expect(200);
     expect((saved.body.data.states as unknown[]).length).toBe(4);
+    expect((saved.body.data.steps as unknown[]).length).toBe(0);
 
     const published = await api()
       .post(`/api/v1/workflows/${definitionId}/versions/1/publish`)
@@ -155,6 +156,7 @@ describe('Workflow engine (e2e)', () => {
     expect(response.body.data.currentStateKey).toBe('draft');
     expect(response.body.data.status).toBe('IN_PROGRESS');
     expect(response.body.data.version).toBe(1);
+    expect(response.body.data.stepKey).toBeNull();
   });
 
   it('executes an allowed transition and records history', async () => {

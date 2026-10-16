@@ -57,7 +57,7 @@ function layout(input: LayoutInput): { readonly text: string; readonly html: str
 }
 
 /**
- * Renders a transactional email (invite, password reset).
+ * Renders a transactional email (password reset).
  *
  * Links are reconstructed from a token because the API only enqueues the token; the
  * worker owns the browser-facing base URL so a single deployment can point staging and
@@ -82,20 +82,6 @@ export function renderTransactionalEmail(
         action: { label: 'Reset password', url },
       });
       return { subject: `Reset your ${options.appName} password`, ...body };
-    }
-    case 'user-invite': {
-      const token = context.inviteToken ?? '';
-      const url = `${options.webBaseUrl}/accept-invite?token=${encodeURIComponent(token)}`;
-      const body = layout({
-        appName: options.appName,
-        title: `You are invited to ${options.appName}`,
-        paragraphs: [
-          'An account has been created for you. Set your password to activate it.',
-          'If you were not expecting this invitation, you can ignore this email.',
-        ],
-        action: { label: 'Accept invitation', url },
-      });
-      return { subject: `Your ${options.appName} invitation`, ...body };
     }
   }
 }

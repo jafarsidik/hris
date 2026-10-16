@@ -99,6 +99,12 @@ model Company {
   id                                        String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   code                                      String               @unique @db.Citext
   name                                      String
+  status                                    String               @default("ACTIVE")
+  plan                                      String               @default("STANDARD")
+  suspendedAt                               DateTime?            @map("suspended_at") @db.Timestamptz(3)
+  trialEndsAt                               DateTime?            @map("trial_ends_at") @db.Timestamptz(3)
+  seatLimit                                 Int?                 @map("seat_limit")
+  storageQuotaBytes                          BigInt?              @map("storage_quota_bytes")
   createdAt                                 DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                                 DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
   createdBy                                 String?              @map("created_by_user_id") @db.Uuid
@@ -228,6 +234,7 @@ model User {
   system_settings                                                             SystemSetting[]
   user_roles_user_roles_created_by_user_idTousers                             UserRole[]               @relation("user_roles_created_by_user_idTousers")
   roles                                                                       UserRole[]
+  groupMemberships UserGroupMember[]
   company                                                                     Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   users                                                                       User?                    @relation("usersTousers", fields: [createdBy], references: [id], map: "users_created_by_fkey")
   other_users                                                                 User[]                   @relation("usersTousers")
@@ -623,6 +630,7 @@ model WorkflowVersion {
   status       WorkflowVersionStatus @default(DRAFT)
   states       Json                  @default("[]")
   transitions  Json                  @default("[]")
+  steps        Json                  @default("[]")
   publishedAt  DateTime?             @map("published_at") @db.Timestamptz(3)
   createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -643,6 +651,9 @@ model WorkflowInstance {
   resource        String?
   resourceId      String?                   @map("resource_id")
   currentStateKey String                    @map("current_state_key")
+  stepKey         String?                   @map("step_key")
+  dueAt           DateTime?                 @map("due_at") @db.Timestamptz(3)
+  escalationAt    DateTime?                 @map("escalation_at") @db.Timestamptz(3)
   status          WorkflowInstanceStatus    @default(IN_PROGRESS)
   createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -651,6 +662,7 @@ model WorkflowInstance {
   definition      WorkflowDefinition        @relation(fields: [definitionId], references: [id], onDelete: Cascade)
   version         WorkflowVersion           @relation(fields: [versionId], references: [id], onDelete: Cascade)
   events          WorkflowTransitionEvent[]
+  tasks           WorkflowTask[]
 
   @@index([resource, resourceId], map: "workflow_instances_resource_idx")
   @@index([companyId, definitionId], map: "workflow_instances_company_id_idx")
@@ -888,6 +900,8 @@ model ApiClient {
   createdBy   String?   @map("created_by_user_id") @db.Uuid
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(3)
 
+  apiRequestLogs ApiRequestLog[]
+
   @@index([companyId])
   @@map("api_clients")
 }
@@ -1057,4 +1071,309 @@ enum FieldDataType {
   JSON
   ENUM
   REFERENCE
+}
+
+
+/// Lifecycle of a stored object. Mirrors `FILE_OBJECT_STATUSES`.
+enum FileObjectStatus {
+  PENDING
+  AVAILABLE
+  DELETED
+}
+
+/// A stored object's metadata. The bytes live in S3-compatible storage; this row is the
+/// durable record of what was uploaded, who owns it and the retention window.
+model FileObject {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId      String           @map("company_id") @db.Uuid
+  name           String
+  mimeType       String           @map("mime_type")
+  size           BigInt?
+  storageKey     String           @unique @map("storage_key")
+  bucket         String
+  checksum       String?
+  status         FileObjectStatus @default(PENDING)
+  entity         String?
+  entityId       String?          @map("entity_id") @db.Uuid
+  retentionDays  Int?             @map("retention_days")
+  retentionUntil DateTime?        @map("retention_until") @db.Timestamptz(3)
+  uploadedBy     String?          @map("uploaded_by_user_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// When the bytes were removed. Deliberately NOT `deletedAt`: a deleted file must
+  /// stay visible (retention sweep, admin view), so it is not a `softDeleteExtension`
+  /// model; `status` is the soft-delete marker.
+  removedAt      DateTime?        @map("removed_at") @db.Timestamptz(3)
+
+  @@index([companyId, status], map: "files_company_status_idx")
+  @@index([companyId, entity, entityId], map: "files_company_entity_idx")
+  @@index([status, retentionUntil], map: "files_status_retention_idx")
+  @@map("files")
+}
+
+/// The durable log of every domain event.
+model OutboxEvent {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  type        String
+  resource    String
+  resourceId  String    @map("resource_id")
+  actorUserId String?   @map("actor_user_id") @db.Uuid
+  payload     Json      @default("{}")
+  occurredAt  DateTime  @map("occurred_at") @db.Timestamptz(3)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([companyId, occurredAt], map: "outbox_events_company_occurred_idx")
+  @@index([companyId, type], map: "outbox_events_company_type_idx")
+  @@index([companyId, publishedAt], map: "outbox_events_company_published_idx")
+  @@map("outbox_events")
+}
+
+/// A conditional rule triggered by a domain event.
+model BusinessRule {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  name        String
+  description String?
+  eventType   String   @map("event_type")
+  condition   Json     @default("{}")
+  actions     Json     @default("[]")
+  priority    Int      @default(100)
+  isEnabled   Boolean  @default(true) @map("is_enabled")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([companyId, eventType, isEnabled], map: "business_rules_company_event_idx")
+  @@map("business_rules")
+}
+
+enum WorkflowTaskStatus {
+  PENDING
+  CLAIMED
+  APPROVED
+  REJECTED
+  SKIPPED
+  ESCALATED
+  EXPIRED
+}
+
+model WorkflowTask {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId           String              @map("company_id") @db.Uuid
+  instanceId          String              @map("instance_id") @db.Uuid
+  stepKey             String              @map("step_key")
+  stateKey            String?             @map("state_key")
+  status              WorkflowTaskStatus  @default(PENDING)
+  assigneeUserId      String?             @map("assignee_user_id") @db.Uuid
+  requiredPermission  String?             @map("required_permission")
+  dueAt               DateTime?           @map("due_at") @db.Timestamptz(3)
+  escalationAt        DateTime?           @map("escalation_at") @db.Timestamptz(3)
+  escalatedAt         DateTime?           @map("escalated_at") @db.Timestamptz(3)
+  claimedAt           DateTime?           @map("claimed_at") @db.Timestamptz(3)
+  decidedAt           DateTime?           @map("decided_at") @db.Timestamptz(3)
+  comment             String?
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  instance            WorkflowInstance    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@index([instanceId, status], map: "workflow_tasks_instance_status_idx")
+  @@index([companyId, assigneeUserId, status], map: "workflow_tasks_company_assignee_status_idx")
+  @@index([status, dueAt], map: "workflow_tasks_status_due_idx")
+  @@map("workflow_tasks")
+}
+
+model ApiRequestLog {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  apiClientId     String    @map("api_client_id") @db.Uuid
+  method          String
+  path            String
+  statusCode      Int       @map("status_code")
+  durationMs      Int       @map("duration_ms")
+  correlationId   String?   @map("correlation_id")
+  occurredAt      DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  apiClient       ApiClient @relation(fields: [apiClientId], references: [id], onDelete: Cascade)
+
+  @@index([apiClientId, occurredAt(sort: Desc)], map: "api_request_log_client_occurred_idx")
+  @@index([companyId, occurredAt(sort: Desc)], map: "api_request_log_company_occurred_idx")
+  @@map("api_request_log")
+}
+
+model ScheduledAction {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  name        String
+  description String?
+  cron        String
+  action      Json      @default("{}")
+  isEnabled   Boolean   @default(true) @map("is_enabled")
+  nextRunAt   DateTime? @map("next_run_at") @db.Timestamptz(3)
+  lastRunAt   DateTime? @map("last_run_at") @db.Timestamptz(3)
+  lastError   String?   @map("last_error")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([companyId, isEnabled, nextRunAt], map: "scheduled_actions_company_enabled_next_idx")
+  @@map("scheduled_actions")
+}
+
+model IdempotencyKey {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  route         String
+  key           String
+  requestHash   String    @map("request_hash")
+  statusCode    Int?      @map("status_code")
+  responseBody  Json?     @map("response_body")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  completedAt   DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  @@unique([companyId, userId, route, key], map: "idempotency_keys_unique")
+  @@index([expiresAt], map: "idempotency_keys_expires_idx")
+  @@map("idempotency_keys")
+}
+
+model AiKnowledgeDocument {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId        String   @map("company_id") @db.Uuid
+  title            String
+  kind             String   @default("POLICY")
+  source           String?
+  content          String
+  embedding        Json?
+  status           String   @default("PUBLISHED")
+  createdByUserId  String?  @map("created_by_user_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([companyId, status], map: "ai_knowledge_documents_company_status_idx")
+  @@map("ai_knowledge_documents")
+}
+
+model AiCall {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  feature       String
+  provider      String
+  model         String
+  promptHash    String   @map("prompt_hash")
+  inputTokens   Int      @default(0) @map("input_tokens")
+  outputTokens  Int      @default(0) @map("output_tokens")
+  latencyMs     Int      @default(0) @map("latency_ms")
+  status        String   @default("SUCCESS")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([companyId, createdAt], map: "ai_calls_company_created_idx")
+  @@map("ai_calls")
+}
+
+model FeatureFlag {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId   String?  @map("company_id") @db.Uuid
+  key         String
+  name        String
+  description String?
+  enabled     Boolean  @default(false)
+  rollout     Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([key, companyId], map: "feature_flags_key_company_key")
+  @@index([key, companyId], map: "feature_flags_key_company_idx")
+  @@map("feature_flags")
+}
+
+model DataRetentionSchedule {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId      String   @map("company_id") @db.Uuid
+  resource       String
+  retentionDays  Int      @map("retention_days")
+  purgeAfterDays Int      @default(30) @map("purge_after_days")
+  isEnabled      Boolean  @default(true) @map("is_enabled")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([companyId, resource], map: "data_retention_schedules_company_resource_idx")
+  @@map("data_retention_schedules")
+}
+
+model UserGroup {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  members     UserGroupMember[]
+
+  @@unique([companyId, name], map: "user_groups_company_name_key")
+  @@index([companyId, name], map: "user_groups_company_name_idx")
+  @@map("user_groups")
+}
+
+model UserGroupMember {
+  groupId   String   @map("group_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  group       UserGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([groupId, userId])
+  @@map("user_group_members")
+}
+
+model DataPolicy {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId        String   @map("company_id") @db.Uuid
+  name             String
+  description      String?
+  classification   String   @default("internal")
+  targetResource   String   @map("target_resource")
+  maskingAction    String   @default("mask") @map("masking_action")
+  isEnabled        Boolean  @default(true) @map("is_enabled")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([companyId, targetResource], map: "data_policies_company_resource_idx")
+  @@map("data_policies")
+}
+
+model ConfigurationSchema {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  resourceKey String   @map("resource_key")
+  name        String
+  description String?
+  schemaJson  Json     @default("{}") @map("schema_json")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([companyId, resourceKey], map: "configuration_schemas_unique")
+  @@index([companyId, resourceKey], map: "configuration_schemas_company_resource_idx")
+  @@map("configuration_schemas")
+}
+
+model ExtensionRegistry {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  name        String
+  description String?
+  extensionKey String   @map("extension_key")
+  version     String
+  manifest    Json     @default("{}")
+  isEnabled   Boolean  @default(true) @map("is_enabled")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([companyId, extensionKey], map: "extension_registry_unique")
+  @@index([companyId, extensionKey], map: "extension_registry_company_extension_idx")
+  @@map("extension_registry")
 }

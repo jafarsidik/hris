@@ -6,6 +6,7 @@ import { startRegistration } from '@simplewebauthn/browser';
 
 import type { PasskeySummary } from '@hris/shared-types';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -124,7 +125,7 @@ export function AccountSecurityScreen() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageBody>
       <PageHeader
         title="Sign-in security"
         description="Add a second factor and passkeys to protect your account."
@@ -240,6 +241,6 @@ export function AccountSecurityScreen() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageBody>
   );
 }

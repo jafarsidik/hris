@@ -7,10 +7,13 @@ client and the dependency-aware readiness probe are in place and verified. Phase
 > **Platform evolution.** The phase table below tracks the original HRIS delivery plan.
 > The parallel effort to turn the monolith into a metadata-driven enterprise platform is
 > tracked separately in [architecture/implementation-roadmap.md](architecture/implementation-roadmap.md);
-> its Phase 0 (architecture) and Phase 1 (Platform Metadata Registry) are complete.
-> The System menu (M00) slice — authentication, IAM/RBAC, SSO, MFA, passkeys, approval
-> authority, notifications, queue monitoring — is delivered and described under
-> "System menu (M00) capabilities".
+> its Phases 0–4 are complete (architecture; Platform Metadata Registry; Administration
+> console + metadata CRUD engine; Dynamic authorization hardening — field masking, org
+> hierarchy, user placement and scoped reads; API & developer platform — API clients,
+> OpenAPI, signed webhooks, usage/access log, API docs, integrations/webhooks web
+> surfaces). The System menu (M00) slice —
+> authentication, IAM/RBAC, SSO, MFA, passkeys, approval authority, notifications, queue
+> monitoring — is delivered and described under "System menu (M00) capabilities".
 
 This document exists so that nothing delivered so far is mistaken for a finished
 feature. The platform foundation is deliberately not a product feature.

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import type { ModuleSummary, ResourceSummary } from '@hris/shared-types';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { ResourceFieldsTable } from '@/components/metadata/resource-fields-table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -52,7 +53,7 @@ export function ResourceRegistryScreen() {
   }, [applications, modules, resources]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageBody>
       <PageHeader
         title="Resource registry"
         description="Applications, modules and the resources they expose."
@@ -146,7 +147,7 @@ export function ResourceRegistryScreen() {
           </Card>
         ))
       )}
-    </div>
+    </PageBody>
   );
 }
 

@@ -76,6 +76,8 @@ const USERS: readonly UserSummary[] = [
     hasVerifiedEmail: true,
     lastLoginAt: new Date().toISOString(),
     roles: [{ key: 'SYSTEM_ADMIN', name: 'System Administrator' }],
+    organizationalUnitId: null,
+    organizationalUnit: null,
     createdAt: '2026-01-05T00:00:00.000Z',
   },
 ];
@@ -116,13 +118,15 @@ export const mockIamRepository: IamRepository = {
       id: `user-${USERS.length + 1}`,
       email: input.email,
       displayName: input.displayName,
-      status: 'INVITED',
-      hasVerifiedEmail: false,
+      status: 'ACTIVE',
+      hasVerifiedEmail: true,
       lastLoginAt: null,
       roles: [],
+      organizationalUnitId: input.organizationalUnitId ?? null,
+      organizationalUnit: null,
       createdAt: new Date().toISOString(),
     };
-    return { user, inviteToken: `mock-invite-${user.id}` };
+    return clone(user);
   },
 
   async updateUser(_userId, _input: UpdateUserInput) {

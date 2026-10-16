@@ -33,7 +33,15 @@ import { CurrentAuth, CurrentPrincipal } from '../../common/auth/current.decorat
 import type { SessionPrincipal } from '../../common/auth/permission.service';
 import { RequirePermission } from '../../common/auth/require-permission.decorator';
 import type { AuthenticatedRequest } from '../../common/auth/request-auth';
-import { WORKFLOW_INSTANCE_STATUSES, type WorkflowInstanceStatus } from '@hris/shared-types';
+import {
+  WORKFLOW_INSTANCE_STATUSES,
+  WORKFLOW_STEP_DECISION_TYPES,
+  WORKFLOW_STEP_TYPES,
+  WORKFLOW_TASK_DECISIONS,
+  WORKFLOW_TASK_STATUSES,
+  type WorkflowInstanceStatus,
+  type WorkflowTaskStatus,
+} from '@hris/shared-types';
 
 import { WorkflowService, type WorkflowActor } from './workflow.service';
 
@@ -118,6 +126,69 @@ export class WorkflowTransitionDto {
   sortOrder?: number;
 }
 
+export class WorkflowStepDto {
+  @IsString()
+  @MaxLength(64)
+  key!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsIn(WORKFLOW_STEP_TYPES as readonly string[])
+  type?: string;
+
+  @IsOptional()
+  @IsIn(WORKFLOW_STEP_DECISION_TYPES as readonly string[])
+  decisionType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  requiredPermission?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  requiresApproval?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  predecessorKeys?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  nextKeys?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  condition?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  timeoutMinutes?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  escalationPolicy?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  stateKey?: string;
+}
+
 export class UpdateWorkflowVersionDto {
   @IsArray()
   @ValidateNested({ each: true })
@@ -128,6 +199,12 @@ export class UpdateWorkflowVersionDto {
   @ValidateNested({ each: true })
   @Type(() => WorkflowTransitionDto)
   transitions!: WorkflowTransitionDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WorkflowStepDto)
+  steps?: WorkflowStepDto[];
 }
 
 export class StartWorkflowInstanceDto {
@@ -322,5 +399,108 @@ export class WorkflowInstancesController {
     @Param('id') id: string,
   ) {
     return this.workflows.cancelInstance(actor(session, principal), id);
+  }
+}
+
+export class DecideWorkflowTaskDto {
+  @IsIn(WORKFLOW_TASK_DECISIONS as readonly string[])
+  decision!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  comment?: string;
+}
+
+export class ListTasksQueryDto {
+  @IsOptional()
+  @IsUUID()
+  instanceId?: string;
+
+  @IsOptional()
+  @IsIn(WORKFLOW_TASK_STATUSES as readonly string[])
+  status?: WorkflowTaskStatus;
+
+  @IsOptional()
+  @IsIn(['me'])
+  assignee?: string;
+}
+
+/**
+ * The only filter the caller's own inbox accepts.
+ *
+ * The inbox is scoped to the signed-in user by the route, so pages and instance ids are
+ * not parameters: a narrower status is added on top of "assigned to me".
+ */
+export class ListMyTasksQueryDto {
+  @IsOptional()
+  @IsIn(WORKFLOW_TASK_STATUSES as readonly string[])
+  status?: WorkflowTaskStatus;
+}
+
+/**
+ * Workflow task inbox.
+ *
+ * Listing requires `workflow:view`; claiming and deciding are authorised per step by
+ * the engine (the step's required permission and, when it demands approval, the
+ * approval-authority rules), so those routes carry no static permission beyond the
+ * session itself.
+ */
+@Controller('workflow-tasks')
+export class WorkflowTasksController {
+  constructor(@Inject(WorkflowService) private readonly workflows: WorkflowService) {}
+
+  @Get()
+  @RequirePermission('workflow', 'view')
+  async list(@CurrentAuth() session: AuthenticatedRequest, @Query() query: ListTasksQueryDto) {
+    return this.workflows.listTasks(session.companyId, {
+      ...(query.instanceId === undefined ? {} : { instanceId: query.instanceId }),
+      ...(query.status === undefined ? {} : { status: query.status }),
+      ...(query.assignee === undefined ? {} : { assigneeUserId: session.userId }),
+    });
+  }
+
+  /**
+   * The caller's own inbox.
+   *
+   * Deliberately separate from {@link list} and gated on `workflow:approve` rather than
+   * `workflow:view`: an approver is asked to act on a task, not to administer the whole
+   * endpoint. Reading the instance of a task they can act on stays the engine's job.
+   *
+   * `mine` must be declared before the `:id` route, or Nest would resolve it as an id.
+   */
+  @Get('mine')
+  @RequirePermission('workflow', 'approve')
+  async mine(@CurrentAuth() session: AuthenticatedRequest, @Query() query: ListMyTasksQueryDto) {
+    return this.workflows.listTasks(session.companyId, {
+      assigneeUserId: session.userId,
+      ...(query.status === undefined ? {} : { status: query.status }),
+    });
+  }
+  @Get(':id')
+  @RequirePermission('workflow', 'view')
+  async get(@CurrentAuth() session: AuthenticatedRequest, @Param('id') id: string) {
+    return this.workflows.getTask(session.companyId, id);
+  }
+
+  @Post(':id/claim')
+  @HttpCode(HttpStatus.OK)
+  async claim(
+    @CurrentAuth() session: AuthenticatedRequest,
+    @CurrentPrincipal() principal: SessionPrincipal,
+    @Param('id') id: string,
+  ) {
+    return this.workflows.claimTask(actor(session, principal), id);
+  }
+
+  @Post(':id/decisions')
+  @HttpCode(HttpStatus.OK)
+  async decide(
+    @CurrentAuth() session: AuthenticatedRequest,
+    @CurrentPrincipal() principal: SessionPrincipal,
+    @Param('id') id: string,
+    @Body() dto: DecideWorkflowTaskDto,
+  ) {
+    return this.workflows.decideTask(actor(session, principal), id, dto);
   }
 }

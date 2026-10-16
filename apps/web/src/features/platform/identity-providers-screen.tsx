@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import type { IdentityProviderSummary } from '@hris/shared-types';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -95,7 +96,7 @@ export function IdentityProvidersScreen() {
   }, [form, list]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageBody>
       <PageHeader
         title="Single sign-on"
         description="Connect enterprise identity providers so users can sign in with them."
@@ -248,6 +249,6 @@ export function IdentityProvidersScreen() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageBody>
   );
 }

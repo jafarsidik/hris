@@ -38,13 +38,14 @@ export const apiIamRepository: IamRepository = {
     const params = new URLSearchParams();
     if (input.search) params.set('search', input.search);
     if (input.status) params.set('status', input.status);
+    if (input.organizationalUnitId) params.set('organizationalUnitId', input.organizationalUnitId);
     params.set('limit', String(page.limit ?? 20));
     if (page.cursor) params.set('cursor', page.cursor);
     return apiRequestV1<Paginated<UserSummary>>(`/users?${params.toString()}`);
   },
 
   async createUser(input) {
-    return apiRequestV1<{ user: UserSummary; inviteToken: string }>('/users', {
+    return apiRequestV1<UserSummary>('/users', {
       method: 'POST',
       body: { ...input, roleIds: [...input.roleIds] },
     });

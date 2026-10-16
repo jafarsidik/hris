@@ -257,62 +257,6 @@ export class AuthService {
     return toCurrentSession(principal);
   }
 
-  /** Activates an invited account: set the first password (brief: register by invitation). */
-  async register(inviteToken: string, password: string, context: LoginContext): Promise<void> {
-    const client = this.prisma.getClient();
-    const tokenHash = this.passwords.sha256Hex(inviteToken);
-    const user = await this.findUserByResetToken(tokenHash);
-
-    if (!user) {
-      throw new ValidationError(
-        'This invitation link is invalid or has already been used. Please request a new one.',
-      );
-    }
-
-    if (user.passwordResetExpiresAt !== null && user.passwordResetExpiresAt < new Date()) {
-      throw new ValidationError('This invitation link has expired. Please request a new one.');
-    }
-
-    const passwordHash = await this.passwords.hashPassword(password);
-
-    await withTenantContext(client, user.companyId, (tx) =>
-      tx.user.update({
-        where: { id: user.id },
-        data: {
-          passwordHash,
-          passwordChangedAt: new Date(),
-          passwordResetTokenHash: null,
-          passwordResetExpiresAt: null,
-          status: 'ACTIVE',
-          hasVerifiedEmail: true,
-        },
-      }),
-    );
-
-    await this.logs.writeAudit(user.companyId, {
-      actorUserId: user.id,
-      action: 'register',
-      resource: 'user',
-      resourceId: user.id,
-      payload: { via: 'invitation' },
-    });
-    await this.logs.recordEvent(user.companyId, {
-      category: 'AUTHENTICATION',
-      eventType: LOG_EVENT_TYPES['user.email_verified'],
-      actorUserId: user.id,
-      status: 'SUCCESS',
-      ipAddress: context.ipAddress,
-      userAgent: context.userAgent,
-      requestId: context.requestId,
-    });
-
-    await this.notifications.emit(user.companyId, user.id, {
-      eventKey: 'user.welcome',
-      userId: user.id,
-      href: '/dashboard',
-    });
-  }
-
   async requestPasswordReset(email: string, context: LoginContext): Promise<string> {
     const client = this.prisma.getClient();
     const rows = await client.$queryRaw<LoginUserRow[]>(

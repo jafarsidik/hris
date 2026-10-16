@@ -2,9 +2,18 @@ import type {
   AuditLogReadModel,
   DataScope,
   LogEvent,
+  OrganizationalUnitType,
   Paginated,
   SystemSettingReadModel,
 } from '@hris/shared-types';
+
+/** The unit a user is placed on, as summarised in a user read model. */
+export interface UserOrganizationalUnit {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly type: OrganizationalUnitType;
+}
 
 /** Read models returned by the Administration API (mirrors the API contracts). */
 export interface UserSummary {
@@ -15,6 +24,8 @@ export interface UserSummary {
   readonly hasVerifiedEmail: boolean;
   readonly lastLoginAt: string | null;
   readonly roles: readonly { readonly key: string; readonly name: string }[];
+  readonly organizationalUnitId: string | null;
+  readonly organizationalUnit: UserOrganizationalUnit | null;
   readonly createdAt: string;
 }
 
@@ -57,12 +68,15 @@ export interface PermissionGrantInput {
 export interface CreateUserInput {
   readonly email: string;
   readonly displayName: string;
+  readonly password: string;
   readonly roleIds: readonly string[];
+  readonly organizationalUnitId?: string | null;
 }
 
 export interface UpdateUserInput {
   readonly displayName?: string;
   readonly roleIds?: readonly string[];
+  readonly organizationalUnitId?: string | null;
 }
 
 export interface CreateRoleInput {
@@ -91,10 +105,10 @@ export interface LogFilter {
 
 export interface IamRepository {
   listUsers(
-    input: { search?: string; status?: UserSummary['status'] },
+    input: { search?: string; status?: UserSummary['status']; organizationalUnitId?: string },
     page: PageInput,
   ): Promise<Paginated<UserSummary>>;
-  createUser(input: CreateUserInput): Promise<{ user: UserSummary; inviteToken: string }>;
+  createUser(input: CreateUserInput): Promise<UserSummary>;
   updateUser(userId: string, input: UpdateUserInput): Promise<UserSummary>;
   changeUserStatus(userId: string, status: ManageableUserStatus): Promise<void>;
   listRoles(): Promise<readonly RoleSummary[]>;

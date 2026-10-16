@@ -3,8 +3,10 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { useSession } from '@/features/auth/session-context';
@@ -31,7 +33,7 @@ export function PermissionsScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageBody>
       <PageHeader
         title="Permissions"
         description="The fine-grained permissions that roles grant. Editing happens per role."
@@ -46,7 +48,10 @@ export function PermissionsScreen() {
           {list.error}
         </p>
       ) : grouped.size === 0 ? (
-        <p className="text-sm text-muted-foreground">No permissions are defined.</p>
+        <EmptyState
+          title="No permissions are defined"
+          description="Permissions appear here once resources and actions are registered."
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {Array.from(grouped.entries())
@@ -71,6 +76,6 @@ export function PermissionsScreen() {
             ))}
         </div>
       )}
-    </div>
+    </PageBody>
   );
 }

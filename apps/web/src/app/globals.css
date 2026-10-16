@@ -85,12 +85,31 @@
      surface, which must report a healthy system as green rather than as the
      brand blue that `primary` renders. */
   --success: #15803d;
+  --success-foreground: #ffffff;
 
   /* Added for recoverable problems that are not faults. `RATE_LIMITED` is a warning,
      not an error: colouring it destructive teaches operators to ignore red, which is
      the opposite of what a monitoring surface is for. */
   --warning: #b45309;
   --warning-foreground: #ffffff;
+
+  /* Informational status — neither healthy nor a problem (in progress, pending,
+   * queued). Without it those states fall back to the neutral grey that the design
+   * direction reserves for chrome, which reads as "inactive" rather than "underway". */
+  --info: #0369a1;
+  --info-foreground: #ffffff;
+
+  /* Table header surface. A restrained tint of the brand colour rather than flat
+     grey: it gives dense list pages a clear, coloured cap without turning the body
+     cells into a second accent. Derived so it tracks `primary` and the surface in
+     both themes. */
+  --table-header: color-mix(in oklab, var(--primary) 10%, var(--card));
+  --table-header-foreground: color-mix(in oklab, var(--primary) 40%, var(--foreground));
+
+  /* The widest the reading column grows before it centres. A single token rather than
+     the literal in the shell so every content container and future full-bleed region
+     agree on one width. */
+  --content-max-width: 1600px;
 
   --border: #e2e8f0;
   --input: #e2e8f0;
@@ -109,8 +128,11 @@
      silently wins against. */
   --sidebar: #ffffff;
   --sidebar-foreground: #1e293b;
-  --sidebar-accent: #e2e8f0;
-  --sidebar-accent-foreground: #1e293b;
+  /* Navigation hover/active is a brand tint, not the same grey as every border:
+     the accent is the one place the sidebar names the current location, so a tint
+     of `primary` makes it legible at a glance instead of reading as more chrome. */
+  --sidebar-accent: color-mix(in oklab, var(--primary) 10%, var(--sidebar));
+  --sidebar-accent-foreground: var(--primary);
   --sidebar-border: #e2e8f0;
   --sidebar-ring: #1d4ed8;
 
@@ -155,11 +177,22 @@
   --destructive-foreground: #ffffff;
 
   --success: #22c55e;
+  --success-foreground: #052e16;
 
   /* Lighter than the light-mode value: amber-700 on the near-black card is too dark
      to read, so the dark scheme inverts the luminance rather than reusing it. */
   --warning: #fbbf24;
   --warning-foreground: #1e293b;
+
+  /* Inverted like `primary`: sky-400 reads on the near-black surface where the
+     light-mode sky-700 would disappear. */
+  --info: #38bdf8;
+  --info-foreground: #082f49;
+
+  /* A deeper tint than light mode so the cap still separates from the card, and a
+     light foreground because the base text the mix targets is already pale. */
+  --table-header: color-mix(in oklab, var(--primary) 18%, var(--card));
+  --table-header-foreground: color-mix(in oklab, var(--primary) 20%, #ffffff);
 
   --border: #1e293b;
   --input: #1e293b;
@@ -169,8 +202,8 @@
      as two panels on one background, rather than as a floating box. */
   --sidebar: #0f172a;
   --sidebar-foreground: #e2e8f0;
-  --sidebar-accent: #1e293b;
-  --sidebar-accent-foreground: #e2e8f0;
+  --sidebar-accent: color-mix(in oklab, var(--primary) 26%, var(--sidebar));
+  --sidebar-accent-foreground: #bfdbfe;
   --sidebar-border: #1e293b;
   --sidebar-ring: #94a3b8;
 }
@@ -193,8 +226,13 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-table-header: var(--table-header);
+  --color-table-header-foreground: var(--table-header-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

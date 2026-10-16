@@ -70,6 +70,17 @@ describe('apiRequest', () => {
         ],
       ).toBe('web-trace-1');
     });
+
+    it('resolves a 204 No Content instead of rejecting an empty body', async () => {
+      // HTTP forbids a payload on 204, so a DELETE answers with nothing at all. Reporting
+      // that as a malformed response would make every successful delete look like a
+      // failure in the UI.
+      stubFetch(async () => new Response(null, { status: 204 }));
+
+      await expect(apiRequest<never>(BASE_URL, '/files/x', { method: 'DELETE' })).resolves.toBe(
+        undefined,
+      );
+    });
   });
 
   describe('errors', () => {

@@ -4,6 +4,7 @@ import { loadWorkerConfig } from './config';
 import { createLogger } from './logger';
 import { createNotificationsWorker } from './processors';
 import { createWebhookWorker } from './webhook-processor';
+import { createWorkflowWorker } from './workflow-processor';
 
 /**
  * Background worker entrypoint.
@@ -23,6 +24,7 @@ async function bootstrap(): Promise<void> {
   const workers = [
     createNotificationsWorker({ config, prisma, logger }),
     createWebhookWorker({ config, prisma, logger }),
+    createWorkflowWorker({ config, prisma, logger }),
   ];
 
   logger.info('Worker started', {

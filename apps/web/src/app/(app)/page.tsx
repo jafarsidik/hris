@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import {
   Accordion,
@@ -43,7 +44,7 @@ export default async function CommandCenterPage() {
   const facts = computeDirectoryFacts(directory.items);
 
   return (
-    <div className="space-y-6">
+    <PageBody>
       <DashboardGreeting />
 
       <PageHeader
@@ -70,31 +71,42 @@ export default async function CommandCenterPage() {
           value={facts.total}
           sub={`across ${facts.departments} departments`}
           icon={Users}
+          tone="primary"
         />
         <MetricCard
           label="Active"
           value={facts.active}
           sub={`of ${facts.total} records`}
           icon={UserCheck}
+          tone="success"
         />
-        <MetricCard label="On leave" value={facts.onLeave} sub="status ON_LEAVE" icon={Plane} />
+        <MetricCard
+          label="On leave"
+          value={facts.onLeave}
+          sub="status ON_LEAVE"
+          icon={Plane}
+          tone="info"
+        />
         <MetricCard
           label="New joiners"
           value={facts.recentJoiners}
           sub="in the last 30 days"
           icon={UserPlus}
+          tone="success"
         />
         <MetricCard
           label="Probation"
           value={facts.probation}
           sub="confirmation pending"
           icon={Hourglass}
+          tone="warning"
         />
         <MetricCard
           label="Departments"
           value={facts.departments}
           sub="in the sample directory"
           icon={Building2}
+          tone="primary"
         />
       </div>
 
@@ -147,6 +159,6 @@ export default async function CommandCenterPage() {
           </AccordionContent>
         </AccordionItem>
       </Accordion>
-    </div>
+    </PageBody>
   );
 }

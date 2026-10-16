@@ -538,6 +538,17 @@ Workflow definitions must support:
 
 Business modules invoke workflow rather than implementing approval logic independently.
 
+Routing is step-driven when a version declares `steps`. The engine materializes one task
+per candidate approver for each step an instance enters, mirrors the step's state onto the
+instance, and advances only when the step's `decisionType` is satisfied
+(`ALL_PREDECESSORS` needs every actionable task, `ANY_PREDECESSOR` the first); a rejection
+on any step terminates the instance as `REJECTED`. Steps may declare a `condition`, a
+`timeoutMinutes` SLA and an `escalationPolicy` (a permission key): entering a step arms a
+delayed job on the workflow queue, and the worker expires the timed-out task, re-routes it
+to holders of the escalation permission (default `workflow.manage`), and notifies them.
+Versions without `steps` keep the original transition-driven engine, so existing
+definitions are unaffected.
+
 ---
 
 # 13. EVENT ARCHITECTURE
@@ -957,6 +968,17 @@ usability feature, never a security control.
 radius and metric; components reference Tailwind utilities bound to those tokens.
 There is no JavaScript theme object, because a second copy of the palette is a drift
 risk by construction.
+
+**Pages compose from shared layout primitives.** A page body is `<PageBody>` (one
+`flex flex-col gap-6`), its title is `<PageHeader>` (the page's only `<h1>`), each
+region below it is `<SectionHeading>` (an `<h2>`, or `level={3}` for a sub-section),
+and a filter or action bar is `<PageToolbar>`. A titled region that should read as a
+distinct white block — a settings group, a documentation panel, a detail summary — is
+`<Section>`, which draws the `bg-card` surface, renders its heading with
+`<SectionHeading>`, and puts a `<Separator>` between the heading and the body. All
+live in `components/layout/`. Using them is what keeps vertical rhythm, heading levels
+and section surfaces consistent across screens, rather than every page re-deciding its
+own `gap`, its own heading element and its own `border`/`bg-card` wrapper.
 
 **Machine-readable state lives in `data-testid`, not in prose.** CI asserts on
 `data-testid` values so copy can be reworded freely. An earlier version grepped the

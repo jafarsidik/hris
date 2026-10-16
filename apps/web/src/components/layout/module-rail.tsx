@@ -128,9 +128,14 @@ function RailButton({
             className={[
               'relative grid size-9 shrink-0 place-items-center rounded-md transition-colors',
               'focus-visible:ring-sidebar-ring focus-visible:ring-2 focus-visible:outline-none',
+              // The route being viewed is the strongest signal in the rail, so it is the
+              // one element filled with solid brand colour; the selected-but-not-current
+              // module only takes the tinted accent.
               isCurrent
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground',
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : isSelected
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground',
               // Dashed rather than merely faint: "not built" is a different fact
               // from "available", and reduced opacity does not say which this is.
               !entry.hasSurface ? 'border border-dashed border-sidebar-border' : '',
