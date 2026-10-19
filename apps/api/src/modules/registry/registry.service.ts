@@ -11,6 +11,7 @@ import type {
   ResourceSummary,
   UpdateApplicationInput,
   UpdateModuleInput,
+  UpdateResourceFieldInput,
   UpdateResourceInput,
 } from '@hris/shared-types';
 
@@ -295,6 +296,71 @@ export class RegistryService {
     await this.audit(actor, 'registry.resource.field_added', resource.id, {
       resourceKey,
       fieldKey: input.key,
+    });
+
+    return this.getResource(resourceKey);
+  }
+
+  /**
+   * Edits a field's presentation and constraints. The key and data type stay fixed:
+   * extension values key on the field key, and retyping one would silently reinterpret
+   * what tenants already stored — a shape change means remove and re-add.
+   */
+  async updateResourceField(
+    resourceKey: string,
+    fieldKey: string,
+    input: UpdateResourceFieldInput,
+    actor: RegistryActor,
+  ): Promise<ResourceSummary> {
+    const resource = await this.requireResource(resourceKey);
+    const existing = await this.prisma.getClient().resourceField.findUnique({
+      where: { resourceId_key: { resourceId: resource.id, key: fieldKey } },
+    });
+    if (!existing) {
+      throw new NotFoundError(`The resource has no field named "${fieldKey}".`);
+    }
+
+    await this.prisma.getClient().resourceField.update({
+      where: { id: existing.id },
+      data: {
+        label: input.label,
+        required: input.required,
+        isSensitive: input.isSensitive,
+        sortOrder: input.sortOrder,
+      },
+    });
+
+    await this.audit(actor, 'registry.resource.field_updated', resource.id, {
+      resourceKey,
+      fieldKey,
+    });
+
+    return this.getResource(resourceKey);
+  }
+
+  /**
+   * Removes a field's metadata. No table references a field by key or id (configuration
+   * schemas and extensions address resources by key), so this cannot orphan stored data;
+   * values already written under the field's key simply stop being described.
+   */
+  async removeResourceField(
+    resourceKey: string,
+    fieldKey: string,
+    actor: RegistryActor,
+  ): Promise<ResourceSummary> {
+    const resource = await this.requireResource(resourceKey);
+    const existing = await this.prisma.getClient().resourceField.findUnique({
+      where: { resourceId_key: { resourceId: resource.id, key: fieldKey } },
+    });
+    if (!existing) {
+      throw new NotFoundError(`The resource has no field named "${fieldKey}".`);
+    }
+
+    await this.prisma.getClient().resourceField.delete({ where: { id: existing.id } });
+
+    await this.audit(actor, 'registry.resource.field_removed', resource.id, {
+      resourceKey,
+      fieldKey,
     });
 
     return this.getResource(resourceKey);

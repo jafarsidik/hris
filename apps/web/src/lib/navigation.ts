@@ -234,21 +234,6 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
           description: 'Search and browse the organizational workforce',
           status: 'planned',
         },
-        {
-          label: 'Employee Documents',
-          description: 'Employee contracts, certificates and HR documents',
-          status: 'planned',
-        },
-        {
-          label: 'Dependents',
-          description: 'Employee spouse, children and dependent records',
-          status: 'planned',
-        },
-        {
-          label: 'Emergency Contacts',
-          description: 'Emergency contact information',
-          status: 'planned',
-        },
       ],
     },
 
@@ -259,106 +244,38 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Organization Structure',
           description: 'Company and organizational hierarchy',
-          status: 'planned',
+          href: '/organization',
+          status: 'built',
         },
         {
           label: 'Departments',
           description: 'Departments and organizational units',
-          status: 'planned',
+          href: '/departments',
+          status: 'built',
         },
         {
           label: 'Positions',
           description: 'Position master and position assignments',
-          status: 'planned',
+          href: '/employees/positions',
+          status: 'built',
         },
         {
           label: 'Jobs',
           description: 'Job families, job levels and job profiles',
-          status: 'planned',
+          href: '/jobs',
+          status: 'built',
         },
         {
           label: 'Locations',
           description: 'Work locations and office sites',
-          status: 'planned',
+          href: '/locations',
+          status: 'built',
         },
         {
           label: 'Org Chart',
           description: 'Interactive organization hierarchy',
-          status: 'planned',
-        },
-      ],
-    },
-
-    {
-      id: 'M01_EMPLOYMENT',
-      label: 'Employment',
-      items: [
-        {
-          label: 'Employment Information',
-          description: 'Employment status and relationship details',
-          status: 'planned',
-        },
-        {
-          label: 'Contracts',
-          description: 'Employment agreements and contract history',
-          status: 'planned',
-        },
-        {
-          label: 'Probation',
-          description: 'Probation monitoring and confirmation',
-          status: 'planned',
-        },
-        {
-          label: 'Transfers',
-          description: 'Employee transfers between organizations or locations',
-          status: 'planned',
-        },
-        {
-          label: 'Promotions',
-          description: 'Promotion and job level changes',
-          status: 'planned',
-        },
-        {
-          label: 'Employment History',
-          description: 'Complete employment movement history',
-          status: 'planned',
-        },
-      ],
-    },
-
-    {
-      id: 'M01_PERSONAL',
-      label: 'Employee Data',
-      items: [
-        {
-          label: 'Personal Information',
-          description: 'Identity and personal employee information',
-          status: 'planned',
-        },
-        {
-          label: 'Family',
-          description: 'Family and household information',
-          status: 'planned',
-        },
-        {
-          label: 'Education',
-          description: 'Education history and qualifications',
-          status: 'planned',
-        },
-        {
-          label: 'Experience',
-          description: 'Previous employment and professional experience',
-          status: 'planned',
-        },
-        {
-          label: 'Skills',
-          description: 'Employee skills and proficiency levels',
-          status: 'planned',
-        },
-        {
-          label: 'Certifications',
-          description: 'Professional certifications and validity',
-          status: 'planned',
+          href: '/org-chart',
+          status: 'built',
         },
       ],
     },
@@ -374,13 +291,15 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         },
         {
           label: 'Employee Movement',
-          description: 'Transfers, promotions and organizational movement',
-          status: 'planned',
+          description: 'Transfers, promotions, probation confirmations and organizational movement',
+          href: '/employees/movements',
+          status: 'built',
         },
         {
           label: 'Offboarding',
           description: 'Employee exit and separation process',
-          status: 'planned',
+          href: '/offboarding',
+          status: 'built',
         },
       ],
     },
@@ -536,7 +455,8 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Job Requisitions',
           description: 'Open position requests',
-          status: 'planned',
+          href: '/recruitment/pipeline',
+          status: 'built',
         },
         {
           label: 'Requisition Approval',
@@ -663,7 +583,8 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Performance Cycles',
           description: 'Annual and periodic performance cycles',
-          status: 'planned',
+          href: '/performance',
+          status: 'built',
         },
         {
           label: 'Performance Forms',
@@ -785,17 +706,20 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Leave Requests',
           description: 'Employee leave requests and approvals',
-          status: 'planned',
+          href: '/leave/requests',
+          status: 'built',
         },
         {
           label: 'Leave Types',
           description: 'Leave type definitions',
-          status: 'planned',
+          href: '/leave/types',
+          status: 'built',
         },
         {
           label: 'Leave Policies',
           description: 'Leave entitlement policies',
-          status: 'planned',
+          href: '/leave/policies',
+          status: 'built',
         },
         {
           label: 'Leave Balances',
@@ -873,12 +797,14 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Payroll Period',
           description: 'Payroll periods and calendars',
-          status: 'planned',
+          href: '/payroll/periods',
+          status: 'built',
         },
         {
           label: 'Payroll Run',
           description: 'Payroll calculation and processing',
-          status: 'planned',
+          href: '/payroll/runs',
+          status: 'built',
         },
         {
           label: 'Payroll Approval',
@@ -1173,7 +1099,8 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Attendance',
           description: 'Daily employee attendance records',
-          status: 'planned',
+          href: '/attendance/records',
+          status: 'built',
         },
         {
           label: 'Attendance Correction',
@@ -1200,7 +1127,8 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Shift Patterns',
           description: 'Shift pattern definitions',
-          status: 'planned',
+          href: '/attendance/shifts',
+          status: 'built',
         },
         {
           label: 'Shift Assignment',

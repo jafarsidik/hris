@@ -162,3 +162,37 @@ export interface QueueJobSummary {
   readonly processedAt: string | null;
   readonly finishedAt: string | null;
 }
+
+/** Processing latency over the retained completed jobs of one queue. */
+export interface QueueLatencySummary {
+  readonly avgMs: number;
+  readonly p95Ms: number;
+  readonly maxMs: number;
+  /** How many completed jobs the percentiles were computed from. */
+  readonly sample: number;
+}
+
+/** One queue's contribution to the platform's latency/throughput/saturation picture. */
+export interface QueuePerformanceSummary {
+  readonly queue: string;
+  readonly isPaused: boolean;
+  readonly counts: QueueCounts;
+  readonly completedLastHour: number;
+  readonly completedLast24h: number;
+  readonly failedLastHour: number;
+  /** `null` when no completed job has both a processing and a finish timestamp. */
+  readonly latency: QueueLatencySummary | null;
+}
+
+/** Aggregated performance view behind the Operations -> Performance Metrics screen. */
+export interface PerformanceMetricsSummary {
+  readonly queues: readonly QueuePerformanceSummary[];
+  readonly totals: {
+    readonly waiting: number;
+    readonly active: number;
+    readonly delayed: number;
+    readonly failed: number;
+    readonly completedLastHour: number;
+  };
+  readonly sampledAt: string;
+}

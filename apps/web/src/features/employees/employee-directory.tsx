@@ -17,13 +17,58 @@ import { AddEmployeeButton, EmployeeFormDialog } from '@/features/employees/empl
 import { importEmployeesFromCsv } from '@/features/employees/employee-import';
 import {
   buildEmployeeColumns,
+  buildEmployeeFilters,
   EMPLOYEE_BUILT_IN_VIEWS,
-  EMPLOYEE_FILTERS,
   EMPLOYEE_SEARCH_TEXT,
   EMPLOYEE_VIEWS_STORAGE_KEY,
 } from '@/features/employees/employee-table-config';
 import type { Employee } from '@/features/employees/employee-types';
-import { Download, Upload } from 'lucide-react';
+import { EmployeeCardGrid } from '@/features/employees/employee-card-grid';
+import { EmployeeDirectoryKpis } from '@/features/employees/employee-directory-kpis';
+import { LayoutGrid, Table2, Download, Upload } from 'lucide-react';
+
+/** The persisted table/cards presentation choice for this browser. */
+const PRESENTATION_STORAGE_KEY = 'hris:employee-directory:presentation';
+
+/**
+ * The Table / Photo list switch. It lives inside the data table's toolbar —
+ * level with the search and filter controls, like the reference screen — so it
+ * survives the presentation switch: one toolbar serves both.
+ */
+function PresentationToggle({
+  presentation,
+  onSwitch,
+}: {
+  presentation: 'table' | 'cards';
+  onSwitch: (next: 'table' | 'cards') => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Directory view"
+      className="inline-flex overflow-hidden rounded-lg ring-1 ring-foreground/10"
+    >
+      <Button
+        type="button"
+        aria-pressed={presentation === 'table'}
+        size="sm"
+        onClick={() => onSwitch('table')}
+      >
+        <Table2 aria-hidden="true" className="size-3.5" />
+        Table
+      </Button>
+      <Button
+        type="button"
+        aria-pressed={presentation === 'cards'}
+        size="sm"
+        onClick={() => onSwitch('cards')}
+      >
+        <LayoutGrid aria-hidden="true" className="size-3.5" />
+        Photo list
+      </Button>
+    </div>
+  );
+}
 
 /**
  * The employee directory.
@@ -41,6 +86,8 @@ export function EmployeeDirectory({
   initialSearch = '',
   initialSort,
   initialCreateOpen = false,
+  units,
+  positions,
 }: {
   initialRows: readonly Employee[];
   /** URL-derived, applied once; every change after first paint is the table's own. */
@@ -49,6 +96,13 @@ export function EmployeeDirectory({
   initialSort?: DataTableSortState;
   /** Opens the create dialog on mount; the dashboard's "Add employee" uses this. */
   initialCreateOpen?: boolean;
+  /** Real placement vocabulary from the API; absent means free-text fallback. */
+  units?: readonly { readonly id: string; readonly name: string }[];
+  positions?: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly unitId: string | null;
+  }[];
 }) {
   const { toast } = useToast();
 
@@ -57,6 +111,29 @@ export function EmployeeDirectory({
   const [importOpen, setImportOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Employee | null>(null);
   const [viewing, setViewing] = React.useState<Employee | null>(null);
+  /*
+   * Table first, image list on demand. The choice persists per browser like the
+   * saved column views do; it is presentation only and never touches the query.
+   * The switch itself rides inside the data table's toolbar (the `actions`
+   * slot), so search and filters stay level with it and shared by both views.
+   */
+  const [presentation, setPresentation] = React.useState<'table' | 'cards'>('table');
+
+  React.useEffect(() => {
+    const saved = window.localStorage.getItem(PRESENTATION_STORAGE_KEY);
+    if (saved === 'cards' || saved === 'table') {
+      setPresentation(saved);
+    }
+  }, []);
+
+  const switchPresentation = (next: 'table' | 'cards') => {
+    setPresentation(next);
+    try {
+      window.localStorage.setItem(PRESENTATION_STORAGE_KEY, next);
+    } catch {
+      // Storage may be unavailable; the in-memory choice still applies.
+    }
+  };
 
   const applySaved = (saved: Employee, mode: 'created' | 'updated') => {
     setRows((current) => {
@@ -70,6 +147,8 @@ export function EmployeeDirectory({
       return current;
     });
   };
+
+  const filters = React.useMemo(() => buildEmployeeFilters(rows), [rows]);
 
   const exportAll = () => {
     exportEmployeesToCsv(rows);
@@ -111,12 +190,44 @@ export function EmployeeDirectory({
     },
   ];
 
+  const directoryActions = (
+    <>
+      <Button type="button" variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+        <Upload aria-hidden="true" className="size-3.5" />
+        Import
+      </Button>
+      <Button type="button" variant="outline" size="sm" onClick={exportAll}>
+        <Download aria-hidden="true" className="size-3.5" />
+        Export
+      </Button>
+      <AddEmployeeButton onClick={() => setCreateOpen(true)} />
+    </>
+  );
+
   return (
     <>
+      {/*
+        Header row above both presentations: the write actions (Import,
+        Export, Add) never move when the view flips.
+      */}
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-base font-semibold">Directory</h1>
+        <div className="flex items-center gap-2">{directoryActions}</div>
+      </div>
+
+      {/* Summary strip: total, active, on leave, recent — the reference screen's KPI cards. */}
+      <EmployeeDirectoryKpis rows={rows} activeStatus={initialFilters.select.status} />
+
+      {/*
+        One table renderer serves both presentations: the toolbar (search,
+        filters, chips) plus pagination stays mounted, the toggle sits level
+        with the filter section, and the row area either shows the table or the
+        image-list cards for the very same filtered, sorted, paged rows.
+      */}
       <HrisDataTable
         rows={rows}
         columns={buildEmployeeColumns({ onView: setViewing, onEdit: setEditing })}
-        filters={EMPLOYEE_FILTERS}
+        filters={filters}
         searchable
         searchText={EMPLOYEE_SEARCH_TEXT}
         searchPlaceholder="Search name, email, number…"
@@ -126,22 +237,15 @@ export function EmployeeDirectory({
         pageSize={25}
         bulkActions={bulkActions}
         views={{ builtIn: EMPLOYEE_BUILT_IN_VIEWS, storageKey: EMPLOYEE_VIEWS_STORAGE_KEY }}
+        actions={<PresentationToggle presentation={presentation} onSwitch={switchPresentation} />}
+        presentationBody={
+          presentation === 'cards'
+            ? (pagedRows) => <EmployeeCardGrid rows={pagedRows} />
+            : undefined
+        }
         emptyTitle="No employees in the directory yet"
         emptyDescription="When rows are added they appear here, filterable, sortable and exportable."
         noResultsDescription="Try a different search or filter, or clear the filters to see everyone."
-        actions={
-          <>
-            <Button type="button" variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-              <Upload aria-hidden="true" className="size-3.5" />
-              Import
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={exportAll}>
-              <Download aria-hidden="true" className="size-3.5" />
-              Export
-            </Button>
-            <AddEmployeeButton onClick={() => setCreateOpen(true)} />
-          </>
-        }
       />
 
       <ImportDialog
@@ -161,7 +265,13 @@ export function EmployeeDirectory({
         }
       />
 
-      <EmployeeFormDialog open={createOpen} onOpenChange={setCreateOpen} onSaved={applySaved} />
+      <EmployeeFormDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onSaved={applySaved}
+        units={units}
+        positions={positions}
+      />
 
       <EmployeeFormDialog
         open={editing !== null}

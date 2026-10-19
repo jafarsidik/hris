@@ -22,6 +22,7 @@ import { buildPostgresUrl, readPostgresSettings } from '../src/connection-string
 import { PrismaClient } from '../src/generated/prisma/client';
 
 import { seedExampleProjects } from './example-projects';
+import { seedDemoWorkforce } from './demo-workforce';
 import { seedNotificationTemplates } from './notifications';
 import { seedRbac, seedReferenceData } from './rbac';
 import { seedRegistry } from './registry';
@@ -42,6 +43,7 @@ async function main(): Promise<void> {
     const rbac = await seedRbac(client);
     const settings = await seedSettings(client);
     const notifications = await seedNotificationTemplates(client);
+    const demo = await seedDemoWorkforce(client);
 
     console.log(
       `Seeded ${reference.countries} countries, ${reference.currencies} currencies, ` +
@@ -58,6 +60,10 @@ async function main(): Promise<void> {
     console.log(
       `Seeded ${settings.settings} system settings and ${notifications.templates} notification ` +
         `templates across ${settings.companies} company(ies).`,
+    );
+    console.log(
+      `Demo workforce on company ${demo.company}: ${demo.units} unit(s), ${demo.positions} ` +
+        `position(s), ${demo.employees} employee(s), ${demo.records} with full record histories.`,
     );
     console.log(
       'Only SYSTEM_ADMIN has grants so far; the remaining system roles are seeded ' +

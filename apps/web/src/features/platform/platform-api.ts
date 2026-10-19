@@ -10,13 +10,18 @@ import type {
   IdentityProviderSummary,
   ModuleSummary,
   NotificationReadModel,
+  NotificationChannel,
+  NotificationPreferenceReadModel,
+  NotificationTemplateReadModel,
   PasskeySummary,
+  PerformanceMetricsSummary,
   QueueJobState,
   QueueJobSummary,
   QueueSummary,
   ResourceSummary,
   UpdateApplicationInput,
   UpdateModuleInput,
+  UpdateResourceFieldInput,
   UpdateResourceInput,
 } from '@hris/shared-types';
 
@@ -133,6 +138,30 @@ export const platformApi = {
     apiRequestV1<NotificationReadModel>(`/notifications/${id}/read`, { method: 'PATCH' }),
   markAllNotificationsRead: (): Promise<{ readonly marked: number }> =>
     apiRequestV1<{ readonly marked: number }>('/notifications/read-all', { method: 'PATCH' }),
+  listNotificationTemplates: (): Promise<readonly NotificationTemplateReadModel[]> =>
+    apiRequestV1<readonly NotificationTemplateReadModel[]>('/notifications/templates'),
+  updateNotificationTemplate: (
+    eventKey: string,
+    channel: NotificationChannel,
+    body: {
+      readonly subjectTemplate: string;
+      readonly bodyTemplate: string;
+      readonly enabled: boolean;
+    },
+  ): Promise<NotificationTemplateReadModel> =>
+    apiRequestV1<NotificationTemplateReadModel>(
+      `/notifications/templates/${encodeURIComponent(eventKey)}?channel=${channel}`,
+      { method: 'POST', body },
+    ),
+  listNotificationPreferences: (): Promise<readonly NotificationPreferenceReadModel[]> =>
+    apiRequestV1<readonly NotificationPreferenceReadModel[]>('/notifications/preferences'),
+  saveNotificationPreferences: (
+    items: readonly { readonly channel: NotificationChannel; readonly enabled: boolean }[],
+  ): Promise<readonly NotificationPreferenceReadModel[]> =>
+    apiRequestV1<readonly NotificationPreferenceReadModel[]>('/notifications/preferences', {
+      method: 'POST',
+      body: { items },
+    }),
 
   // Queues ------------------------------------------------------------------
   listQueues: (): Promise<readonly QueueSummary[]> =>
@@ -146,6 +175,13 @@ export const platformApi = {
       `/platform/queues/${encodeURIComponent(name)}/jobs/${encodeURIComponent(jobId)}/retry`,
       { method: 'POST' },
     ),
+  removeQueueJob: (name: string, jobId: string): Promise<void> =>
+    apiRequestV1<never>(
+      `/platform/queues/${encodeURIComponent(name)}/jobs/${encodeURIComponent(jobId)}/remove`,
+      { method: 'POST' },
+    ),
+  performanceMetrics: (): Promise<PerformanceMetricsSummary> =>
+    apiRequestV1<PerformanceMetricsSummary>('/platform/performance'),
 
   // Platform metadata registry (System -> Application & Metadata) -------------
   listRegistryApplications: (): Promise<readonly ApplicationSummary[]> =>
@@ -188,6 +224,20 @@ export const platformApi = {
     apiRequestV1<ResourceSummary>(
       `/platform/registry/resources/${encodeURIComponent(key)}/fields`,
       { method: 'POST', body: input },
+    ),
+  updateRegistryResourceField: (
+    key: string,
+    fieldKey: string,
+    input: UpdateResourceFieldInput,
+  ): Promise<ResourceSummary> =>
+    apiRequestV1<ResourceSummary>(
+      `/platform/registry/resources/${encodeURIComponent(key)}/fields/${encodeURIComponent(fieldKey)}`,
+      { method: 'PATCH', body: input },
+    ),
+  removeRegistryResourceField: (key: string, fieldKey: string): Promise<ResourceSummary> =>
+    apiRequestV1<ResourceSummary>(
+      `/platform/registry/resources/${encodeURIComponent(key)}/fields/${encodeURIComponent(fieldKey)}`,
+      { method: 'DELETE' },
     ),
   addRegistryResourceAction: (
     key: string,

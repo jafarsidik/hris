@@ -7,9 +7,9 @@ import type { EmployeeRepository } from './employee-types';
 /**
  * Chooses the employee data source.
  *
- * Defaults to the mock. That is the whole point of the switch: the directory screen can
- * be built, reviewed and demoed now, and flipping one variable replaces the source once
- * the endpoint exists — with no change to the page or the table.
+ * Defaults to the real API: the directory and the profile read employees from the
+ * running API and database. `HRIS_EMPLOYEE_DATA_SOURCE=mock` still serves the
+ * generated sample people for offline UI work.
  *
  * Server-side only, for two reasons. `HRIS_EMPLOYEE_DATA_SOURCE` is not a
  * `NEXT_PUBLIC_*` value, so it must not reach the bundle and decide behaviour from the
@@ -26,7 +26,7 @@ export const isEmployeeDataSource = (value: string): value is EmployeeDataSource
   value === 'mock' || value === 'api';
 
 export function getEmployeeRepository(): EmployeeRepository {
-  const configured = process.env['HRIS_EMPLOYEE_DATA_SOURCE'] ?? 'mock';
+  const configured = process.env['HRIS_EMPLOYEE_DATA_SOURCE'] ?? 'api';
 
   if (!isEmployeeDataSource(configured)) {
     throw new Error(`HRIS_EMPLOYEE_DATA_SOURCE must be "mock" or "api", received "${configured}"`);

@@ -15,49 +15,96 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { EMPLOYMENT_TYPES } from '@hris/shared-types';
 import type { Employee } from '@/features/employees/employee-types';
-import {
-  EMPLOYEE_STATUSES,
-  MOCK_DEPARTMENTS,
-  MOCK_EMPLOYMENT_TYPES,
-} from '@/features/employees/mock-employee-repository';
+import { EMPLOYEE_STATUSES, MOCK_DEPARTMENTS } from '@/features/employees/mock-employee-repository';
 
 const STATUS_LABELS: Readonly<Partial<Record<string, string>>> = {
   ACTIVE: 'Active',
   ON_LEAVE: 'On leave',
   PROBATION: 'Probation',
+  SUSPENDED: 'Suspended',
   INACTIVE: 'Inactive',
+  TERMINATED: 'Terminated',
+};
+
+const TYPE_LABELS: Readonly<Record<string, string>> = {
+  PERMANENT: 'Permanent',
+  FIXED_TERM: 'Fixed term',
+  CONTRACT: 'Contract',
+  INTERN: 'Intern',
+  PART_TIME: 'Part time',
+  TEMPORARY: 'Temporary',
 };
 
 const INITIAL_STATE: SaveEmployeeResult = { ok: false, fieldErrors: {} };
+
+/**
+ * The status options the form offers: the API's lifecycle statuses, plus the mock
+ * source's `PROBATION` so switching data sources keeps the same form working.
+ */
+const STATUS_OPTIONS: readonly string[] = [...new Set([...EMPLOYEE_STATUSES, 'PROBATION'])];
 
 /**
  * The create / edit employee dialog body.
  *
  * Owns the form and its async submit via `useActionState`, so the server action is the
  * validation authority and a pending submit disables the button. Field errors the action
- * returns land next to their fields; a created or updated employee is handed to
- * `onSaved` exactly once.
+ * returns land next to their fields; a `form`-keyed error (an API rejection without
+ * field details) shows above the actions instead of crashing the page. A created or
+ * updated employee is handed to `onSaved` exactly once.
  *
- * The dialog remounts this component per open (the popup unmounts when it closes), so
- * edits never leak between sessions and there is nothing to reset explicitly.
+ * When real units/positions are passed in, Department and Job title become selects over
+ * the actual structure and the ids ride along to the API; without them the form falls
+ * back to the mock's vocabulary. The dialog remounts this component per open, so edits
+ * never leak between sessions and there is nothing to reset explicitly.
  */
 export function EmployeeForm({
   employee,
   editing = false,
   onSaved,
   onCancel,
+  units,
+  positions = [],
 }: {
   /** Present when editing an existing record; omitted when creating. */
   employee?: Employee;
   editing?: boolean;
   onSaved: (saved: Employee, mode: 'created' | 'updated') => void;
   onCancel: () => void;
+  /** Real units from the API; absent means the mock's department list. */
+  units?: readonly { readonly id: string; readonly name: string }[];
+  /** Real positions from the API, each optionally tied to one unit. */
+  positions?: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly unitId: string | null;
+  }[];
 }) {
   const [state, formAction, isPending] = React.useActionState(saveEmployee, INITIAL_STATE);
   const handledRef = React.useRef<string | null>(null);
-
   const errors = state.ok ? {} : state.fieldErrors;
+
+  const usesRealOptions = units !== undefined;
+  const departmentLabel = (id: string): string => units?.find((unit) => unit.id === id)?.name ?? '';
+  const positionLabel = (id: string): string =>
+    positions.find((position) => position.id === id)?.name ?? '';
+
+  const [unitId, setUnitId] = React.useState<string>(() =>
+    usesRealOptions ? (unitForLabel(employee?.department)?.id ?? '') : '',
+  );
+  const [positionId, setPositionId] = React.useState<string>(() =>
+    usesRealOptions ? (positionForLabel(employee?.jobTitle)?.id ?? '') : '',
+  );
+
+  function unitForLabel(label: string | undefined): { id: string; name: string } | undefined {
+    if (label === undefined || units === undefined) return undefined;
+    return units.find((unit) => unit.name === label);
+  }
+  function positionForLabel(label: string | undefined): { id: string; name: string } | undefined {
+    if (label === undefined) return undefined;
+    return positions.find((position) => position.name === label);
+  }
 
   // Fire onSaved (which closes the dialog and toasts) exactly once per successful save.
   React.useEffect(() => {
@@ -75,9 +122,19 @@ export function EmployeeForm({
     field(name) === undefined ? undefined : errorId;
 
   const title = editing ? 'Edit employee' : 'Add employee';
-  const description = editing
-    ? 'Update the record. Changes are saved as sample data and reset when the server restarts.'
-    : 'Create a new employee record. Saved as sample data until the real endpoint exists.';
+  const description = editing ? 'Update the record.' : 'Create a new employee record.';
+
+  const employmentTypeOptions: readonly string[] = [
+    ...EMPLOYMENT_TYPES,
+    ...(employee?.employmentType !== undefined &&
+    !(EMPLOYMENT_TYPES as readonly string[]).includes(employee.employmentType)
+      ? [employee.employmentType]
+      : []),
+  ];
+
+  const positionChoices = positions.filter(
+    (position) => unitId === '' || position.unitId === null || position.unitId === unitId,
+  );
 
   return (
     <>
@@ -89,6 +146,14 @@ export function EmployeeForm({
       <form action={formAction} noValidate className="grid gap-6">
         {employee !== undefined && <input type="hidden" name="id" value={employee.id} />}
         <input type="hidden" name="employeeNumber" value={employee?.employeeNumber ?? ''} />
+        {usesRealOptions && (
+          <>
+            <input type="hidden" name="unitId" value={unitId} />
+            <input type="hidden" name="department" value={departmentLabel(unitId)} />
+            <input type="hidden" name="positionId" value={positionId} />
+            <input type="hidden" name="jobTitle" value={positionLabel(positionId)} />
+          </>
+        )}
 
         <fieldset className="grid gap-4">
           <legend className="text-sm font-medium">Personal information</legend>
@@ -146,7 +211,7 @@ export function EmployeeForm({
                 defaultValue={employee?.status ?? 'ACTIVE'}
                 className="flex flex-wrap gap-x-6"
               >
-                {EMPLOYEE_STATUSES.map((status) => (
+                {STATUS_OPTIONS.map((status) => (
                   <label
                     key={status}
                     className="flex items-center gap-2 text-sm text-foreground select-none"
@@ -163,44 +228,100 @@ export function EmployeeForm({
         <fieldset className="grid gap-4">
           <legend className="text-sm font-medium">Employment</legend>
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField
-              label="Job title"
-              htmlFor="employee-jobTitle"
-              required
-              error={field('jobTitle')}
-              errorId="err-jobTitle"
-            >
-              <Input
-                id="employee-jobTitle"
-                name="jobTitle"
-                defaultValue={employee?.jobTitle}
-                aria-invalid={field('jobTitle') !== undefined || undefined}
-                aria-describedby={describe('jobTitle', 'err-jobTitle')}
-                autoComplete="off"
-                placeholder="e.g. Payroll Specialist"
-              />
-            </FormField>
+            {usesRealOptions ? (
+              <>
+                <FormField
+                  label="Department"
+                  htmlFor="employee-department"
+                  required
+                  error={field('department')}
+                  errorId="err-department"
+                >
+                  <Select
+                    name="unitIdSelect"
+                    value={unitId || undefined}
+                    onValueChange={(value: string | null) => setUnitId(value ?? '')}
+                  >
+                    <SelectTrigger id="employee-department" className="w-full">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(units ?? []).map((unit) => (
+                        <SelectItem key={unit.id} value={unit.id}>
+                          {unit.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
 
-            <FormField
-              label="Department"
-              htmlFor="employee-department"
-              required
-              error={field('department')}
-              errorId="err-department"
-            >
-              <Select name="department" defaultValue={employee?.department ?? undefined}>
-                <SelectTrigger id="employee-department" className="w-full">
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {MOCK_DEPARTMENTS.map((department) => (
-                    <SelectItem key={department} value={department}>
-                      {department}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormField>
+                <FormField
+                  label="Job title"
+                  htmlFor="employee-jobTitle"
+                  required
+                  error={field('jobTitle')}
+                  errorId="err-jobTitle"
+                >
+                  <Select
+                    name="positionIdSelect"
+                    value={positionId || undefined}
+                    onValueChange={(value: string | null) => setPositionId(value ?? '')}
+                  >
+                    <SelectTrigger id="employee-jobTitle" className="w-full">
+                      <SelectValue placeholder="Select position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {positionChoices.map((position) => (
+                        <SelectItem key={position.id} value={position.id}>
+                          {position.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              </>
+            ) : (
+              <>
+                <FormField
+                  label="Job title"
+                  htmlFor="employee-jobTitle"
+                  required
+                  error={field('jobTitle')}
+                  errorId="err-jobTitle"
+                >
+                  <Input
+                    id="employee-jobTitle"
+                    name="jobTitle"
+                    defaultValue={employee?.jobTitle}
+                    aria-invalid={field('jobTitle') !== undefined || undefined}
+                    aria-describedby={describe('jobTitle', 'err-jobTitle')}
+                    autoComplete="off"
+                    placeholder="e.g. Payroll Specialist"
+                  />
+                </FormField>
+
+                <FormField
+                  label="Department"
+                  htmlFor="employee-department"
+                  required
+                  error={field('department')}
+                  errorId="err-department"
+                >
+                  <Select name="department" defaultValue={employee?.department ?? undefined}>
+                    <SelectTrigger id="employee-department" className="w-full">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MOCK_DEPARTMENTS.map((department) => (
+                        <SelectItem key={department} value={department}>
+                          {department}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              </>
+            )}
 
             <FormField
               label="Employment type"
@@ -214,9 +335,9 @@ export function EmployeeForm({
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {MOCK_EMPLOYMENT_TYPES.map((type) => (
+                  {employmentTypeOptions.map((type) => (
                     <SelectItem key={type} value={type}>
-                      {type}
+                      {TYPE_LABELS[type] ?? type}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -246,6 +367,15 @@ export function EmployeeForm({
             {Object.keys(state.fieldErrors).length} field
             {Object.keys(state.fieldErrors).length === 1 ? '' : 's'} need attention.
           </p>
+        )}
+
+        {field('form') !== undefined && (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+          >
+            {field('form')}
+          </div>
         )}
 
         <DialogFooter className="mt-2" showCloseButton={false}>

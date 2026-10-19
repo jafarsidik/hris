@@ -6,8 +6,10 @@ import { type Prisma, withTenantContext } from '@hris/database';
 import {
   INTEGRATION_KINDS,
   WEBHOOK_WILDCARD,
+  type DeliveryLogEntry,
   type IntegrationConnectionTestResult,
   type IntegrationDeliverySummary,
+  type IntegrationHealthSummary,
   type IntegrationKind,
   type IntegrationSummary,
   type WebhookSecretRotation,
@@ -343,6 +345,103 @@ export class IntegrationsService {
         take: 100,
       });
       return rows.map(toDeliverySummary);
+    });
+  }
+
+  /**
+   * Recent delivery attempts across every integration of the tenant — the Delivery Logs
+   * screen reads one feed rather than polling each integration's own window.
+   */
+  async listDeliveryLog(companyId: string, limit = 100): Promise<readonly DeliveryLogEntry[]> {
+    const client = this.prisma.getClient();
+    return withTenantContext(client, companyId, async (tx) => {
+      const rows = await tx.integrationDelivery.findMany({
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: Math.min(Math.max(limit, 1), 200),
+        include: { integration: { select: { key: true, name: true, kind: true } } },
+      });
+      return rows.map((row) => ({
+        ...toDeliverySummary(row),
+        integrationKey: row.integration.key,
+        integrationName: row.integration.name,
+        integrationKind: row.integration.kind,
+      }));
+    });
+  }
+
+  /**
+   * Health rollup for the Integration Monitor: status plus 24-hour delivery outcomes per
+   * integration, computed in two grouped queries instead of one query per integration.
+   */
+  async monitor(companyId: string): Promise<readonly IntegrationHealthSummary[]> {
+    const client = this.prisma.getClient();
+    return withTenantContext(client, companyId, async (tx) => {
+      const integrations = await tx.integration.findMany({
+        where: { deletedAt: null },
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          key: true,
+          name: true,
+          kind: true,
+          isEnabled: true,
+          status: true,
+          lastCheckedAt: true,
+          lastMessage: true,
+        },
+      });
+      const ids = integrations.map((row) => row.id);
+      if (ids.length === 0) {
+        return [];
+      }
+
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const [outcomes, lastSeen] = await Promise.all([
+        tx.integrationDelivery.groupBy({
+          by: ['integrationId', 'status'],
+          where: { integrationId: { in: ids }, createdAt: { gte: dayAgo } },
+          _count: { _all: true },
+        }),
+        tx.integrationDelivery.groupBy({
+          by: ['integrationId'],
+          where: { integrationId: { in: ids } },
+          _max: { createdAt: true },
+        }),
+      ]);
+
+      const byIntegration = new Map<string, { total: number; succeeded: number; failed: number }>();
+      for (const row of outcomes) {
+        const bucket = byIntegration.get(row.integrationId) ?? {
+          total: 0,
+          succeeded: 0,
+          failed: 0,
+        };
+        const count = row._count._all;
+        bucket.total += count;
+        if (row.status === 'SUCCEEDED') bucket.succeeded += count;
+        if (row.status === 'FAILED') bucket.failed += count;
+        byIntegration.set(row.integrationId, bucket);
+      }
+      const lastDelivery = new Map(lastSeen.map((row) => [row.integrationId, row._max.createdAt]));
+
+      return integrations.map((row) => {
+        const stats = byIntegration.get(row.id) ?? { total: 0, succeeded: 0, failed: 0 };
+        const latest = lastDelivery.get(row.id) ?? null;
+        return {
+          id: row.id,
+          key: row.key,
+          name: row.name,
+          kind: row.kind,
+          isEnabled: row.isEnabled,
+          status: row.status,
+          lastCheckedAt: row.lastCheckedAt === null ? null : row.lastCheckedAt.toISOString(),
+          lastMessage: row.lastMessage,
+          deliveriesLast24h: stats.total,
+          succeededLast24h: stats.succeeded,
+          failedLast24h: stats.failed,
+          lastDeliveryAt: latest === null ? null : latest.toISOString(),
+        };
+      });
     });
   }
 

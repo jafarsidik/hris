@@ -90,3 +90,26 @@ export interface WebhookSecretRotation {
   readonly secret: string;
   readonly rotatedAt: string;
 }
+
+/** One delivery attempt annotated with its integration's identity, newest first. */
+export interface DeliveryLogEntry extends IntegrationDeliverySummary {
+  readonly integrationKey: string;
+  readonly integrationName: string;
+  readonly integrationKind: IntegrationKind;
+}
+
+/** Per-integration health rollup behind the Integrations -> Integration Monitor screen. */
+export interface IntegrationHealthSummary {
+  readonly id: string;
+  readonly key: string;
+  readonly name: string;
+  readonly kind: IntegrationKind;
+  readonly isEnabled: boolean;
+  readonly status: IntegrationStatus;
+  readonly lastCheckedAt: string | null;
+  readonly lastMessage: string | null;
+  readonly deliveriesLast24h: number;
+  readonly succeededLast24h: number;
+  readonly failedLast24h: number;
+  readonly lastDeliveryAt: string | null;
+}

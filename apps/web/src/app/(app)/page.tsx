@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
@@ -36,10 +37,21 @@ export const metadata: Metadata = {
  * {@link computeDirectoryFacts}, so the three surfaces stay in agreement.
  */
 export default async function CommandCenterPage() {
-  const directory = await getEmployeeRepository().list({
-    sort: 'hireDate',
-    page: { limit: MAX_PAGE_SIZE },
-  });
+  let directory;
+  try {
+    directory = await getEmployeeRepository().list({
+      sort: 'hireDate',
+      page: { limit: MAX_PAGE_SIZE },
+    });
+  } catch (error) {
+    // An expired or absent session means "sign in", not "the page broke":
+    // send the visitor to the login instead of the error boundary.
+    const requestError = error as { name?: string; status?: number };
+    if (requestError.name === 'ApiRequestError' && requestError.status === 401) {
+      redirect('/login');
+    }
+    throw error;
+  }
 
   const facts = computeDirectoryFacts(directory.items);
 

@@ -41,6 +41,10 @@ export interface EmployeeDraft {
   readonly hireDate: string;
   readonly status: string;
   readonly employeeNumber?: string;
+  /** The unit an employee sits in, as the API defines it; a label lives in `department`. */
+  readonly unitId?: string;
+  /** The position an employee holds, as the API defines it; a label lives in `jobTitle`. */
+  readonly positionId?: string;
 }
 
 /**
@@ -64,14 +68,16 @@ export interface EmployeeQuery {
 export type EmployeePage = Paginated<Employee>;
 
 /**
- * Read access to employee data.
- *
- * Narrow on purpose. It covers listing and one-record lookups only, because that is all
- * this phase builds; adding write methods now would mean shipping an interface with
- * unimplemented members and a repository that throws on them.
+ * Read and write access to employee data.
  */
 export interface EmployeeRepository {
   list(query: EmployeeQuery): Promise<EmployeePage>;
   /** The record with the given id, or `null` when it is not in this source. */
   getById(id: string): Promise<Employee | null>;
+  /** Creates a record and returns it with any server-assigned fields (e.g. number). */
+  create(input: EmployeeDraft): Promise<Employee>;
+  /** Updates a record and returns it. */
+  update(id: string, input: Partial<EmployeeDraft>): Promise<Employee>;
+  /** Soft-deletes a record. */
+  delete(id: string): Promise<void>;
 }

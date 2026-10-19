@@ -11,8 +11,14 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
 } from '@nestjs/common';
-import type { AiAskInput } from '@hris/shared-types';
+import type {
+  AiAskInput,
+  AiCallSummary,
+  AiProviderSummary,
+  AiUsageSummary,
+} from '@hris/shared-types';
 
 import { CurrentAuth, CurrentPrincipal } from '../../common/auth/current.decorator';
 import type { AuthenticatedRequest } from '../../common/auth/request-auth';
@@ -20,6 +26,7 @@ import { RequirePermission } from '../../common/auth/require-permission.decorato
 import type { SessionPrincipal } from '../../common/auth/permission.service';
 
 import { AiGateway } from './ai-gateway.service';
+import { AiUsageService } from './ai-usage.service';
 
 import { KnowledgeService } from './knowledge.service';
 
@@ -56,6 +63,12 @@ export class AskDto {
   @Min(1)
   @Max(20)
   limit?: number;
+
+  /** Optional agent whose prompt, model and granted tools apply to this call. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  agentKey?: string;
 }
 
 @Controller('ai')
@@ -63,6 +76,7 @@ export class AiController {
   constructor(
     @Inject(AiGateway) private readonly gateway: AiGateway,
     @Inject(KnowledgeService) private readonly knowledge: KnowledgeService,
+    @Inject(AiUsageService) private readonly usage: AiUsageService,
   ) {}
 
   @Get('capabilities')
@@ -76,6 +90,34 @@ export class AiController {
   @RequirePermission('ai', 'view')
   async status(@CurrentAuth() session: AuthenticatedRequest): Promise<{ enabled: boolean }> {
     return { enabled: await this.knowledge.isEnabled(session.companyId) };
+  }
+
+  @Get('providers')
+  @RequirePermission('ai', 'view')
+  async providers(
+    @CurrentAuth() session: AuthenticatedRequest,
+  ): Promise<readonly AiProviderSummary[]> {
+    return this.gateway.providers(session.companyId);
+  }
+
+  @Get('calls')
+  @RequirePermission('ai', 'view')
+  async calls(
+    @CurrentAuth() session: AuthenticatedRequest,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+  ): Promise<readonly AiCallSummary[]> {
+    const parsed = limit === undefined ? undefined : Number.parseInt(limit, 10);
+    return this.usage.listCalls(session.companyId, {
+      limit: parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined,
+      status: status === undefined || status === '' ? undefined : status,
+    });
+  }
+
+  @Get('usage')
+  @RequirePermission('ai', 'view')
+  async usageSummary(@CurrentAuth() session: AuthenticatedRequest): Promise<AiUsageSummary> {
+    return this.usage.usage(session.companyId);
   }
 
   @Get('knowledge')

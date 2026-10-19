@@ -1,169 +1,1231 @@
 generator client {
-  provider = "prisma-client"
-  output   = "src/generated/prisma"
+  provider        = "prisma-client"
+  output          = "src/generated/prisma"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
   provider = "postgresql"
 }
 
-/// Countries the platform is offered in. Seeded from `COUNTRY_CODES`.
-model Country {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code      String   @unique @db.Citext
-  name      String
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy String?  @map("created_by_user_id") @db.Uuid
-  users     User?    @relation(fields: [createdBy], references: [id], map: "countries_created_by_fkey")
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model AccessReviewItem {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reviewId String @map("review_id")         @db.Uuid
+  userId String @map("user_id")         @db.Uuid
+  resource       String
+  resourceId String? @map("resource_id")        @db.Uuid
+  permissions    Json           @default("[]")
+  decision       String         @default("NO_ACTION")
+  decidedAt DateTime? @map("decided_at")      @db.Timestamptz(3)
+  notes          String?
+  createdAt DateTime @map("created_at")       @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")       @default(now()) @db.Timestamptz(3)
+  accessReviews AccessReview @relation(fields: [rId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "access_review_items_review_fk")
+  users User          @relation(fields: [uId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "access_review_items_user_fk")
 
-  @@map("countries")
+  @@index([reviewId], map: "access_review_items_review_idx")
+  @@index([userId], map: "access_review_items_user_idx")
+  @@map("access_review_items")
 }
 
-/// Currencies and their minor-unit exponents, so amounts can be stored exactly.
-model Currency {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code      String   @unique @db.Citext
-  name      String
-  /// Decimal places: 2 for USD, 0 for JPY, 3 for KWD.
-  minorUnit Int      @map("minor_unit")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy String?  @map("created_by_user_id") @db.Uuid
-  users     User?    @relation(fields: [createdBy], references: [id], map: "currencies_created_by_fkey")
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model AccessReview {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                @db.Uuid
+  name                String
+  description         String?
+  scope               String                @default("company")
+  reviewerId String @map("reviewer_id")                @db.Uuid
+  status              String                @default("IN_PROGRESS")
+  dueAt DateTime? @map("due_at")             @db.Timestamptz(3)
+  completedAt DateTime? @map("completed_at")             @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")              @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")              @default(now()) @db.Timestamptz(3)
+  accessReviewItems AccessReviewItem[]
 
-  @@map("currencies")
+  @@index([companyId, status], map: "access_reviews_company_status_idx")
+  @@index([reviewerId], map: "access_reviews_reviewer_idx")
+  @@map("access_reviews")
 }
 
-/// Platform roles. Provisioned from `SYSTEM_ROLES` by the seed script.
-model Role {
-  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  key         String           @unique
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model AiAgent {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  key         String
   name        String
-  description String
-  isSystem    Boolean          @default(false) @map("is_system")
-  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy   String?          @map("created_by_user_id") @db.Uuid
-  grants      RolePermission[]
-  users       UserRole[]
+  description String?
+  promptKey String? @map("prompt_key")
+  modelKey String? @map("model_key")
+  tools       Json     @default("[]")
+  isEnabled Boolean @map("is_enabled")  @default(false)
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @default(now()) @db.Timestamptz(3)
 
-  @@map("roles")
+  @@unique([companyId, key], map: "ai_agents_company_key_unique")
+  @@index([companyId], map: "ai_agents_company_idx")
+  @@map("ai_agents")
 }
 
-/// A single `resource.action` capability.
-///
-/// `resource` is a string column rather than an enum because the RBAC vocabulary
-/// contains `industrial-relation`, and a hyphen is not a legal Prisma enum value.
-/// A `CHECK` constraint is deliberately not used either: it would have to be
-/// rewritten by hand every time a module is added. Instead a drift-guard test
-/// asserts the seeded rows match `RESOURCES` from @hris/shared-types exactly.
-model Permission {
-  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  key       String           @unique
-  resource  String
-  action    Action
-  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy String?          @map("created_by_user_id") @db.Uuid
-  users     User?            @relation(fields: [createdBy], references: [id], map: "permissions_created_by_fkey")
-  roles     RolePermission[]
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model AiCall {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  userId String @map("user_id")   @db.Uuid
+  feature       String
+  provider      String
+  model         String
+  promptHash String @map("prompt_hash")
+  inputTokens Int @map("input_tokens")      @default(0)
+  outputTokens Int @map("output_tokens")      @default(0)
+  latencyMs Int @map("latency_ms")      @default(0)
+  status        String   @default("SUCCESS")
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
 
-  @@unique([resource, action])
-  @@index([resource])
-  @@map("permissions")
+  @@index([companyId, createdAt], map: "ai_calls_company_created_idx")
+  @@map("ai_calls")
 }
 
-/// A capability granted to a role, together with the scope it applies within.
-model RolePermission {
-  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  roleId       String     @map("role_id") @db.Uuid
-  permissionId String     @map("permission_id") @db.Uuid
-  dataScope    DataScope  @default(SELF) @map("data_scope")
-  /// Narrows the grant to one organizational subtree, e.g. a single department.
-  scopeId      String?    @map("scope_id") @db.Uuid
-  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy    String?    @map("created_by_user_id") @db.Uuid
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model AiKnowledgeDocument {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  title              String
+  kind               String   @default("POLICY")
+  source             String?
+  content            String
+  embedding          Json?
+  status             String   @default("PUBLISHED")
+  createdByUserId String? @map("created_by_user_id")  @db.Uuid
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @default(now()) @db.Timestamptz(3)
 
-  @@unique([roleId, permissionId, dataScope], map: "role_permissions_role_permission_scope_key")
-  @@index([permissionId])
-  @@map("role_permissions")
+  @@index([companyId, status], map: "ai_knowledge_documents_company_status_idx")
+  @@map("ai_knowledge_documents")
 }
 
-/// A legal employer. The root of the tenant hierarchy.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model AiModel {
+  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  key                      String
+  name                     String
+  provider                 String   @default("openai-compatible")
+  contextWindow Int? @map("context_window")
+  inputPricePerMillion Decimal? @map("input_price_per_million") @db.Decimal(12, 6)
+  outputPricePerMillion Decimal? @map("output_price_per_million") @db.Decimal(12, 6)
+  isDefault Boolean @map("is_default")  @default(false)
+  isEnabled Boolean @map("is_enabled")  @default(true)
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @default(now()) @db.Timestamptz(3)
+
+  @@unique([companyId, key], map: "ai_models_company_key_unique")
+  @@index([companyId], map: "ai_models_company_idx")
+  @@map("ai_models")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model AiPrompt {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  key        String
+  version    Int      @default(1)
+  name       String?
+  content    String
+  isEnabled Boolean @map("is_enabled")  @default(false)
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @default(now()) @db.Timestamptz(3)
+
+  @@unique([companyId, key, version], map: "ai_prompts_company_key_version_unique")
+  @@index([companyId, key], map: "ai_prompts_company_key_idx")
+  @@map("ai_prompts")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model AiTool {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  key        String
+  isEnabled Boolean @map("is_enabled")
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @default(now()) @db.Timestamptz(3)
+
+  @@unique([companyId, key], map: "ai_tools_company_key_unique")
+  @@index([companyId], map: "ai_tools_company_idx")
+  @@map("ai_tools")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ApiClient {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")            @db.Uuid
+  name               String
+  description        String?
+  clientId String @map("client_id")            @unique
+  secretHash String @map("secret_hash")
+  scopes             String[]          @default([])
+  ownerUserId String @map("owner_user_id")            @db.Uuid
+  isActive Boolean @map("is_active")           @default(true)
+  lastUsedAt DateTime? @map("last_used_at")         @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")          @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")          @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")           @db.Uuid
+  deletedAt DateTime? @map("deleted_at")         @db.Timestamptz(3)
+  apiRequestLog ApiRequestLog[]
+
+  @@index([companyId])
+  @@map("api_clients")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ApiRequestLog {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")      @db.Uuid
+  apiClientId String @map("api_client_id")      @db.Uuid
+  method         String
+  path           String
+  statusCode Int @map("status_code")
+  durationMs Int @map("duration_ms")
+  correlationId String? @map("correlation_id")
+  occurredAt DateTime @map("occurred_at")    @default(now()) @db.Timestamptz(3)
+  apiClients ApiClient @relation(fields: [aClientId], references: [id], onDelete: Cascade)
+
+  @@index([apiClientId, occurredAt(sort: Desc)], map: "api_request_log_client_occurred_idx")
+  @@index([companyId, occurredAt(sort: Desc)], map: "api_request_log_company_occurred_idx")
+  @@map("api_request_log")
+}
+
+model AppModule {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String @map("application_id")                 @db.Uuid
+  key                  String                 @unique
+  name                 String
+  description          String?
+  moduleId String? @map("module_id")
+  isActive Boolean @map("is_active")                @default(true)
+  sortOrder Int @map("sort_order")                    @default(0)
+  createdAt DateTime @map("created_at")               @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")               @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")                @db.Uuid
+  applications Application           @relation(fields: [aId], references: [id], onDelete: Cascade)
+  users User?                 @relation(fields: [createdByUserId], references: [id], map: "app_modules_created_by_fkey")
+  resourceDefinitions ResourceDefinition[]
+
+  @@index([applicationId])
+  @@map("app_modules")
+}
+
+model Application {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key                  String                 @unique
+  name                 String
+  description          String?
+  isActive Boolean @map("is_active")                @default(true)
+  createdAt DateTime @map("created_at")               @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")               @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")                @db.Uuid
+  appModules AppModule[]
+  users User?                 @relation(fields: [createdByUserId], references: [id], map: "applications_created_by_fkey")
+  resourceDefinitions ResourceDefinition[]
+  @@map("applications")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ApprovalAuthority {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")              @db.Uuid
+  subjectType ApprovalSubjectType @map("subject_type")
+  subjectId String @map("subject_id")              @db.Uuid
+  resource           String?
+  category           String?
+  maxAmount Decimal? @map("max_amount")            @db.Decimal(18, 2)
+  currencyCode String? @map("currency_code")             @db.Citext
+  effectiveFrom DateTime? @map("effective_from")           @db.Timestamptz(3)
+  effectiveTo DateTime? @map("effective_to")           @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")            @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")            @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")             @db.Uuid
+  deletedAt DateTime? @map("deleted_at")           @db.Timestamptz(3)
+  users User?              @relation(fields: [createdByUserId], references: [id], map: "approval_authorities_created_by_fkey")
+
+  @@index([companyId, subjectId], map: "approval_authorities_company_subject_idx")
+  @@map("approval_authorities")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ApprovalDelegation {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  delegatorUserId String @map("delegator_user_id")    @db.Uuid
+  delegateeUserId String @map("delegatee_user_id")    @db.Uuid
+  resource           String?
+  category           String?
+  effectiveFrom DateTime? @map("effective_from") @db.Timestamptz(3)
+  effectiveTo DateTime? @map("effective_to") @db.Timestamptz(3)
+  reason             String?
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  users User?    @relation(fields: [createdByUserId], references: [id], map: "approval_delegations_created_by_fkey")
+
+  @@index([companyId, delegatorUserId], map: "approval_delegations_company_delegator_idx")
+  @@map("approval_delegations")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model AttendanceRecord {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  employeeId String @map("employee_id")    @db.Uuid
+  attendanceDate DateTime @map("attendance_date")  @db.Date
+  clockIn DateTime? @map("clock_in") @db.Timestamptz(3)
+  clockOut DateTime? @map("clock_out") @db.Timestamptz(3)
+  breakMinutes Int @map("break_minutes")       @default(0)
+  status             String    @default("PRESENT")
+  notes              String?
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "attendance_records_company_fkey")
+  employees Employee @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "attendance_records_employee_fkey")
+
+  @@unique([companyId, employeeId, attendanceDate], map: "attendance_records_unique_day")
+  @@index([companyId], map: "attendance_records_company_idx")
+  @@index([attendanceDate], map: "attendance_records_date_idx")
+  @@index([employeeId], map: "attendance_records_employee_idx")
+  @@index([status])
+  @@map("attendance_records")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model AuditLog {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  actorUserId String? @map("actor_user_id")  @db.Uuid
+  action             String
+  resource           String
+  resourceId String? @map("resource_id")
+  payload            Json?
+  previousHash String? @map("previous_hash")
+  entryHash String @map("entry_hash")   @unique
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")  @db.Uuid
+  users User?   @relation(fields: [createdByUserId], references: [id], map: "audit_logs_created_by_fkey")
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([resource, resourceId])
+  @@map("audit_logs")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model Authenticator {
+  id                                             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  userId String @map("user_id")    @db.Uuid
+  credentialId String @map("credential_id")
+  publicKey String @map("public_key")
+  counter                                        BigInt    @default(0)
+  transports                                     Json?
+  deviceName String? @map("device_name")
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  usersAuthenticatorsCreatedByUserIdtousers User?    @relation("authenticators_created_by_user_idTousers", fields: [createdByUserId], references: [id], map: "authenticators_created_by_fkey")
+  usersAuthenticatorsUserIdtousers User     @relation("authenticators_user_idTousers", fields: [uId], references: [id], onDelete: Cascade, map: "authenticators_user_fkey")
+
+  @@unique([companyId, credentialId], map: "authenticators_company_credential_key")
+  @@index([companyId, userId], map: "authenticators_company_user_idx")
+  @@map("authenticators")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model BusinessRule {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  name        String
+  description String?
+  eventType String @map("event_type")
+  condition   Json     @default("{}")
+  actions     Json     @default("[]")
+  priority    Int      @default(100)
+  isEnabled Boolean @map("is_enabled")  @default(true)
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @default(now()) @db.Timestamptz(3)
+
+  @@index([companyId, eventType, isEnabled], map: "business_rules_company_event_idx")
+  @@map("business_rules")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model Company {
-  id                                        String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code                                      String               @unique @db.Citext
+  id                                        String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                                      String                        @unique @db.Citext
   name                                      String
-  status                                    String               @default("ACTIVE")
-  plan                                      String               @default("STANDARD")
-  suspendedAt                               DateTime?            @map("suspended_at") @db.Timestamptz(3)
-  trialEndsAt                               DateTime?            @map("trial_ends_at") @db.Timestamptz(3)
-  seatLimit                                 Int?                 @map("seat_limit")
-  storageQuotaBytes                          BigInt?              @map("storage_quota_bytes")
-  createdAt                                 DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                                 DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy                                 String?              @map("created_by_user_id") @db.Uuid
-  deletedAt                                 DateTime?            @map("deleted_at") @db.Timestamptz(3)
-  users_companies_created_by_user_idTousers User?                @relation("companies_created_by_user_idTousers", fields: [createdBy], references: [id], map: "companies_created_by_fkey")
-  entities                                  Entity[]
-  units                                     OrganizationalUnit[]
-  users                                     User[]
+  createdAt DateTime @map("created_at")                      @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")                      @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")                       @db.Uuid
+  deletedAt DateTime? @map("deleted_at")                     @db.Timestamptz(3)
+  status                                    String                        @default("ACTIVE")
+  plan                                      String                        @default("STANDARD")
+  suspendedAt DateTime? @map("suspended_at")                     @db.Timestamptz(3)
+  trialEndsAt DateTime? @map("trial_ends_at")                     @db.Timestamptz(3)
+  seatLimit Int? @map("seat_limit")
+  storageQuotaBytes BigInt? @map("storage_quota_bytes")
+  attendanceRecords AttendanceRecord[]
+  usersCompaniesCreatedByUserIdtousers User?                        @relation("companies_created_by_user_idTousers", fields: [createdByUserId], references: [id], map: "companies_created_by_fkey")
+  employeeCertifications EmployeeCertification[]
+  employeeContacts EmployeeContact[]
+  employeeDocuments EmployeeDocument[]
+  employeeEducation EmployeeEducation[]
+  employeeExperience EmployeeExperience[]
+  employeeFamily EmployeeFamilyMember[]
+  employeeMovements EmployeeMovement[]
+  employeeSkills EmployeeSkill[]
+  employmentContracts EmploymentContract[]
+  entities Entity[]
+  jobApplications JobApplication[]
+  jobCandidates JobCandidate[]
+  jobRequisitions JobRequisition[]
+  leavePolicies LeavePolicy[]
+  leaveRequests LeaveRequest[]
+  leaveTypes LeaveType[]
+  offboardingCases OffboardingCase[]
+  offboardingChecklistItems OffboardingChecklistItem[]
+  organizationalUnits OrganizationalUnit[]
+  payrollComponents PayrollComponent[]
+  payrollPeriods PayrollPeriod[]
+  payrollRuns PayrollRun[]
+  performanceCycles PerformanceCycle[]
+  performanceGoals PerformanceGoal[]
+  performanceReviews PerformanceReview[]
+  salaryStructures SalaryStructure[]
+  shiftPatterns ShiftPattern[]
+  usersUsersCompanyIdtocompanies User[]                       @relation("users_company_idTocompanies")
+  workLocations WorkLocation[]
 
   @@index([name])
   @@map("companies")
 }
 
-/// A statutory or operational unit of a company: the payroll or legal entity that
-/// owns employees and pays them.
-model Entity {
-  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId    String               @map("company_id") @db.Uuid
-  code         String               @db.Citext
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ConfigurationSchema {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  resourceKey String @map("resource_key")
   name         String
-  countryCode  String               @map("country_code") @db.Citext
-  currencyCode String               @map("currency_code") @db.Citext
-  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy    String?              @map("created_by_user_id") @db.Uuid
-  deletedAt    DateTime?            @map("deleted_at") @db.Timestamptz(3)
-  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  users        User?                @relation(fields: [createdBy], references: [id], map: "entities_created_by_fkey")
-  units        OrganizationalUnit[]
+  description  String?
+  schemaJson Json @map("schema_json")     @default("{}")
+  isActive Boolean @map("is_active")  @default(true)
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @default(now()) @db.Timestamptz(3)
+
+  @@unique([companyId, resourceKey], map: "configuration_schemas_unique")
+  @@index([companyId, resourceKey], map: "configuration_schemas_company_resource_idx")
+  @@map("configuration_schemas")
+}
+
+model Country {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code               String   @unique @db.Citext
+  name               String
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")  @db.Uuid
+  users User?   @relation(fields: [createdByUserId], references: [id], map: "countries_created_by_fkey")
+  @@map("countries")
+}
+
+model Currency {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code               String   @unique @db.Citext
+  name               String
+  minorUnit Int @map("minor_unit")
+  isActive Boolean @map("is_active")  @default(true)
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")  @db.Uuid
+  users User?   @relation(fields: [createdByUserId], references: [id], map: "currencies_created_by_fkey")
+  @@map("currencies")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model DataPolicy {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  name            String
+  description     String?
+  classification  String   @default("internal")
+  targetResource String @map("target_resource")
+  maskingAction String @map("masking_action")   @default("mask")
+  isEnabled Boolean @map("is_enabled")  @default(true)
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @default(now()) @db.Timestamptz(3)
+  @@map("data_policies")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model DataRetentionSchedule {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  resource         String
+  retentionDays Int @map("retention_days")
+  purgeAfterDays Int @map("purge_after_days")      @default(30)
+  isEnabled Boolean @map("is_enabled")  @default(true)
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @default(now()) @db.Timestamptz(3)
+
+  @@index([companyId, resource], map: "data_retention_schedules_company_resource_idx")
+  @@map("data_retention_schedules")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model EmployeeCertification {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  employeeId String @map("employee_id")    @db.Uuid
+  name               String
+  issuer             String
+  issueDate DateTime @map("issue_date")  @db.Date
+  expiryDate DateTime? @map("expiry_date") @db.Date
+  credentialId String? @map("credential_id")
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_certifications_company_fkey")
+  employees Employee @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_certifications_employee_fkey")
+
+  @@index([companyId], map: "employee_certifications_company_idx")
+  @@index([employeeId], map: "employee_certifications_employee_idx")
+  @@map("employee_certifications")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model EmployeeContact {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  employeeId String @map("employee_id")    @db.Uuid
+  name               String
+  relationship       String
+  phone              String
+  email              String?
+  address            String?
+  isPrimary Boolean @map("is_primary")   @default(false)
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_contacts_company_fkey")
+  employees Employee @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_contacts_employee_fkey")
+
+  @@index([companyId], map: "employee_contacts_company_idx")
+  @@index([employeeId], map: "employee_contacts_employee_idx")
+  @@map("employee_contacts")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model EmployeeDocument {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  employeeId String @map("employee_id")    @db.Uuid
+  title              String
+  category           String
+  fileUrl String? @map("file_url")
+  expiryDate DateTime? @map("expiry_date") @db.Date
+  note               String?
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_documents_company_fkey")
+  employees Employee @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_documents_employee_fkey")
+
+  @@index([companyId], map: "employee_documents_company_idx")
+  @@index([employeeId], map: "employee_documents_employee_idx")
+  @@map("employee_documents")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model EmployeeEducation {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  employeeId String @map("employee_id")    @db.Uuid
+  level              String
+  institution        String
+  major              String?
+  startYear Int @map("start_year")
+  endYear Int? @map("end_year")
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_education_company_fkey")
+  employees Employee @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_education_employee_fkey")
+
+  @@index([companyId], map: "employee_education_company_idx")
+  @@index([employeeId], map: "employee_education_employee_idx")
+  @@map("employee_education")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model EmployeeExperience {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  employeeId String @map("employee_id")    @db.Uuid
+  companyName String @map("company_name")
+  positionTitle String @map("position_title")
+  startDate DateTime @map("start_date")  @db.Date
+  endDate DateTime? @map("end_date") @db.Date
+  description        String?
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_experience_company_fkey")
+  employees Employee @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_experience_employee_fkey")
+
+  @@index([companyId], map: "employee_experience_company_idx")
+  @@index([employeeId], map: "employee_experience_employee_idx")
+  @@map("employee_experience")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model EmployeeFamilyMember {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  employeeId String @map("employee_id")    @db.Uuid
+  fullName String @map("full_name")
+  relationship       String
+  birthDate DateTime? @map("birth_date") @db.Date
+  occupation         String?
+  isDependent Boolean @map("is_dependent")   @default(false)
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_family_company_fkey")
+  employees Employee @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_family_employee_fkey")
+
+  @@index([companyId], map: "employee_family_company_idx")
+  @@index([employeeId], map: "employee_family_employee_idx")
+  @@map("employee_family")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model EmployeeMovement {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  employeeId String @map("employee_id")    @db.Uuid
+  movementType String @map("movement_type")
+  effectiveDate DateTime @map("effective_date")  @db.Date
+  fromUnitName String? @map("from_unit_name")
+  toUnitName String? @map("to_unit_name")
+  fromPositionName String? @map("from_position_name")
+  toPositionName String? @map("to_position_name")
+  reason             String?
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_movements_company_fkey")
+  employees Employee @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_movements_employee_fkey")
+
+  @@index([companyId], map: "employee_movements_company_idx")
+  @@index([employeeId], map: "employee_movements_employee_idx")
+  @@map("employee_movements")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model EmployeeSkill {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  employeeId String @map("employee_id")    @db.Uuid
+  name                String
+  proficiency         String    @default("BEGINNER")
+  yearsOfExperience Int? @map("years_of_experience")
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_skills_company_fkey")
+  employees Employee @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employee_skills_employee_fkey")
+
+  @@index([companyId], map: "employee_skills_company_idx")
+  @@index([employeeId], map: "employee_skills_employee_idx")
+  @@map("employee_skills")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model Employee {
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                    @db.Uuid
+  userId String @map("user_id")                    @db.Uuid
+  employeeNumber String @map("employee_number")
+  organizationalUnitId String? @map("organizational_unit_id")                   @db.Uuid
+  positionId String? @map("position_id")                   @db.Uuid
+  employmentType String @map("employment_type")
+  status                  String
+  hireDate DateTime @map("hire_date")                  @db.Timestamptz(3)
+  terminationDate DateTime? @map("termination_date")                 @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")                  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")                  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")                   @db.Uuid
+  deletedAt DateTime? @map("deleted_at")                 @db.Timestamptz(3)
+  attendanceRecords AttendanceRecord[]
+  employeeCertifications EmployeeCertification[]
+  employeeContacts EmployeeContact[]
+  employeeDocuments EmployeeDocument[]
+  employeeEducation EmployeeEducation[]
+  employeeExperience EmployeeExperience[]
+  employeeFamily EmployeeFamilyMember[]
+  employeeMovements EmployeeMovement[]
+  employeeSkills EmployeeSkill[]
+  positions Position?                @relation(fields: [pId], references: [id], onUpdate: NoAction, map: "employees_position_fkey")
+  organizationalUnits organizational_units?     @relation(fields: [oUnitId], references: [id], onUpdate: NoAction, map: "employees_unit_fkey")
+  users User                     @relation(fields: [uId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employees_user_fkey")
+  employmentContracts EmploymentContract[]
+  leaveRequests LeaveRequest[]
+  offboardingCases OffboardingCase[]
+  payrollRuns PayrollRun[]
+  performanceGoals PerformanceGoal[]
+  performanceReviews PerformanceReview[]
+
+  @@unique([companyId, employeeNumber], map: "employees_company_number_unique")
+  @@index([companyId], map: "employees_company_idx")
+  @@index([positionId], map: "employees_position_idx")
+  @@index([organizationalUnitId], map: "employees_unit_idx")
+  @@index([userId], map: "employees_user_idx")
+  @@map("employees")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model EmploymentContract {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  employeeId String @map("employee_id")    @db.Uuid
+  contractNumber String @map("contract_number")
+  contractType String @map("contract_type")
+  startDate DateTime @map("start_date")  @db.Date
+  endDate DateTime? @map("end_date") @db.Date
+  status             String    @default("ACTIVE")
+  signedDate DateTime? @map("signed_date") @db.Date
+  notes              String?
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employment_contracts_company_fkey")
+  employees Employee @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "employment_contracts_employee_fkey")
+
+  @@unique([companyId, contractNumber], map: "employment_contracts_company_number_uq", where: raw("(deleted_at IS NULL)"))
+  @@index([companyId], map: "employment_contracts_company_idx")
+  @@index([employeeId], map: "employment_contracts_employee_idx")
+  @@map("employment_contracts")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model Entity {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                 @db.Uuid
+  code                 String                 @db.Citext
+  name                 String
+  countryCode String @map("country_code")                 @db.Citext
+  currencyCode String @map("currency_code")                 @db.Citext
+  createdAt DateTime @map("created_at")               @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")               @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")                @db.Uuid
+  deletedAt DateTime? @map("deleted_at")              @db.Timestamptz(3)
+  companies Company              @relation(fields: [cId], references: [id], onDelete: Cascade)
+  users User?                 @relation(fields: [createdByUserId], references: [id], map: "entities_created_by_fkey")
+  organizationalUnits OrganizationalUnit[]
 
   @@unique([companyId, code])
   @@index([companyId])
   @@map("entities")
 }
 
-/// A node of the division → department → section → team hierarchy.
-///
-/// `companyId` is denormalised from the owning entity on purpose. A row-level
-/// security policy cannot traverse a join, so without a company column on the
-/// table the only way to filter units by tenant would be application code — which
-/// is exactly the single layer DATABASE.md says must not be the only one.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ExtensionRegistry {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")   @db.Uuid
+  name          String
+  description   String?
+  extensionKey String @map("extension_key")
+  version       String
+  manifest      Json     @default("{}")
+  isEnabled Boolean @map("is_enabled")  @default(true)
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @default(now()) @db.Timestamptz(3)
+
+  @@unique([companyId, extensionKey], map: "extension_registry_unique")
+  @@index([companyId, extensionKey], map: "extension_registry_company_extension_idx")
+  @@map("extension_registry")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model FeatureFlag {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String? @map("company_id")  @db.Uuid
+  key         String
+  name        String
+  description String?
+  enabled     Boolean  @default(false)
+  rollout     Json     @default("{}")
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @default(now()) @db.Timestamptz(3)
+
+  @@index([key, companyId], map: "feature_flags_key_company_idx")
+  @@map("feature_flags")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model FileObject {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")           @db.Uuid
+  name                String
+  mimeType String @map("mime_type")
+  size                BigInt?
+  storageKey String @map("storage_key")           @unique
+  bucket              String
+  checksum            String?
+  status              FileObjectStatus @default(PENDING)
+  entity              String?
+  entityId String? @map("entity_id")          @db.Uuid
+  retentionDays Int? @map("retention_days")
+  retentionUntil DateTime? @map("retention_until")        @db.Timestamptz(3)
+  uploadedByUserId String? @map("uploaded_by_user_id")          @db.Uuid
+  createdAt DateTime @map("created_at")         @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")         @default(now()) @db.Timestamptz(3)
+  removedAt DateTime? @map("removed_at")        @db.Timestamptz(3)
+
+  @@index([companyId, entity, entityId], map: "files_company_entity_idx")
+  @@index([companyId, status], map: "files_company_status_idx")
+  @@index([status, retentionUntil], map: "files_status_retention_idx")
+  @@map("files")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model IdempotencyKey {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  userId String @map("user_id")    @db.Uuid
+  route         String
+  key           String
+  requestHash String @map("request_hash")
+  statusCode Int? @map("status_code")
+  responseBody Json? @map("response_body")
+  expiresAt DateTime @map("expires_at")  @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  @@unique([companyId, userId, route, key], map: "idempotency_keys_unique")
+  @@index([expiresAt], map: "idempotency_keys_expires_idx")
+  @@map("idempotency_keys")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model IdentityProvider {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")               @db.Uuid
+  name               String
+  type               IdentityProviderType
+  enabled            Boolean              @default(true)
+  domains            Json?
+  config             Json?
+  createdAt DateTime @map("created_at")             @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")             @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")              @db.Uuid
+  deletedAt DateTime? @map("deleted_at")            @db.Timestamptz(3)
+  users User?               @relation(fields: [createdByUserId], references: [id], map: "identity_providers_created_by_fkey")
+
+  @@index([companyId, enabled], map: "identity_providers_company_enabled_idx")
+  @@map("identity_providers")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model IntegrationDelivery {
+  id             String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                       @db.Uuid
+  integrationId String @map("integration_id")                       @db.Uuid
+  direction      IntegrationDeliveryDirection @default(OUTBOUND)
+  operation      String
+  status         IntegrationDeliveryStatus
+  attempt        Int                          @default(1)
+  error          String?
+  durationMs Int? @map("duration_ms")
+  request        Json?
+  response       Json?
+  createdAt DateTime @map("created_at")                     @default(now()) @db.Timestamptz(3)
+  integrations Integration                 @relation(fields: [iId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, integrationId, createdAt(sort: Desc)], map: "integration_deliveries_integration_created_idx")
+  @@map("integration_deliveries")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model Integration {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                   @db.Uuid
+  key                    String
+  name                   String
+  kind                   IntegrationKind
+  provider               String
+  config                 Json                     @default("{}")
+  isEnabled Boolean @map("is_enabled")                  @default(true)
+  status                 IntegrationStatus        @default(UNKNOWN)
+  lastCheckedAt DateTime? @map("last_checked_at")                @db.Timestamptz(3)
+  lastMessage String? @map("last_message")
+  createdAt DateTime @map("created_at")                 @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")                 @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")                  @db.Uuid
+  deletedAt DateTime? @map("deleted_at")                @db.Timestamptz(3)
+  secretCiphertext String? @map("secret_ciphertext")
+  integrationDeliveries IntegrationDelivery[]
+  webhookSubscriptions WebhookSubscription[]
+
+  @@unique([companyId, key], map: "integrations_company_key_key")
+  @@map("integrations")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model JobApplication {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")           @db.Uuid
+  requisitionId String @map("requisition_id")           @db.Uuid
+  candidateId String @map("candidate_id")           @db.Uuid
+  stage              String           @default("APPLIED")
+  rating             Int?
+  notes              String?
+  decidedAt DateTime? @map("decided_at")        @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")         @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")         @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")          @db.Uuid
+  deletedAt DateTime? @map("deleted_at")        @db.Timestamptz(3)
+  jobCandidates JobCandidate   @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "job_applications_candidate_fkey")
+  companies Company        @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "job_applications_company_fkey")
+  jobRequisitions JobRequisition @relation(fields: [rId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "job_applications_requisition_fkey")
+
+  @@unique([requisitionId, candidateId], map: "job_applications_requisition_candidate_unique")
+  @@index([companyId], map: "job_applications_company_idx")
+  @@index([requisitionId], map: "job_applications_requisition_idx")
+  @@index([stage])
+  @@map("job_applications")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model JobCandidate {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")             @db.Uuid
+  fullName String @map("full_name")
+  email              String
+  phone              String?
+  source             String?
+  resumeSummary String? @map("resume_summary")
+  createdAt DateTime @map("created_at")           @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")           @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")            @db.Uuid
+  deletedAt DateTime? @map("deleted_at")          @db.Timestamptz(3)
+  jobApplications JobApplication[]
+  companies Company          @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "job_candidates_company_fkey")
+
+  @@unique([companyId, email], map: "job_candidates_company_email_unique")
+  @@index([companyId], map: "job_candidates_company_idx")
+  @@map("job_candidates")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model JobRequisition {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")             @db.Uuid
+  code               String
+  title              String
+  positionId String? @map("position_id")            @db.Uuid
+  department         String?
+  headcount          Int                @default(1)
+  status             String             @default("DRAFT")
+  openedAt DateTime? @map("opened_at")          @db.Timestamptz(3)
+  closedAt DateTime? @map("closed_at")          @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")           @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")           @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")            @db.Uuid
+  deletedAt DateTime? @map("deleted_at")          @db.Timestamptz(3)
+  jobApplications JobApplication[]
+  companies Company          @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "job_requisitions_company_fkey")
+  positions Position?         @relation(fields: [pId], references: [id], onUpdate: NoAction, map: "job_requisitions_position_fkey")
+
+  @@unique([companyId, code], map: "job_requisitions_company_code_unique")
+  @@index([companyId], map: "job_requisitions_company_idx")
+  @@index([status])
+  @@map("job_requisitions")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model LeavePolicy {
+  id                 String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")      @db.Uuid
+  leaveTypeId String @map("leave_type_id")      @db.Uuid
+  annualDays Int @map("annual_days")
+  carryForward Boolean @map("carry_forward")     @default(false)
+  isActive Boolean @map("is_active")     @default(true)
+  createdAt DateTime @map("created_at")    @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")    @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")     @db.Uuid
+  deletedAt DateTime? @map("deleted_at")   @db.Timestamptz(3)
+  companies Company   @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "leave_policies_company_fkey")
+  leaveTypes LeaveType @relation(fields: [lTypeId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "leave_policies_leave_type_fkey")
+
+  @@unique([companyId, leaveTypeId], map: "leave_policies_company_type_unique")
+  @@index([companyId], map: "leave_policies_company_idx")
+  @@index([leaveTypeId], map: "leave_policies_type_idx")
+  @@map("leave_policies")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model LeaveRequest {
+  id                 String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")      @db.Uuid
+  employeeId String @map("employee_id")      @db.Uuid
+  leaveTypeId String @map("leave_type_id")      @db.Uuid
+  startDate DateTime @map("start_date")    @db.Timestamptz(3)
+  endDate DateTime @map("end_date")    @db.Timestamptz(3)
+  days               Decimal     @db.Decimal(5, 2)
+  reason             String?
+  status             String      @default("PENDING")
+  approverId String? @map("approver_id")     @db.Uuid
+  approvedAt DateTime? @map("approved_at")   @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")    @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")    @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")     @db.Uuid
+  deletedAt DateTime? @map("deleted_at")   @db.Timestamptz(3)
+  companies Company   @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "leave_requests_company_fkey")
+  employees Employee   @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "leave_requests_employee_fkey")
+  leaveTypes LeaveType @relation(fields: [lTypeId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "leave_requests_leave_type_fkey")
+
+  @@index([companyId], map: "leave_requests_company_idx")
+  @@index([employeeId], map: "leave_requests_employee_idx")
+  @@index([status])
+  @@map("leave_requests")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model LeaveType {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")           @db.Uuid
+  code               String
+  name               String
+  description        String?
+  isPaid Boolean @map("is_paid")          @default(true)
+  defaultDays Int @map("default_days")              @default(0)
+  isActive Boolean @map("is_active")          @default(true)
+  createdAt DateTime @map("created_at")         @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")         @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")          @db.Uuid
+  deletedAt DateTime? @map("deleted_at")        @db.Timestamptz(3)
+  leavePolicies LeavePolicy[]
+  leaveRequests LeaveRequest[]
+  companies Company        @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "leave_types_company_fkey")
+
+  @@unique([companyId, code], map: "leave_types_company_code_unique")
+  @@index([companyId], map: "leave_types_company_idx")
+  @@map("leave_types")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model LogEvent {
+  id                 String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")      @db.Uuid
+  category           LogCategory
+  eventType String @map("event_type")
+  actorUserId String? @map("actor_user_id")     @db.Uuid
+  resource           String?
+  resourceId String? @map("resource_id")
+  status             String?
+  metadata           Json?
+  ipAddress String? @map("ip_address")     @db.Inet
+  userAgent String? @map("user_agent")
+  requestId String? @map("request_id")
+  createdAt DateTime @map("created_at")    @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")     @db.Uuid
+  users User?      @relation(fields: [createdByUserId], references: [id], map: "log_events_created_by_fkey")
+
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@index([category, createdAt(sort: Desc)])
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([resource, resourceId])
+  @@map("log_events")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model MfaFactor {
+  id                                          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")        @db.Uuid
+  userId String @map("user_id")        @db.Uuid
+  type                                        MfaFactorType
+  secretEncrypted String @map("secret_encrypted")
+  label                                       String        @default("Default authenticator")
+  confirmedAt DateTime? @map("confirmed_at")     @db.Timestamptz(3)
+  lastUsedAt DateTime? @map("last_used_at")     @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")      @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")      @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")       @db.Uuid
+  deletedAt DateTime? @map("deleted_at")     @db.Timestamptz(3)
+  usersMfaFactorsCreatedByUserIdtousers User?        @relation("mfa_factors_created_by_user_idTousers", fields: [createdByUserId], references: [id], map: "mfa_factors_created_by_fkey")
+  usersMfaFactorsUserIdtousers User         @relation("mfa_factors_user_idTousers", fields: [uId], references: [id], onDelete: Cascade, map: "mfa_factors_user_fkey")
+
+  @@index([companyId, userId], map: "mfa_factors_company_user_idx")
+  @@map("mfa_factors")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model MfaRecoveryCode {
+  id                                                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  userId String @map("user_id")    @db.Uuid
+  codeHash String @map("code_hash")
+  usedAt DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  usersMfaRecoveryCodesCreatedByUserIdtousers User?    @relation("mfa_recovery_codes_created_by_user_idTousers", fields: [createdByUserId], references: [id], map: "mfa_recovery_codes_created_by_fkey")
+  usersMfaRecoveryCodesUserIdtousers User     @relation("mfa_recovery_codes_user_idTousers", fields: [uId], references: [id], onDelete: Cascade, map: "mfa_recovery_codes_user_fkey")
+
+  @@index([codeHash])
+  @@index([companyId, userId], map: "mfa_recovery_codes_company_user_idx")
+  @@map("mfa_recovery_codes")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model NotificationPreference {
+  id                                                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")              @db.Uuid
+  userId String @map("user_id")              @db.Uuid
+  channel                                                  NotificationChannel
+  enabled                                                  Boolean             @default(true)
+  createdAt DateTime @map("created_at")            @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")            @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")             @db.Uuid
+  deletedAt DateTime? @map("deleted_at")           @db.Timestamptz(3)
+  usersNotificationPreferencesCreatedByUserIdtousers User?              @relation("notification_preferences_created_by_user_idTousers", fields: [createdByUserId], references: [id], map: "notification_preferences_created_by_fkey")
+  usersNotificationPreferencesUserIdtousers User               @relation("notification_preferences_user_idTousers", fields: [uId], references: [id], onDelete: Cascade, map: "notification_preferences_user_fkey")
+
+  @@unique([companyId, userId, channel], map: "notification_preferences_company_user_channel_key")
+  @@index([userId])
+  @@map("notification_preferences")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model NotificationTemplate {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")              @db.Uuid
+  eventKey String @map("event_key")
+  channel            NotificationChannel
+  subjectTemplate String @map("subject_template")
+  bodyTemplate String @map("body_template")
+  enabled            Boolean             @default(true)
+  createdAt DateTime @map("created_at")            @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")            @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")             @db.Uuid
+  deletedAt DateTime? @map("deleted_at")           @db.Timestamptz(3)
+  users User?              @relation(fields: [createdByUserId], references: [id], map: "notification_templates_created_by_fkey")
+
+  @@unique([companyId, eventKey, channel], map: "notification_templates_company_event_channel_key")
+  @@map("notification_templates")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model Notification {
+  id                                            String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                     @db.Uuid
+  userId String @map("user_id")                     @db.Uuid
+  kind                                          NotificationKind
+  eventKey String @map("event_key")
+  title                                         String
+  description                                   String
+  href                                          String?
+  channel                                       NotificationChannel
+  deliveryStatus NotificationDeliveryStatus @map("delivery_status")
+  correlationId String? @map("correlation_id")
+  readAt DateTime? @map("read_at")                  @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")                   @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")                    @db.Uuid
+  usersNotificationsCreatedByUserIdtousers User?                     @relation("notifications_created_by_user_idTousers", fields: [createdByUserId], references: [id], map: "notifications_created_by_fkey")
+  usersNotificationsUserIdtousers User                      @relation("notifications_user_idTousers", fields: [uId], references: [id], onDelete: Cascade, map: "notifications_user_fkey")
+
+  @@index([companyId, deliveryStatus], map: "notifications_company_status_idx")
+  @@index([companyId, userId, createdAt(sort: Desc)], map: "notifications_company_user_created_idx")
+  @@map("notifications")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model OffboardingCase {
+  id                          String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                        @db.Uuid
+  employeeId String @map("employee_id")                        @db.Uuid
+  reason                      String
+  lastWorkingDate DateTime @map("last_working_date")                      @db.Date
+  status                      String                        @default("INITIATED")
+  exitInterviewNotes String? @map("exit_interview_notes")
+  createdAt DateTime @map("created_at")                      @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")                      @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")                       @db.Uuid
+  deletedAt DateTime? @map("deleted_at")                     @db.Timestamptz(3)
+  companies Company                     @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "offboarding_cases_company_fkey")
+  employees Employee                     @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "offboarding_cases_employee_fkey")
+  offboardingChecklistItems OffboardingChecklistItem[]
+
+  @@index([companyId], map: "offboarding_cases_company_idx")
+  @@index([employeeId], map: "offboarding_cases_employee_idx")
+  @@index([status])
+  @@map("offboarding_cases")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model OffboardingChecklistItem {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")            @db.Uuid
+  caseId String @map("case_id")            @db.Uuid
+  task               String
+  isDone Boolean @map("is_done")           @default(false)
+  completedAt DateTime? @map("completed_at")         @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")          @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")           @db.Uuid
+  deletedAt DateTime? @map("deleted_at")         @db.Timestamptz(3)
+  offboardingCases OffboardingCase @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "offboarding_checklist_items_case_fkey")
+  companies Company         @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "offboarding_checklist_items_company_fkey")
+
+  @@index([caseId], map: "offboarding_checklist_items_case_idx")
+  @@index([companyId], map: "offboarding_checklist_items_company_idx")
+  @@map("offboarding_checklist_items")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model OrganizationalUnit {
-  id                                                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId                                            String                 @map("company_id") @db.Uuid
-  entityId                                             String?                @map("entity_id") @db.Uuid
-  parentId                                             String?                @map("parent_id") @db.Uuid
-  type                                                 OrganizationalUnitType
-  code                                                 String                 @db.Citext
-  name                                                 String
-  createdAt                                            DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                                            DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy                                            String?                @map("created_by_user_id") @db.Uuid
-  deletedAt                                            DateTime?              @map("deleted_at") @db.Timestamptz(3)
-  company                                              Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  users_organizational_units_created_by_user_idTousers User?                  @relation("organizational_units_created_by_user_idTousers", fields: [createdBy], references: [id], map: "organizational_units_created_by_fkey")
-  entity                                               Entity?                @relation(fields: [entityId], references: [id])
-  parent                                               OrganizationalUnit?    @relation("UnitHierarchy", fields: [parentId], references: [id])
-  children                                             OrganizationalUnit[]   @relation("UnitHierarchy")
-  users                                                User[]
+  id                                                       String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                 @db.Uuid
+  entityId String? @map("entity_id")                @db.Uuid
+  parentId String? @map("parent_id")                @db.Uuid
+  type                                                     OrganizationalUnitType
+  code                                                     String                 @db.Citext
+  name                                                     String
+  createdAt DateTime @map("created_at")               @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")               @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")                @db.Uuid
+  deletedAt DateTime? @map("deleted_at")              @db.Timestamptz(3)
+  employees Employee[]
+  companies Company              @relation(fields: [cId], references: [id], onDelete: Cascade)
+  usersOrganizationalUnitsCreatedByUserIdtousers User?                 @relation("organizational_units_created_by_user_idTousers", fields: [createdByUserId], references: [id], map: "organizational_units_created_by_fkey")
+  entities entities?              @relation(fields: [eId], references: [id])
+  organizationalUnits organizational_units?  @relation("organizational_unitsToorganizational_units", fields: [pId], references: [id])
+  otherOrganizationalUnits OrganizationalUnit[] @relation("organizational_unitsToorganizational_units")
+  positions Position[]
+  usersUsersOrganizationalUnitIdtoorganizationalUnits User[]                @relation("users_organizational_unit_idToorganizational_units")
 
   @@unique([companyId, code])
   @@index([companyId, parentId])
@@ -171,742 +1233,736 @@ model OrganizationalUnit {
   @@map("organizational_units")
 }
 
-/// A human who can sign in. Employee records live in a later phase; a user is an
-/// identity, which is a different concern from employment.
-model User {
-  id                                                                          String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId                                                                   String                   @map("company_id") @db.Uuid
-  email                                                                       String                   @unique @db.Citext
-  displayName                                                                 String                   @map("display_name")
-  status                                                                      UserStatus               @default(INVITED)
-  passwordHash                                                                String?                  @map("password_hash")
-  hasVerifiedEmail                                                            Boolean                  @default(false) @map("has_verified_email")
-  lastLoginAt                                                                 DateTime?                @map("last_login_at") @db.Timestamptz(3)
-  createdAt                                                                   DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                                                                   DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy                                                                   String?                  @map("created_by_user_id") @db.Uuid
-  deletedAt                                                                   DateTime?                @map("deleted_at") @db.Timestamptz(3)
-  /// SHA-256 of the opaque email-verification token (ADR 0010 hash convention).
-  emailVerificationTokenHash                                                  String?                  @unique @map("email_verification_token_hash")
-  /// Consecutive failed sign-in attempts, reset on a successful sign-in.
-  failedAttempts                                                              Int                      @default(0) @map("failed_attempts")
-  /// When set, sign-in attempts are refused until this instant (account lockout).
-  lockedUntil                                                                 DateTime?                @map("locked_until") @db.Timestamptz(3)
-  passwordChangedAt                                                           DateTime?                @map("password_changed_at") @db.Timestamptz(3)
-  passwordResetExpiresAt                                                      DateTime?                @map("password_reset_expires_at") @db.Timestamptz(3)
-  /// SHA-256 of the opaque password-reset token (ADR 0010 hash convention).
-  passwordResetTokenHash                                                      String?                  @unique @map("password_reset_token_hash")
-  /// The organizational unit the user sits in. This is what makes TEAM,
-  /// DEPARTMENT and ENTITY data scopes resolvable: a scope narrows a query to the
-  /// subtree (or entity) rooted at the unit the caller belongs to.
-  organizationalUnitId                                                        String?                  @map("organizational_unit_id") @db.Uuid
-  app_modules                                                                 AppModule[]
-  applications                                                                Application[]
-  approval_authorities                                                        ApprovalAuthority[]
-  approval_delegations                                                        ApprovalDelegation[]
-  audit_logs                                                                  AuditLog[]
-  authenticators_authenticators_created_by_user_idTousers                     Authenticator[]          @relation("authenticators_created_by_user_idTousers")
-  authenticators_authenticators_user_idTousers                                Authenticator[]          @relation("authenticators_user_idTousers")
-  companies_companies_created_by_user_idTousers                               Company[]                @relation("companies_created_by_user_idTousers")
-  countries                                                                   Country[]
-  currencies                                                                  Currency[]
-  entities                                                                    Entity[]
-  identity_providers                                                          IdentityProvider[]
-  log_events                                                                  LogEvent[]
-  mfa_factors_mfa_factors_created_by_user_idTousers                           MfaFactor[]              @relation("mfa_factors_created_by_user_idTousers")
-  mfa_factors_mfa_factors_user_idTousers                                      MfaFactor[]              @relation("mfa_factors_user_idTousers")
-  mfa_recovery_codes_mfa_recovery_codes_created_by_user_idTousers             MfaRecoveryCode[]        @relation("mfa_recovery_codes_created_by_user_idTousers")
-  mfa_recovery_codes_mfa_recovery_codes_user_idTousers                        MfaRecoveryCode[]        @relation("mfa_recovery_codes_user_idTousers")
-  notification_preferences_notification_preferences_created_by_user_idTousers NotificationPreference[] @relation("notification_preferences_created_by_user_idTousers")
-  notification_preferences_notification_preferences_user_idTousers            NotificationPreference[] @relation("notification_preferences_user_idTousers")
-  notification_templates                                                      NotificationTemplate[]
-  notifications_notifications_created_by_user_idTousers                       Notification[]           @relation("notifications_created_by_user_idTousers")
-  notifications_notifications_user_idTousers                                  Notification[]           @relation("notifications_user_idTousers")
-  organizational_units_organizational_units_created_by_user_idTousers         OrganizationalUnit[]     @relation("organizational_units_created_by_user_idTousers")
-  permissions                                                                 Permission[]
-  registered_actions                                                          RegisteredAction[]
-  resource_definitions                                                        ResourceDefinition[]
-  resource_fields                                                             ResourceField[]
-  sessions_sessions_created_by_user_idTousers                                 Session[]                @relation("sessions_created_by_user_idTousers")
-  sessions                                                                    Session[]
-  sso_identities_sso_identities_created_by_user_idTousers                     SsoIdentity[]            @relation("sso_identities_created_by_user_idTousers")
-  sso_identities_sso_identities_user_idTousers                                SsoIdentity[]            @relation("sso_identities_user_idTousers")
-  system_settings                                                             SystemSetting[]
-  user_roles_user_roles_created_by_user_idTousers                             UserRole[]               @relation("user_roles_created_by_user_idTousers")
-  roles                                                                       UserRole[]
-  groupMemberships UserGroupMember[]
-  company                                                                     Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  users                                                                       User?                    @relation("usersTousers", fields: [createdBy], references: [id], map: "users_created_by_fkey")
-  other_users                                                                 User[]                   @relation("usersTousers")
-  unit                                                                        OrganizationalUnit?      @relation(fields: [organizationalUnitId], references: [id])
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model OutboxEvent {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  type          String
+  resource      String
+  resourceId String @map("resource_id")
+  actorUserId String? @map("actor_user_id")   @db.Uuid
+  payload       Json      @default("{}")
+  occurredAt DateTime @map("occurred_at")  @db.Timestamptz(3)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
+  attempts      Int       @default(0)
+  lastError String? @map("last_error")
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
 
-  @@index([companyId])
+  @@index([companyId, occurredAt], map: "outbox_events_company_occurred_idx")
+  @@index([companyId, publishedAt], map: "outbox_events_company_published_idx")
+  @@index([companyId, type], map: "outbox_events_company_type_idx")
+  @@map("outbox_events")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model PayrollComponent {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")       @db.Uuid
+  runId String @map("run_id")       @db.Uuid
+  component          String
+  type               String
+  amount             Decimal      @default(0) @db.Decimal(15, 2)
+  createdAt DateTime @map("created_at")     @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")      @db.Uuid
+  deletedAt DateTime? @map("deleted_at")    @db.Timestamptz(3)
+  companies Company    @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "payroll_components_company_fkey")
+  payrollRuns PayrollRun @relation(fields: [rId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "payroll_components_run_fkey")
+
+  @@index([companyId], map: "payroll_components_company_idx")
+  @@index([runId], map: "payroll_components_run_idx")
+  @@map("payroll_components")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model PayrollPeriod {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")         @db.Uuid
+  code               String
+  name               String
+  startDate DateTime @map("start_date")       @db.Date
+  endDate DateTime @map("end_date")       @db.Date
+  status             String         @default("DRAFT")
+  payDate DateTime? @map("pay_date")      @db.Date
+  createdAt DateTime @map("created_at")       @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")       @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")        @db.Uuid
+  deletedAt DateTime? @map("deleted_at")      @db.Timestamptz(3)
+  companies Company      @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "payroll_periods_company_fkey")
+  payrollRuns PayrollRun[]
+
+  @@unique([companyId, code], map: "payroll_periods_company_code_unique")
+  @@index([companyId], map: "payroll_periods_company_idx")
   @@index([status])
-  @@index([organizationalUnitId])
-  @@map("users")
+  @@map("payroll_periods")
 }
 
-/// A role granted to a user.
-///
-/// A null `companyId` is a platform-wide grant. Any other value scopes the grant to
-/// a single company, which is how one administrator can hold roles in two companies
-/// without those grants leaking into a third.
-model UserRole {
-  id                                         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId                                     String   @map("user_id") @db.Uuid
-  roleId                                     String   @map("role_id") @db.Uuid
-  companyId                                  String?  @map("company_id") @db.Uuid
-  createdAt                                  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                                  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy                                  String?  @map("created_by_user_id") @db.Uuid
-  users_user_roles_created_by_user_idTousers User?    @relation("user_roles_created_by_user_idTousers", fields: [createdBy], references: [id], map: "user_roles_created_by_fkey")
-  role                                       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  user                                       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model PayrollRun {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")               @db.Uuid
+  periodId String @map("period_id")               @db.Uuid
+  employeeId String @map("employee_id")               @db.Uuid
+  baseSalary Decimal @map("base_salary")              @default(0) @db.Decimal(15, 2)
+  totalEarnings Decimal @map("total_earnings")              @default(0) @db.Decimal(15, 2)
+  totalDeductions Decimal @map("total_deductions")              @default(0) @db.Decimal(15, 2)
+  netPay Decimal @map("net_pay")              @default(0) @db.Decimal(15, 2)
+  status             String               @default("DRAFT")
+  paidAt DateTime? @map("paid_at")            @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")             @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")             @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")              @db.Uuid
+  deletedAt DateTime? @map("deleted_at")            @db.Timestamptz(3)
+  payrollComponents PayrollComponent[]
+  companies Company            @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "payroll_runs_company_fkey")
+  employees Employee            @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "payroll_runs_employee_fkey")
+  payrollPeriods PayrollPeriod      @relation(fields: [pId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "payroll_runs_period_fkey")
 
-  @@unique([userId, roleId, companyId])
-  @@index([roleId])
-  @@index([companyId])
-  @@map("user_roles")
+  @@unique([periodId, employeeId], map: "payroll_runs_period_employee_unique")
+  @@index([companyId], map: "payroll_runs_company_idx")
+  @@index([employeeId], map: "payroll_runs_employee_idx")
+  @@index([periodId], map: "payroll_runs_period_idx")
+  @@index([status])
+  @@map("payroll_runs")
 }
 
-/// Durable metadata for a sign-in.
-///
-/// The session token itself is an opaque random value stored in Redis with a short
-/// TTL (ADR 0006). Only the record of the session lives here, so that access can be
-/// reviewed and revoked after the token has expired.
-model Session {
-  id                                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId                                   String    @map("user_id") @db.Uuid
-  companyId                                String    @map("company_id") @db.Uuid
-  /// SHA-256 of the opaque token, so a database disclosure does not yield usable tokens.
-  tokenHash                                String    @unique @map("token_hash")
-  userAgent                                String?   @map("user_agent")
-  ipAddress                                String?   @map("ip_address") @db.Inet
-  lastSeenAt                               DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
-  expiresAt                                DateTime  @map("expires_at") @db.Timestamptz(3)
-  revokedAt                                DateTime? @map("revoked_at") @db.Timestamptz(3)
-  createdAt                                DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                                DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy                                String?   @map("created_by_user_id") @db.Uuid
-  deletedAt                                DateTime? @map("deleted_at") @db.Timestamptz(3)
-  users_sessions_created_by_user_idTousers User?     @relation("sessions_created_by_user_idTousers", fields: [createdBy], references: [id], map: "sessions_created_by_fkey")
-  user                                     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model PerformanceCycle {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                @db.Uuid
+  code                String
+  name                String
+  startDate DateTime @map("start_date")              @db.Date
+  endDate DateTime @map("end_date")              @db.Date
+  status              String                @default("PLANNED")
+  createdAt DateTime @map("created_at")              @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")              @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")               @db.Uuid
+  deletedAt DateTime? @map("deleted_at")             @db.Timestamptz(3)
+  companies Company             @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "performance_cycles_company_fkey")
+  performanceGoals PerformanceGoal[]
+  performanceReviews PerformanceReview[]
 
-  @@index([userId])
-  @@index([companyId])
-  @@index([expiresAt])
-  @@map("sessions")
+  @@unique([companyId, code], map: "performance_cycles_company_code_unique")
+  @@index([companyId], map: "performance_cycles_company_idx")
+  @@index([status])
+  @@map("performance_cycles")
 }
 
-/// Append-only audit trail.
-///
-/// This table is deliberately exempt from two conventions above: it has no
-/// `updated_at` and no `deleted_at`. `DATABASE.md` requires audit logs to keep the
-/// row and the action, so allowing either would permit history to be rewritten.
-///
-/// `entryHash` chains each record to the previous one within the company, so a
-/// deleted or edited row is detectable. That is a detective control; the append-only
-/// trigger in the migration is the preventive one.
-model AuditLog {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId    String   @map("company_id") @db.Uuid
-  actorUserId  String?  @map("actor_user_id") @db.Uuid
-  action       String
-  resource     String
-  resourceId   String?  @map("resource_id")
-  /// Identity is pseudonymised rather than erased, so the row survives erasure requests.
-  payload      Json?
-  previousHash String?  @map("previous_hash")
-  entryHash    String   @unique @map("entry_hash")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  createdBy    String?  @map("created_by_user_id") @db.Uuid
-  users        User?    @relation(fields: [createdBy], references: [id], map: "audit_logs_created_by_fkey")
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model PerformanceGoal {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")             @db.Uuid
+  cycleId String @map("cycle_id")             @db.Uuid
+  employeeId String @map("employee_id")             @db.Uuid
+  title              String
+  description        String?
+  weight             Int                @default(0)
+  progress           Int                @default(0)
+  status             String             @default("IN_PROGRESS")
+  createdAt DateTime @map("created_at")           @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")           @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")            @db.Uuid
+  deletedAt DateTime? @map("deleted_at")          @db.Timestamptz(3)
+  companies Company          @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "performance_goals_company_fkey")
+  performanceCycles PerformanceCycle @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "performance_goals_cycle_fkey")
+  employees Employee          @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "performance_goals_employee_fkey")
 
-  @@index([companyId, createdAt(sort: Desc)])
-  @@index([resource, resourceId])
-  @@map("audit_logs")
+  @@index([companyId], map: "performance_goals_company_idx")
+  @@index([cycleId], map: "performance_goals_cycle_idx")
+  @@index([employeeId], map: "performance_goals_employee_idx")
+  @@index([status])
+  @@map("performance_goals")
 }
 
-/// Structured, append-only event log feeding the Logs surface.
-///
-/// Unlike `audit_logs` this is not hash-chained: it holds the operational
-/// categories (activity, access, authentication, security, API, error) whose
-/// records are high-volume and never compared against each other for tampering.
-/// Like `audit_logs` it is append-only — no `updated_at`, no `deleted_at` — and the
-/// migration installs a trigger refusing UPDATE, DELETE and TRUNCATE.
-model LogEvent {
-  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId   String      @map("company_id") @db.Uuid
-  category    LogCategory
-  eventType   String      @map("event_type")
-  actorUserId String?     @map("actor_user_id") @db.Uuid
-  resource    String?
-  resourceId  String?     @map("resource_id")
-  /// Machine-readable result, e.g. `SUCCESS`, `FAILED`, `DENIED`, `PENDING`.
-  status      String?
-  metadata    Json?
-  ipAddress   String?     @map("ip_address") @db.Inet
-  userAgent   String?     @map("user_agent")
-  requestId   String?     @map("request_id")
-  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  createdBy   String?     @map("created_by_user_id") @db.Uuid
-  users       User?       @relation(fields: [createdBy], references: [id], map: "log_events_created_by_fkey")
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model PerformanceReview {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")             @db.Uuid
+  cycleId String @map("cycle_id")             @db.Uuid
+  employeeId String @map("employee_id")             @db.Uuid
+  reviewerUserId String? @map("reviewer_user_id")            @db.Uuid
+  rating             Int?
+  summary            String?
+  status             String             @default("DRAFT")
+  submittedAt DateTime? @map("submitted_at")          @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")           @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")           @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")            @db.Uuid
+  deletedAt DateTime? @map("deleted_at")          @db.Timestamptz(3)
+  companies Company          @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "performance_reviews_company_fkey")
+  performanceCycles PerformanceCycle @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "performance_reviews_cycle_fkey")
+  employees Employee          @relation(fields: [eId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "performance_reviews_employee_fkey")
 
-  @@index([companyId, createdAt(sort: Desc)])
-  @@index([category, createdAt(sort: Desc)])
-  @@index([actorUserId, createdAt(sort: Desc)])
-  @@index([resource, resourceId])
-  @@map("log_events")
+  @@unique([cycleId, employeeId], map: "performance_reviews_cycle_employee_unique")
+  @@index([companyId], map: "performance_reviews_company_idx")
+  @@index([cycleId], map: "performance_reviews_cycle_idx")
+  @@index([employeeId], map: "performance_reviews_employee_idx")
+  @@index([status])
+  @@map("performance_reviews")
 }
 
-/// A company-scoped configuration value for the System Settings surface.
-///
-/// `value` is stored as JSON so that types beyond strings (numbers, booleans,
-/// arrays) survive a round trip. `is_sensitive` marks values such as SMTP
-/// passwords or API keys whose stored value must be masked on read and shown as
-/// redacted in audit output.
-model SystemSetting {
-  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId   String           @map("company_id") @db.Uuid
-  group       String           @map("group")
-  key         String
-  value       Json?
-  valueType   SettingValueType @map("value_type")
-  isSensitive Boolean          @default(false) @map("is_sensitive")
-  isEditable  Boolean          @default(true) @map("is_editable")
-  description String?
-  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy   String?          @map("created_by_user_id") @db.Uuid
-  users       User?            @relation(fields: [createdBy], references: [id], map: "system_settings_created_by_fkey")
+model Permission {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key                String             @unique
+  resource           String
+  action             Action
+  createdAt DateTime @map("created_at")           @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")           @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")            @db.Uuid
+  users User?             @relation(fields: [createdByUserId], references: [id], map: "permissions_created_by_fkey")
+  rolePermissions RolePermission[]
 
-  @@unique([companyId, group, key])
-  @@index([companyId, group])
-  @@map("system_settings")
+  @@unique([resource, action])
+  @@index([resource])
+  @@map("permissions")
 }
 
-/// One delivered notification for one recipient.
-///
-/// Deliberately append-style like `log_events`: no `updated_at` and no
-/// `deleted_at`, because the read/unread transition is written in place rather
-/// than by rewriting history.
-model Notification {
-  id                                            String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId                                     String                     @map("company_id") @db.Uuid
-  userId                                        String                     @map("user_id") @db.Uuid
-  kind                                          NotificationKind
-  eventKey                                      String                     @map("event_key")
-  title                                         String
-  description                                   String
-  href                                          String?
-  channel                                       NotificationChannel
-  deliveryStatus                                NotificationDeliveryStatus @map("delivery_status")
-  correlationId                                 String?                    @map("correlation_id")
-  readAt                                        DateTime?                  @map("read_at") @db.Timestamptz(3)
-  createdAt                                     DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
-  createdBy                                     String?                    @map("created_by_user_id") @db.Uuid
-  users_notifications_created_by_user_idTousers User?                      @relation("notifications_created_by_user_idTousers", fields: [createdBy], references: [id], map: "notifications_created_by_fkey")
-  users_notifications_user_idTousers            User                       @relation("notifications_user_idTousers", fields: [userId], references: [id], onDelete: Cascade, map: "notifications_user_fkey")
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model Position {
+  id                     String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                @db.Uuid
+  code                   String
+  name                   String
+  description            String?
+  organizationalUnitId String? @map("organizational_unit_id")               @db.Uuid
+  jobGrade String? @map("job_grade")
+  isActive Boolean @map("is_active")               @default(true)
+  createdAt DateTime @map("created_at")              @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")              @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")               @db.Uuid
+  deletedAt DateTime? @map("deleted_at")             @db.Timestamptz(3)
+  employees Employee[]
+  jobRequisitions JobRequisition[]
+  organizationalUnits organizational_units? @relation(fields: [oUnitId], references: [id], onUpdate: NoAction, map: "positions_unit_fkey")
+  salaryStructures SalaryStructure[]
 
-  @@index([companyId, userId, createdAt(sort: Desc)], map: "notifications_company_user_created_idx")
-  @@index([companyId, deliveryStatus], map: "notifications_company_status_idx")
-  @@map("notifications")
+  @@unique([companyId, code], map: "positions_company_code_unique")
+  @@index([companyId], map: "positions_company_idx")
+  @@index([organizationalUnitId], map: "positions_unit_idx")
+  @@map("positions")
 }
 
-/// A recipient's per-channel delivery toggle. A row missing for a channel means
-/// the API falls back to the company setting for that channel.
-model NotificationPreference {
-  id                                                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId                                                String              @map("company_id") @db.Uuid
-  userId                                                   String              @map("user_id") @db.Uuid
-  channel                                                  NotificationChannel
-  enabled                                                  Boolean             @default(true)
-  createdAt                                                DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                                                DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy                                                String?             @map("created_by_user_id") @db.Uuid
-  deletedAt                                                DateTime?           @map("deleted_at") @db.Timestamptz(3)
-  users_notification_preferences_created_by_user_idTousers User?               @relation("notification_preferences_created_by_user_idTousers", fields: [createdBy], references: [id], map: "notification_preferences_created_by_fkey")
-  users_notification_preferences_user_idTousers            User                @relation("notification_preferences_user_idTousers", fields: [userId], references: [id], onDelete: Cascade, map: "notification_preferences_user_fkey")
+model RegisteredAction {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resourceId String @map("resource_id")               @db.Uuid
+  action               String
+  name                 String
+  description          String?
+  isCustom Boolean @map("is_custom")              @default(false)
+  createdAt DateTime @map("created_at")             @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")             @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")              @db.Uuid
+  users User?               @relation(fields: [createdByUserId], references: [id], map: "registered_actions_created_by_fkey")
+  resourceDefinitions ResourceDefinition @relation(fields: [rId], references: [id], onDelete: Cascade)
 
-  @@unique([companyId, userId, channel], map: "notification_preferences_company_user_channel_key")
-  @@index([userId])
-  @@map("notification_preferences")
+  @@unique([resourceId, action])
+  @@map("registered_actions")
 }
 
-/// A per-event, per-channel message template rendered when an event is emitted.
-model NotificationTemplate {
-  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId       String              @map("company_id") @db.Uuid
-  eventKey        String              @map("event_key")
-  channel         NotificationChannel
-  subjectTemplate String              @map("subject_template")
-  bodyTemplate    String              @map("body_template")
-  enabled         Boolean             @default(true)
-  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy       String?             @map("created_by_user_id") @db.Uuid
-  deletedAt       DateTime?           @map("deleted_at") @db.Timestamptz(3)
-  users           User?               @relation(fields: [createdBy], references: [id], map: "notification_templates_created_by_fkey")
-
-  @@unique([companyId, eventKey, channel], map: "notification_templates_company_event_channel_key")
-  @@map("notification_templates")
-}
-
-/// An enrolled second factor (currently TOTP). The seed is encrypted at rest.
-model MfaFactor {
-  id                                          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId                                   String        @map("company_id") @db.Uuid
-  userId                                      String        @map("user_id") @db.Uuid
-  type                                        MfaFactorType
-  secretEncrypted                             String        @map("secret_encrypted")
-  label                                       String        @default("Default authenticator")
-  confirmedAt                                 DateTime?     @map("confirmed_at") @db.Timestamptz(3)
-  lastUsedAt                                  DateTime?     @map("last_used_at") @db.Timestamptz(3)
-  createdAt                                   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                                   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy                                   String?       @map("created_by_user_id") @db.Uuid
-  deletedAt                                   DateTime?     @map("deleted_at") @db.Timestamptz(3)
-  users_mfa_factors_created_by_user_idTousers User?         @relation("mfa_factors_created_by_user_idTousers", fields: [createdBy], references: [id], map: "mfa_factors_created_by_fkey")
-  users_mfa_factors_user_idTousers            User          @relation("mfa_factors_user_idTousers", fields: [userId], references: [id], onDelete: Cascade, map: "mfa_factors_user_fkey")
-
-  @@index([companyId, userId], map: "mfa_factors_company_user_idx")
-  @@map("mfa_factors")
-}
-
-/// A one-time recovery code (SHA-256 hash of the plain code).
-model MfaRecoveryCode {
-  id                                                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId                                          String    @map("company_id") @db.Uuid
-  userId                                             String    @map("user_id") @db.Uuid
-  codeHash                                           String    @map("code_hash")
-  usedAt                                             DateTime? @map("used_at") @db.Timestamptz(3)
-  createdAt                                          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                                          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy                                          String?   @map("created_by_user_id") @db.Uuid
-  deletedAt                                          DateTime? @map("deleted_at") @db.Timestamptz(3)
-  users_mfa_recovery_codes_created_by_user_idTousers User?     @relation("mfa_recovery_codes_created_by_user_idTousers", fields: [createdBy], references: [id], map: "mfa_recovery_codes_created_by_fkey")
-  users_mfa_recovery_codes_user_idTousers            User      @relation("mfa_recovery_codes_user_idTousers", fields: [userId], references: [id], onDelete: Cascade, map: "mfa_recovery_codes_user_fkey")
-
-  @@index([companyId, userId], map: "mfa_recovery_codes_company_user_idx")
-  @@index([codeHash])
-  @@map("mfa_recovery_codes")
-}
-
-/// An identity provider a tenant signs in through (OIDC or SAML).
-///
-/// Per-protocol credentials and metadata live in `config` as JSON so the schema
-/// does not have to grow for protocol-specific fields; sensitive members
-/// (client secrets, signing keys) are encrypted before storage and decrypted
-/// only when the flow needs them.
-model IdentityProvider {
-  id        String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId String               @map("company_id") @db.Uuid
-  name      String
-  type      IdentityProviderType
-  enabled   Boolean              @default(true)
-  domains   Json?                @map("domains")
-  config    Json?                @map("config")
-  createdAt DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy String?              @map("created_by_user_id") @db.Uuid
-  deletedAt DateTime?            @map("deleted_at") @db.Timestamptz(3)
-  users     User?                @relation(fields: [createdBy], references: [id], map: "identity_providers_created_by_fkey")
-
-  @@index([companyId, enabled], map: "identity_providers_company_enabled_idx")
-  @@map("identity_providers")
-}
-
-/// The mapping between an identity-provider subject and a local user.
-model SsoIdentity {
-  id                                             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId                                      String    @map("company_id") @db.Uuid
-  userId                                         String    @map("user_id") @db.Uuid
-  providerId                                     String    @map("provider_id") @db.Uuid
-  subject                                        String
-  email                                          String?   @db.Citext
-  createdAt                                      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                                      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy                                      String?   @map("created_by_user_id") @db.Uuid
-  deletedAt                                      DateTime? @map("deleted_at") @db.Timestamptz(3)
-  users_sso_identities_created_by_user_idTousers User?     @relation("sso_identities_created_by_user_idTousers", fields: [createdBy], references: [id], map: "sso_identities_created_by_fkey")
-  users_sso_identities_user_idTousers            User      @relation("sso_identities_user_idTousers", fields: [userId], references: [id], onDelete: Cascade, map: "sso_identities_user_fkey")
-
-  @@unique([providerId, subject], map: "sso_identities_provider_subject_key")
-  @@index([companyId, userId], map: "sso_identities_company_user_idx")
-  @@map("sso_identities")
-}
-
-/// A WebAuthn passkey registered to a user.
-model Authenticator {
-  id                                             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId                                      String    @map("company_id") @db.Uuid
-  userId                                         String    @map("user_id") @db.Uuid
-  credentialId                                   String    @map("credential_id")
-  publicKey                                      String    @map("public_key")
-  counter                                        BigInt    @default(0)
-  transports                                     Json?
-  deviceName                                     String?   @map("device_name")
-  lastUsedAt                                     DateTime? @map("last_used_at") @db.Timestamptz(3)
-  createdAt                                      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                                      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy                                      String?   @map("created_by_user_id") @db.Uuid
-  deletedAt                                      DateTime? @map("deleted_at") @db.Timestamptz(3)
-  users_authenticators_created_by_user_idTousers User?     @relation("authenticators_created_by_user_idTousers", fields: [createdBy], references: [id], map: "authenticators_created_by_fkey")
-  users_authenticators_user_idTousers            User      @relation("authenticators_user_idTousers", fields: [userId], references: [id], onDelete: Cascade, map: "authenticators_user_fkey")
-
-  @@unique([companyId, credentialId], map: "authenticators_company_credential_key")
-  @@index([companyId, userId], map: "authenticators_company_user_idx")
-  @@map("authenticators")
-}
-
-/// An approval authority rule: who may approve what, up to a monetary limit.
-model ApprovalAuthority {
-  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId     String              @map("company_id") @db.Uuid
-  subjectType   ApprovalSubjectType @map("subject_type")
-  subjectId     String              @map("subject_id") @db.Uuid
-  resource      String?
-  category      String?
-  maxAmount     Decimal?            @map("max_amount") @db.Decimal(18, 2)
-  currencyCode  String?             @map("currency_code") @db.Citext
-  effectiveFrom DateTime?           @map("effective_from") @db.Timestamptz(3)
-  effectiveTo   DateTime?           @map("effective_to") @db.Timestamptz(3)
-  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy     String?             @map("created_by_user_id") @db.Uuid
-  deletedAt     DateTime?           @map("deleted_at") @db.Timestamptz(3)
-  users         User?               @relation(fields: [createdBy], references: [id], map: "approval_authorities_created_by_fkey")
-
-  @@index([companyId, subjectId], map: "approval_authorities_company_subject_idx")
-  @@map("approval_authorities")
-}
-
-/// A temporary approval delegation from one user to another.
-model ApprovalDelegation {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId       String    @map("company_id") @db.Uuid
-  delegatorUserId String    @map("delegator_user_id") @db.Uuid
-  delegateeUserId String    @map("delegatee_user_id") @db.Uuid
-  resource        String?
-  category        String?
-  effectiveFrom   DateTime? @map("effective_from") @db.Timestamptz(3)
-  effectiveTo     DateTime? @map("effective_to") @db.Timestamptz(3)
-  reason          String?
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy       String?   @map("created_by_user_id") @db.Uuid
-  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(3)
-  users           User?     @relation(fields: [createdBy], references: [id], map: "approval_delegations_created_by_fkey")
-
-  @@index([companyId, delegatorUserId], map: "approval_delegations_company_delegator_idx")
-  @@map("approval_delegations")
-}
-
-/// A named workflow owned by a tenant. Versions hang off it; instances pin a version.
-model WorkflowDefinition {
-  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId   String             @map("company_id") @db.Uuid
-  key         String
-  name        String
-  description String?
-  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy   String?            @map("created_by_user_id") @db.Uuid
-  deletedAt   DateTime?          @map("deleted_at") @db.Timestamptz(3)
-  instances   WorkflowInstance[]
-  versions    WorkflowVersion[]
-
-  @@unique([companyId, key], map: "workflow_definitions_company_key_key")
-  @@map("workflow_definitions")
-}
-
-/// A point-in-time definition of a workflow. `states` and `transitions` are JSON and
-/// only become runnable once the version is published (`ACTIVE`).
-model WorkflowVersion {
-  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId    String                @map("company_id") @db.Uuid
-  definitionId String                @map("definition_id") @db.Uuid
-  version      Int
-  status       WorkflowVersionStatus @default(DRAFT)
-  states       Json                  @default("[]")
-  transitions  Json                  @default("[]")
-  steps        Json                  @default("[]")
-  publishedAt  DateTime?             @map("published_at") @db.Timestamptz(3)
-  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy    String?               @map("created_by_user_id") @db.Uuid
-  instances    WorkflowInstance[]
-  definition   WorkflowDefinition    @relation(fields: [definitionId], references: [id], onDelete: Cascade)
-
-  @@unique([definitionId, version], map: "workflow_versions_definition_version_key")
-  @@map("workflow_versions")
-}
-
-/// A running workflow pinned to the version it started on.
-model WorkflowInstance {
-  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId       String                    @map("company_id") @db.Uuid
-  definitionId    String                    @map("definition_id") @db.Uuid
-  versionId       String                    @map("version_id") @db.Uuid
-  resource        String?
-  resourceId      String?                   @map("resource_id")
-  currentStateKey String                    @map("current_state_key")
-  stepKey         String?                   @map("step_key")
-  dueAt           DateTime?                 @map("due_at") @db.Timestamptz(3)
-  escalationAt    DateTime?                 @map("escalation_at") @db.Timestamptz(3)
-  status          WorkflowInstanceStatus    @default(IN_PROGRESS)
-  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy       String?                   @map("created_by_user_id") @db.Uuid
-  deletedAt       DateTime?                 @map("deleted_at") @db.Timestamptz(3)
-  definition      WorkflowDefinition        @relation(fields: [definitionId], references: [id], onDelete: Cascade)
-  version         WorkflowVersion           @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  events          WorkflowTransitionEvent[]
-  tasks           WorkflowTask[]
-
-  @@index([resource, resourceId], map: "workflow_instances_resource_idx")
-  @@index([companyId, definitionId], map: "workflow_instances_company_id_idx")
-  @@map("workflow_instances")
-}
-
-/// Append-only record of every transition an instance has taken.
-model WorkflowTransitionEvent {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId      String           @map("company_id") @db.Uuid
-  instanceId     String           @map("instance_id") @db.Uuid
-  fromStateKey   String?          @map("from_state_key")
-  toStateKey     String           @map("to_state_key")
-  transitionName String           @map("transition_name")
-  actorUserId    String           @map("actor_user_id") @db.Uuid
-  comment        String?
-  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-  instance       WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-
-  @@index([instanceId, createdAt], map: "workflow_transition_events_instance_created_idx")
-  @@map("workflow_transition_events")
-}
-
-/// A configured external integration (SMTP relay, webhook, storage, ...).
-model Integration {
-  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId        String                @map("company_id") @db.Uuid
-  key              String
-  name             String
-  kind             IntegrationKind
-  provider         String
-  config           Json                  @default("{}")
-  isEnabled        Boolean               @default(true) @map("is_enabled")
-  status           IntegrationStatus     @default(UNKNOWN)
-  lastCheckedAt    DateTime?             @map("last_checked_at") @db.Timestamptz(3)
-  lastMessage      String?               @map("last_message")
-  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy        String?               @map("created_by_user_id") @db.Uuid
-  deletedAt        DateTime?             @map("deleted_at") @db.Timestamptz(3)
-  /// AES-256-GCM envelope of the webhook signing secret; null when none is set.
-  secretCiphertext String?               @map("secret_ciphertext")
-  deliveries       IntegrationDelivery[]
-  subscriptions    WebhookSubscription[]
-
-  @@unique([companyId, key], map: "integrations_company_key_key")
-  @@map("integrations")
-}
-
-/// Subscribes one webhook integration to one domain event type.
-///
-/// Kept as rows rather than an array in `config` so the dispatcher's lookup is a join
-/// and every event a tenant receives is explicitly opted into. `*` subscribes to all.
-model WebhookSubscription {
-  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId     String      @map("company_id") @db.Uuid
-  integrationId String      @map("integration_id") @db.Uuid
-  eventType     String      @map("event_type")
-  isActive      Boolean     @default(true) @map("is_active")
-  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  createdBy     String?     @map("created_by_user_id") @db.Uuid
-  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
-
-  @@unique([integrationId, eventType], map: "webhook_subscriptions_integration_event_key")
-  @@map("webhook_subscriptions")
-}
-
-/// One recorded integration operation (connection test or delivery attempt).
-model IntegrationDelivery {
-  id            String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId     String                       @map("company_id") @db.Uuid
-  integrationId String                       @map("integration_id") @db.Uuid
-  direction     IntegrationDeliveryDirection @default(OUTBOUND)
-  operation     String
-  status        IntegrationDeliveryStatus
-  attempt       Int                          @default(1)
-  error         String?
-  durationMs    Int?                         @map("duration_ms")
-  request       Json?
-  response      Json?
-  createdAt     DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
-  integration   Integration                  @relation(fields: [integrationId], references: [id], onDelete: Cascade)
-
-  @@index([companyId, integrationId, createdAt(sort: Desc)], map: "integration_deliveries_integration_created_idx")
-  @@map("integration_deliveries")
-}
-
-/// A deployed application on the platform. The HRIS itself is the first one.
-model Application {
-  id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  key         String               @unique
-  name        String
-  description String?
-  isActive    Boolean              @default(true) @map("is_active")
-  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy   String?              @map("created_by_user_id") @db.Uuid
-  modules     AppModule[]
-  users       User?                @relation(fields: [createdBy], references: [id], map: "applications_created_by_fkey")
-  resources   ResourceDefinition[]
-
-  @@map("applications")
-}
-
-/// A module of an application. `moduleId` links to the shared `MODULE_IDS` vocabulary.
-model AppModule {
-  id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  applicationId String               @map("application_id") @db.Uuid
-  key           String               @unique
-  name          String
-  description   String?
-  moduleId      String?              @map("module_id")
-  isActive      Boolean              @default(true) @map("is_active")
-  sortOrder     Int                  @default(0) @map("sort_order")
-  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy     String?              @map("created_by_user_id") @db.Uuid
-  application   Application          @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  users         User?                @relation(fields: [createdBy], references: [id], map: "app_modules_created_by_fkey")
-  resources     ResourceDefinition[]
-
-  @@index([applicationId])
-  @@map("app_modules")
-}
-
-/// A resource a module owns: the unit that permissions and CRUD surfaces attach to.
 model ResourceDefinition {
-  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  applicationId String             @map("application_id") @db.Uuid
-  moduleId      String?            @map("module_id") @db.Uuid
-  key           String             @unique
-  name          String
-  description   String?
-  resourceType  ResourceType       @map("resource_type")
-  supportsCrud  Boolean            @default(false) @map("supports_crud")
-  isActive      Boolean            @default(true) @map("is_active")
-  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy     String?            @map("created_by_user_id") @db.Uuid
-  actions       RegisteredAction[]
-  application   Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  users         User?              @relation(fields: [createdBy], references: [id], map: "resource_definitions_created_by_fkey")
-  module        AppModule?         @relation(fields: [moduleId], references: [id])
-  fields        ResourceField[]
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String @map("application_id")               @db.Uuid
+  moduleId String? @map("module_id")              @db.Uuid
+  key                String               @unique
+  name               String
+  description        String?
+  resourceType ResourceType @map("resource_type")
+  supportsCrud Boolean @map("supports_crud")              @default(false)
+  isActive Boolean @map("is_active")              @default(true)
+  createdAt DateTime @map("created_at")             @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")             @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")              @db.Uuid
+  registeredActions RegisteredAction[]
+  applications Application         @relation(fields: [aId], references: [id], onDelete: Cascade)
+  users User?               @relation(fields: [createdByUserId], references: [id], map: "resource_definitions_created_by_fkey")
+  appModules app_modules?         @relation(fields: [mId], references: [id])
+  resourceFields ResourceField[]
 
   @@index([applicationId])
   @@index([moduleId])
   @@map("resource_definitions")
 }
 
-/// A field a registered resource exposes (drives validation and rendering).
 model ResourceField {
-  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  resourceId  String             @map("resource_id") @db.Uuid
-  key         String
-  label       String
-  dataType    FieldDataType      @map("data_type")
-  required    Boolean            @default(false)
-  isSensitive Boolean            @default(false) @map("is_sensitive")
-  sortOrder   Int                @default(0) @map("sort_order")
-  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy   String?            @map("created_by_user_id") @db.Uuid
-  users       User?              @relation(fields: [createdBy], references: [id], map: "resource_fields_created_by_fkey")
-  resource    ResourceDefinition @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resourceId String @map("resource_id")               @db.Uuid
+  key                  String
+  label                String
+  dataType FieldDataType @map("data_type")
+  required             Boolean              @default(false)
+  isSensitive Boolean @map("is_sensitive")              @default(false)
+  sortOrder Int @map("sort_order")                  @default(0)
+  createdAt DateTime @map("created_at")             @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")             @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")              @db.Uuid
+  users User?               @relation(fields: [createdByUserId], references: [id], map: "resource_fields_created_by_fkey")
+  resourceDefinitions ResourceDefinition @relation(fields: [rId], references: [id], onDelete: Cascade)
 
   @@unique([resourceId, key])
   @@map("resource_fields")
 }
 
-/// An action a registered resource supports (a standard RBAC action or a custom one).
-model RegisteredAction {
-  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  resourceId  String             @map("resource_id") @db.Uuid
-  action      String
-  name        String
-  description String?
-  isCustom    Boolean            @default(false) @map("is_custom")
-  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy   String?            @map("created_by_user_id") @db.Uuid
-  users       User?              @relation(fields: [createdBy], references: [id], map: "registered_actions_created_by_fkey")
-  resource    ResourceDefinition @relation(fields: [resourceId], references: [id], onDelete: Cascade)
-
-  @@unique([resourceId, action])
-  @@map("registered_actions")
-}
-
-/// A row of a generic, registry-declared resource (`supportsCrud`).
-///
-/// A resource registered at runtime has no dedicated table, so the platform stores the
-/// validated field values as JSON keyed by the resource key. `ownerUserId` and
-/// `organizationalUnitId` are projected into real columns on purpose: SELF and the
-/// org-level scopes must remain query predicates the database evaluates, not filters
-/// applied in application code after a broader read.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model ResourceRecord {
-  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId            String    @map("company_id") @db.Uuid
-  resourceKey          String    @map("resource_key")
-  data                 Json
-  ownerUserId          String?   @map("owner_user_id") @db.Uuid
-  organizationalUnitId String?   @map("organizational_unit_id") @db.Uuid
-  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy            String?   @map("created_by_user_id") @db.Uuid
-  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz(3)
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  resourceKey String @map("resource_key")
+  data                   Json
+  ownerUserId String? @map("owner_user_id")   @db.Uuid
+  organizationalUnitId String? @map("organizational_unit_id")   @db.Uuid
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
   @@index([companyId, resourceKey], map: "resource_records_company_resource_idx")
   @@index([organizationalUnitId])
   @@map("resource_records")
 }
 
-/// A machine credential for the developer API (Phase 4).
-///
-/// The secret is shown once at creation and stored only as its SHA-256 hash — the
-/// secret is high-entropy random, so a fast hash is sufficient and avoids the cost of
-/// argon2 on every API request (the same reasoning as opaque session tokens, ADR 0010).
-/// `scopes` is a list of `resource.action` keys; an API key can never exceed the
-/// permissions of the user it was created by, enforced at creation via `canGrant`.
-model ApiClient {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId   String    @map("company_id") @db.Uuid
-  name        String
-  description String?
-  /// Public half of the credential, safe to display; the secret is never stored.
-  clientId    String    @unique @map("client_id")
-  secretHash  String    @map("secret_hash")
-  /// Granted `resource.action` pairs, e.g. `user.view`.
-  scopes      String[]  @default([])
-  ownerUserId String    @map("owner_user_id") @db.Uuid
-  isActive    Boolean   @default(true) @map("is_active")
-  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(3)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdBy   String?   @map("created_by_user_id") @db.Uuid
-  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(3)
+model RolePermission {
+  id                 String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roleId String @map("role_id")      @db.Uuid
+  permissionId String @map("permission_id")      @db.Uuid
+  dataScope DataScope @map("data_scope")   @default(SELF)
+  scopeId String? @map("scope_id")     @db.Uuid
+  createdAt DateTime @map("created_at")    @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")    @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")     @db.Uuid
+  permissions Permission @relation(fields: [pId], references: [id], onDelete: Cascade)
+  roles Role       @relation(fields: [rId], references: [id], onDelete: Cascade)
 
-  apiRequestLogs ApiRequestLog[]
-
-  @@index([companyId])
-  @@map("api_clients")
+  @@unique([roleId, permissionId, dataScope], map: "role_permissions_role_permission_scope_key")
+  @@index([permissionId])
+  @@map("role_permissions")
 }
 
-/// Actions a permission can grant. Mirrors `ACTIONS` in @hris/shared-types.
+model Role {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key                String             @unique
+  name               String
+  description        String
+  isSystem Boolean @map("is_system")            @default(false)
+  createdAt DateTime @map("created_at")           @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")           @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")            @db.Uuid
+  rolePermissions RolePermission[]
+  users User?             @relation(fields: [createdByUserId], references: [id], map: "roles_created_by_fkey")
+  userRoles UserRole[]
+  @@map("roles")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model SalaryStructure {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  positionId String @map("position_id")    @db.Uuid
+  baseSalary Decimal @map("base_salary")   @default(0) @db.Decimal(15, 2)
+  currency           String    @default("IDR")
+  effectiveFrom DateTime @map("effective_from")  @db.Date
+  effectiveTo DateTime? @map("effective_to") @db.Date
+  isActive Boolean @map("is_active")   @default(true)
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "salary_structures_company_fkey")
+  positions Position @relation(fields: [pId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "salary_structures_position_fkey")
+
+  @@index([companyId], map: "salary_structures_company_idx")
+  @@index([positionId], map: "salary_structures_position_idx")
+  @@map("salary_structures")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ScheduledAction {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  name        String
+  description String?
+  cron        String
+  action      Json      @default("{}")
+  isEnabled Boolean @map("is_enabled")   @default(true)
+  nextRunAt DateTime? @map("next_run_at") @db.Timestamptz(3)
+  lastRunAt DateTime? @map("last_run_at") @db.Timestamptz(3)
+  lastError String? @map("last_error")
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+
+  @@index([companyId, isEnabled, nextRunAt], map: "scheduled_actions_company_enabled_next_idx")
+  @@map("scheduled_actions")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ServiceAccount {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  name         String
+  description  String?
+  key          String
+  secretHash String @map("secret_hash")
+  isActive Boolean @map("is_active")   @default(true)
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(3)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+
+  @@unique([companyId, key], map: "service_accounts_unique")
+  @@index([companyId], map: "service_accounts_company_idx")
+  @@index([key])
+  @@map("service_accounts")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model Session {
+  id                                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId String @map("user_id")    @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  tokenHash String @map("token_hash")    @unique
+  userAgent String? @map("user_agent")
+  ipAddress String? @map("ip_address")   @db.Inet
+  lastSeenAt DateTime @map("last_seen_at")  @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @map("expires_at")  @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  usersSessionsCreatedByUserIdtousers User?    @relation("sessions_created_by_user_idTousers", fields: [createdByUserId], references: [id], map: "sessions_created_by_fkey")
+  usersSessionsUserIdtousers User     @relation("sessions_user_idTousers", fields: [uId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([expiresAt])
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ShiftPattern {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  code               String
+  name               String
+  description        String?
+  startTime DateTime @map("start_time")  @db.Time(6)
+  endTime DateTime @map("end_time")  @db.Time(6)
+  breakMinutes Int @map("break_minutes")       @default(0)
+  workDays String @map("work_days")    @default("1,2,3,4,5")
+  isActive Boolean @map("is_active")   @default(true)
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "shift_patterns_company_fkey")
+
+  @@unique([companyId, code], map: "shift_patterns_company_code_unique")
+  @@index([companyId], map: "shift_patterns_company_idx")
+  @@map("shift_patterns")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model SsoIdentity {
+  id                                             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  userId String @map("user_id")    @db.Uuid
+  providerId String @map("provider_id")    @db.Uuid
+  subject                                        String
+  email                                          String?   @db.Citext
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  usersSsoIdentitiesCreatedByUserIdtousers User?    @relation("sso_identities_created_by_user_idTousers", fields: [createdByUserId], references: [id], map: "sso_identities_created_by_fkey")
+  usersSsoIdentitiesUserIdtousers User     @relation("sso_identities_user_idTousers", fields: [uId], references: [id], onDelete: Cascade, map: "sso_identities_user_fkey")
+
+  @@unique([providerId, subject], map: "sso_identities_provider_subject_key")
+  @@index([companyId, userId], map: "sso_identities_company_user_idx")
+  @@map("sso_identities")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model SystemSetting {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")           @db.Uuid
+  group              String
+  key                String
+  value              Json?
+  valueType SettingValueType @map("value_type")
+  isSensitive Boolean @map("is_sensitive")          @default(false)
+  isEditable Boolean @map("is_editable")          @default(true)
+  description        String?
+  createdAt DateTime @map("created_at")         @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")         @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")          @db.Uuid
+  users User?           @relation(fields: [createdByUserId], references: [id], map: "system_settings_created_by_fkey")
+
+  @@unique([companyId, group, key])
+  @@index([companyId, group])
+  @@map("system_settings")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model UserGroupMember {
+  groupId String @map("group_id")      @db.Uuid
+  userId String @map("user_id")      @db.Uuid
+  companyId String @map("company_id")      @db.Uuid
+  createdAt DateTime @map("created_at")    @default(now()) @db.Timestamptz(3)
+  userGroups UserGroup @relation(fields: [gId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_group_members_group_fk")
+  users User       @relation(fields: [uId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_group_members_user_fk")
+
+  @@id([groupId, userId])
+  @@map("user_group_members")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model UserGroup {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")               @db.Uuid
+  name               String
+  description        String?
+  createdAt DateTime @map("created_at")             @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")             @default(now()) @db.Timestamptz(3)
+  userGroupMembers UserGroupMember[]
+
+  @@index([companyId, name], map: "user_groups_company_name_idx")
+  @@map("user_groups")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model UserRole {
+  id                                         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId String @map("user_id")   @db.Uuid
+  roleId String @map("role_id")   @db.Uuid
+  companyId String? @map("company_id")  @db.Uuid
+  createdAt DateTime @map("created_at") @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")  @db.Uuid
+  usersUserRolesCreatedByUserIdtousers User?   @relation("user_roles_created_by_user_idTousers", fields: [createdByUserId], references: [id], map: "user_roles_created_by_fkey")
+  roles Role    @relation(fields: [rId], references: [id], onDelete: Cascade)
+  usersUserRolesUserIdtousers User    @relation("user_roles_user_idTousers", fields: [uId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId, companyId])
+  @@index([companyId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model User {
+  id                                                                          String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                     @db.Uuid
+  email                                                                       String                     @unique @db.Citext
+  displayName String @map("display_name")
+  status                                                                      UserStatus                 @default(INVITED)
+  passwordHash String? @map("password_hash")
+  hasVerifiedEmail Boolean @map("has_verified_email")                    @default(false)
+  lastLoginAt DateTime? @map("last_login_at")                  @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")                   @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")                   @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")                    @db.Uuid
+  deletedAt DateTime? @map("deleted_at")                  @db.Timestamptz(3)
+  emailVerificationTokenHash String? @map("email_verification_token_hash")                    @unique
+  failedAttempts Int @map("failed_attempts")                        @default(0)
+  lockedUntil DateTime? @map("locked_until")                  @db.Timestamptz(3)
+  passwordChangedAt DateTime? @map("password_changed_at")                  @db.Timestamptz(3)
+  passwordResetExpiresAt DateTime? @map("password_reset_expires_at")                  @db.Timestamptz(3)
+  passwordResetTokenHash String? @map("password_reset_token_hash")                    @unique
+  organizationalUnitId String? @map("organizational_unit_id")                    @db.Uuid
+  accessReviewItems AccessReviewItem[]
+  appModules AppModule[]
+  applications Application[]
+  approvalAuthorities ApprovalAuthority[]
+  approvalDelegations ApprovalDelegation[]
+  auditLogs AuditLog[]
+  authenticatorsAuthenticatorsCreatedByUserIdtousers Authenticator[]           @relation("authenticators_created_by_user_idTousers")
+  authenticatorsAuthenticatorsUserIdtousers Authenticator[]           @relation("authenticators_user_idTousers")
+  companiesCompaniesCreatedByUserIdtousers Company[]                @relation("companies_created_by_user_idTousers")
+  countries Country[]
+  currencies Currency[]
+  employees Employee[]
+  entities Entity[]
+  identityProviders IdentityProvider[]
+  logEvents LogEvent[]
+  mfaFactorsMfaFactorsCreatedByUserIdtousers MfaFactor[]              @relation("mfa_factors_created_by_user_idTousers")
+  mfaFactorsMfaFactorsUserIdtousers MfaFactor[]              @relation("mfa_factors_user_idTousers")
+  mfaRecoveryCodesMfaRecoveryCodesCreatedByUserIdtousers MfaRecoveryCode[]       @relation("mfa_recovery_codes_created_by_user_idTousers")
+  mfaRecoveryCodesMfaRecoveryCodesUserIdtousers MfaRecoveryCode[]       @relation("mfa_recovery_codes_user_idTousers")
+  notificationPreferencesNotificationPreferencesCreatedByUserIdtousers NotificationPreference[] @relation("notification_preferences_created_by_user_idTousers")
+  notificationPreferencesNotificationPreferencesUserIdtousers NotificationPreference[] @relation("notification_preferences_user_idTousers")
+  notificationTemplates NotificationTemplate[]
+  notificationsNotificationsCreatedByUserIdtousers Notification[]            @relation("notifications_created_by_user_idTousers")
+  notificationsNotificationsUserIdtousers Notification[]            @relation("notifications_user_idTousers")
+  organizationalUnitsOrganizationalUnitsCreatedByUserIdtousers OrganizationalUnit[]     @relation("organizational_units_created_by_user_idTousers")
+  permissions Permission[]
+  registeredActions RegisteredAction[]
+  resourceDefinitions ResourceDefinition[]
+  resourceFields ResourceField[]
+  roles Role[]
+  sessionsSessionsCreatedByUserIdtousers Session[]                 @relation("sessions_created_by_user_idTousers")
+  sessionsSessionsUserIdtousers Session[]                 @relation("sessions_user_idTousers")
+  ssoIdentitiesSsoIdentitiesCreatedByUserIdtousers SsoIdentity[]           @relation("sso_identities_created_by_user_idTousers")
+  ssoIdentitiesSsoIdentitiesUserIdtousers SsoIdentity[]           @relation("sso_identities_user_idTousers")
+  systemSettings SystemSetting[]
+  userGroupMembers UserGroupMember[]
+  userRolesUserRolesCreatedByUserIdtousers UserRole[]               @relation("user_roles_created_by_user_idTousers")
+  userRolesUserRolesUserIdtousers UserRole[]               @relation("user_roles_user_idTousers")
+  companiesUsersCompanyIdtocompanies Company                  @relation("users_company_idTocompanies", fields: [cId], references: [id], onDelete: Cascade)
+  users User?                     @relation("usersTousers", fields: [createdByUserId], references: [id], map: "users_created_by_fkey")
+  otherUsers User[]                    @relation("usersTousers")
+  organizationalUnitsUsersOrganizationalUnitIdtoorganizationalUnits organizational_units?      @relation("users_organizational_unit_idToorganizational_units", fields: [oUnitId], references: [id])
+
+  @@index([companyId])
+  @@index([organizationalUnitId])
+  @@index([status])
+  @@map("users")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model WebhookSubscription {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")       @db.Uuid
+  integrationId String @map("integration_id")       @db.Uuid
+  eventType String @map("event_type")
+  isActive Boolean @map("is_active")      @default(true)
+  createdAt DateTime @map("created_at")     @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")      @db.Uuid
+  integrations Integration @relation(fields: [iId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, eventType], map: "webhook_subscriptions_integration_event_key")
+  @@map("webhook_subscriptions")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model WorkLocation {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")    @db.Uuid
+  code               String
+  name               String
+  city               String?
+  country            String?
+  address            String?
+  timezone           String?
+  isHeadquarters Boolean @map("is_headquarters")   @default(false)
+  createdAt DateTime @map("created_at")  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")  @default(now()) @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")   @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  companies Company @relation(fields: [cId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "work_locations_company_fkey")
+
+  @@unique([companyId, code], map: "work_locations_company_code_uq", where: raw("(deleted_at IS NULL)"))
+  @@index([companyId], map: "work_locations_company_idx")
+  @@map("work_locations")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model WorkflowDefinition {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")               @db.Uuid
+  key                String
+  name               String
+  description        String?
+  createdAt DateTime @map("created_at")             @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")             @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")              @db.Uuid
+  deletedAt DateTime? @map("deleted_at")            @db.Timestamptz(3)
+  workflowInstances WorkflowInstance[]
+  workflowVersions WorkflowVersion[]
+
+  @@unique([companyId, key], map: "workflow_definitions_company_key_key")
+  @@map("workflow_definitions")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model WorkflowInstance {
+  id                         String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                       @db.Uuid
+  definitionId String @map("definition_id")                       @db.Uuid
+  versionId String @map("version_id")                       @db.Uuid
+  resource                   String?
+  resourceId String? @map("resource_id")
+  currentStateKey String @map("current_state_key")
+  status                     WorkflowInstanceStatus       @default(IN_PROGRESS)
+  createdAt DateTime @map("created_at")                     @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")                     @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")                      @db.Uuid
+  deletedAt DateTime? @map("deleted_at")                    @db.Timestamptz(3)
+  stepKey String? @map("step_key")
+  dueAt DateTime? @map("due_at")                    @db.Timestamptz(3)
+  escalationAt DateTime? @map("escalation_at")                    @db.Timestamptz(3)
+  workflowDefinitions WorkflowDefinition         @relation(fields: [dId], references: [id], onDelete: Cascade)
+  workflowVersions WorkflowVersion            @relation(fields: [vId], references: [id], onDelete: Cascade)
+  workflowTasks WorkflowTask[]
+  workflowTransitionEvents WorkflowTransitionEvent[]
+
+  @@index([companyId, definitionId], map: "workflow_instances_company_id_idx")
+  @@index([resource, resourceId], map: "workflow_instances_resource_idx")
+  @@map("workflow_instances")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model WorkflowTask {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")             @db.Uuid
+  instanceId String @map("instance_id")             @db.Uuid
+  stepKey String @map("step_key")
+  stateKey String? @map("state_key")
+  status              WorkflowTaskStatus @default(PENDING)
+  assigneeUserId String? @map("assignee_user_id")            @db.Uuid
+  requiredPermission String? @map("required_permission")
+  dueAt DateTime? @map("due_at")          @db.Timestamptz(3)
+  escalationAt DateTime? @map("escalation_at")          @db.Timestamptz(3)
+  escalatedAt DateTime? @map("escalated_at")          @db.Timestamptz(3)
+  claimedAt DateTime? @map("claimed_at")          @db.Timestamptz(3)
+  decidedAt DateTime? @map("decided_at")          @db.Timestamptz(3)
+  comment             String?
+  createdAt DateTime @map("created_at")           @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")           @default(now()) @db.Timestamptz(3)
+  workflowInstances WorkflowInstance @relation(fields: [iId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([companyId, assigneeUserId, status], map: "workflow_tasks_company_assignee_status_idx")
+  @@index([instanceId, status], map: "workflow_tasks_instance_status_idx")
+  @@index([status, dueAt], map: "workflow_tasks_status_due_idx")
+  @@map("workflow_tasks")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model WorkflowTransitionEvent {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")             @db.Uuid
+  instanceId String @map("instance_id")             @db.Uuid
+  fromStateKey String? @map("from_state_key")
+  toStateKey String @map("to_state_key")
+  transitionName String @map("transition_name")
+  actorUserId String @map("actor_user_id")             @db.Uuid
+  comment            String?
+  createdAt DateTime @map("created_at")           @default(now()) @db.Timestamptz(3)
+  workflowInstances WorkflowInstance @relation(fields: [iId], references: [id], onDelete: Cascade)
+
+  @@index([instanceId, createdAt], map: "workflow_transition_events_instance_created_idx")
+  @@map("workflow_transition_events")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model WorkflowVersion {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String @map("company_id")                @db.Uuid
+  definitionId String @map("definition_id")                @db.Uuid
+  version              Int
+  status               WorkflowVersionStatus @default(DRAFT)
+  states               Json                  @default("[]")
+  transitions          Json                  @default("[]")
+  publishedAt DateTime? @map("published_at")             @db.Timestamptz(3)
+  createdAt DateTime @map("created_at")              @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at")              @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id")               @db.Uuid
+  steps                Json                  @default("[]")
+  workflowInstances WorkflowInstance[]
+  workflowDefinitions WorkflowDefinition  @relation(fields: [dId], references: [id], onDelete: Cascade)
+
+  @@unique([definitionId, version], map: "workflow_versions_definition_version_key")
+  @@map("workflow_versions")
+}
+
 enum Action {
   view
   create
@@ -920,7 +1976,11 @@ enum Action {
   view_sensitive
 }
 
-/// Hierarchical scope a permission applies to. Mirrors `DATA_SCOPES`.
+enum ApprovalSubjectType {
+  USER
+  ROLE
+}
+
 enum DataScope {
   SELF
   TEAM
@@ -930,138 +1990,6 @@ enum DataScope {
   GLOBAL
 }
 
-/// Level within the organizational hierarchy (ARCHITECTURE section 8).
-enum OrganizationalUnitType {
-  DIVISION
-  DEPARTMENT
-  SECTION
-  TEAM
-}
-
-enum UserStatus {
-  INVITED
-  ACTIVE
-  SUSPENDED
-  DISABLED
-}
-
-/// How a `system_settings` value is typed and therefore validated and rendered.
-enum SettingValueType {
-  STRING
-  NUMBER
-  BOOLEAN
-  JSON
-  STRING_LIST
-}
-
-/// The log categories shown in the Administration -> Logs surface.
-enum LogCategory {
-  ACTIVITY
-  ACCESS
-  AUTHENTICATION
-  SECURITY
-  API
-  ERROR
-}
-
-/// Delivery channel for a notification. Mirrors `NOTIFICATION_CHANNELS`.
-enum NotificationChannel {
-  IN_APP
-  EMAIL
-  PUSH
-}
-
-/// Delivery state of a notification. Mirrors `NOTIFICATION_DELIVERY_STATUSES`.
-enum NotificationDeliveryStatus {
-  PENDING
-  SENT
-  DELIVERED
-  READ
-  FAILED
-  SUPPRESSED
-}
-
-/// The kind of second factor an `mfa_factors` row represents.
-enum MfaFactorType {
-  TOTP
-}
-
-/// The protocol an `identity_providers` row speaks.
-enum IdentityProviderType {
-  OIDC
-  SAML
-}
-
-/// What an `approval_authorities` rule grants authority to (a user or a role).
-enum ApprovalSubjectType {
-  USER
-  ROLE
-}
-
-/// The lifecycle of a workflow version. Only the `ACTIVE` version runs new instances.
-enum WorkflowVersionStatus {
-  DRAFT
-  ACTIVE
-  ARCHIVED
-}
-
-/// The lifecycle of a running workflow instance.
-enum WorkflowInstanceStatus {
-  IN_PROGRESS
-  COMPLETED
-  APPROVED
-  REJECTED
-  CANCELLED
-}
-
-/// The kind of external system an integration adapter speaks to.
-enum IntegrationKind {
-  EMAIL
-  WEBHOOK
-  STORAGE
-  ANALYTICS
-  OTHER
-}
-
-/// The last observed health of a configured integration.
-enum IntegrationStatus {
-  UNKNOWN
-  CONNECTED
-  DISCONNECTED
-  ERROR
-}
-
-/// The direction of one integration operation.
-enum IntegrationDeliveryDirection {
-  OUTBOUND
-  INBOUND
-}
-
-/// The outcome of one integration operation.
-enum IntegrationDeliveryStatus {
-  SUCCEEDED
-  FAILED
-  RETRYING
-}
-
-/// How a notification or alert is toned in the UI.
-enum NotificationKind {
-  INFO
-  SUCCESS
-  WARNING
-  ERROR
-}
-
-/// The kind of thing a registered resource represents, used to group and render it.
-enum ResourceType {
-  ENTITY
-  REFERENCE
-  CONFIGURATION
-  DOCUMENT
-  TRANSACTION
-}
-
-/// The data type of a registered resource field, used for validation and rendering.
 enum FieldDataType {
   STRING
   NUMBER
@@ -1073,81 +2001,114 @@ enum FieldDataType {
   REFERENCE
 }
 
-
-/// Lifecycle of a stored object. Mirrors `FILE_OBJECT_STATUSES`.
 enum FileObjectStatus {
   PENDING
   AVAILABLE
   DELETED
 }
 
-/// A stored object's metadata. The bytes live in S3-compatible storage; this row is the
-/// durable record of what was uploaded, who owns it and the retention window.
-model FileObject {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId      String           @map("company_id") @db.Uuid
-  name           String
-  mimeType       String           @map("mime_type")
-  size           BigInt?
-  storageKey     String           @unique @map("storage_key")
-  bucket         String
-  checksum       String?
-  status         FileObjectStatus @default(PENDING)
-  entity         String?
-  entityId       String?          @map("entity_id") @db.Uuid
-  retentionDays  Int?             @map("retention_days")
-  retentionUntil DateTime?        @map("retention_until") @db.Timestamptz(3)
-  uploadedBy     String?          @map("uploaded_by_user_id") @db.Uuid
-  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
-  /// When the bytes were removed. Deliberately NOT `deletedAt`: a deleted file must
-  /// stay visible (retention sweep, admin view), so it is not a `softDeleteExtension`
-  /// model; `status` is the soft-delete marker.
-  removedAt      DateTime?        @map("removed_at") @db.Timestamptz(3)
-
-  @@index([companyId, status], map: "files_company_status_idx")
-  @@index([companyId, entity, entityId], map: "files_company_entity_idx")
-  @@index([status, retentionUntil], map: "files_status_retention_idx")
-  @@map("files")
+enum IdentityProviderType {
+  OIDC
+  SAML
 }
 
-/// The durable log of every domain event.
-model OutboxEvent {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId   String    @map("company_id") @db.Uuid
-  type        String
-  resource    String
-  resourceId  String    @map("resource_id")
-  actorUserId String?   @map("actor_user_id") @db.Uuid
-  payload     Json      @default("{}")
-  occurredAt  DateTime  @map("occurred_at") @db.Timestamptz(3)
-  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
-  attempts    Int       @default(0)
-  lastError   String?   @map("last_error")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  @@index([companyId, occurredAt], map: "outbox_events_company_occurred_idx")
-  @@index([companyId, type], map: "outbox_events_company_type_idx")
-  @@index([companyId, publishedAt], map: "outbox_events_company_published_idx")
-  @@map("outbox_events")
+enum IntegrationDeliveryDirection {
+  OUTBOUND
+  INBOUND
 }
 
-/// A conditional rule triggered by a domain event.
-model BusinessRule {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId   String   @map("company_id") @db.Uuid
-  name        String
-  description String?
-  eventType   String   @map("event_type")
-  condition   Json     @default("{}")
-  actions     Json     @default("[]")
-  priority    Int      @default(100)
-  isEnabled   Boolean  @default(true) @map("is_enabled")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+enum IntegrationDeliveryStatus {
+  SUCCEEDED
+  FAILED
+  RETRYING
+}
 
-  @@index([companyId, eventType, isEnabled], map: "business_rules_company_event_idx")
-  @@map("business_rules")
+enum IntegrationKind {
+  EMAIL
+  WEBHOOK
+  STORAGE
+  ANALYTICS
+  OTHER
+}
+
+enum IntegrationStatus {
+  UNKNOWN
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+enum LogCategory {
+  ACTIVITY
+  ACCESS
+  AUTHENTICATION
+  SECURITY
+  API
+  ERROR
+}
+
+enum MfaFactorType {
+  TOTP
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  PUSH
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SUPPRESSED
+}
+
+enum NotificationKind {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+enum OrganizationalUnitType {
+  DIVISION
+  DEPARTMENT
+  SECTION
+  TEAM
+}
+
+enum ResourceType {
+  ENTITY
+  REFERENCE
+  CONFIGURATION
+  DOCUMENT
+  TRANSACTION
+}
+
+enum SettingValueType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+  STRING_LIST
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum WorkflowInstanceStatus {
+  IN_PROGRESS
+  COMPLETED
+  APPROVED
+  REJECTED
+  CANCELLED
 }
 
 enum WorkflowTaskStatus {
@@ -1160,220 +2121,8 @@ enum WorkflowTaskStatus {
   EXPIRED
 }
 
-model WorkflowTask {
-  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId           String              @map("company_id") @db.Uuid
-  instanceId          String              @map("instance_id") @db.Uuid
-  stepKey             String              @map("step_key")
-  stateKey            String?             @map("state_key")
-  status              WorkflowTaskStatus  @default(PENDING)
-  assigneeUserId      String?             @map("assignee_user_id") @db.Uuid
-  requiredPermission  String?             @map("required_permission")
-  dueAt               DateTime?           @map("due_at") @db.Timestamptz(3)
-  escalationAt        DateTime?           @map("escalation_at") @db.Timestamptz(3)
-  escalatedAt         DateTime?           @map("escalated_at") @db.Timestamptz(3)
-  claimedAt           DateTime?           @map("claimed_at") @db.Timestamptz(3)
-  decidedAt           DateTime?           @map("decided_at") @db.Timestamptz(3)
-  comment             String?
-  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
-  instance            WorkflowInstance    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-
-  @@index([instanceId, status], map: "workflow_tasks_instance_status_idx")
-  @@index([companyId, assigneeUserId, status], map: "workflow_tasks_company_assignee_status_idx")
-  @@index([status, dueAt], map: "workflow_tasks_status_due_idx")
-  @@map("workflow_tasks")
-}
-
-model ApiRequestLog {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId       String    @map("company_id") @db.Uuid
-  apiClientId     String    @map("api_client_id") @db.Uuid
-  method          String
-  path            String
-  statusCode      Int       @map("status_code")
-  durationMs      Int       @map("duration_ms")
-  correlationId   String?   @map("correlation_id")
-  occurredAt      DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(3)
-  apiClient       ApiClient @relation(fields: [apiClientId], references: [id], onDelete: Cascade)
-
-  @@index([apiClientId, occurredAt(sort: Desc)], map: "api_request_log_client_occurred_idx")
-  @@index([companyId, occurredAt(sort: Desc)], map: "api_request_log_company_occurred_idx")
-  @@map("api_request_log")
-}
-
-model ScheduledAction {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId   String    @map("company_id") @db.Uuid
-  name        String
-  description String?
-  cron        String
-  action      Json      @default("{}")
-  isEnabled   Boolean   @default(true) @map("is_enabled")
-  nextRunAt   DateTime? @map("next_run_at") @db.Timestamptz(3)
-  lastRunAt   DateTime? @map("last_run_at") @db.Timestamptz(3)
-  lastError   String?   @map("last_error")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  @@index([companyId, isEnabled, nextRunAt], map: "scheduled_actions_company_enabled_next_idx")
-  @@map("scheduled_actions")
-}
-
-model IdempotencyKey {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId     String    @map("company_id") @db.Uuid
-  userId        String    @map("user_id") @db.Uuid
-  route         String
-  key           String
-  requestHash   String    @map("request_hash")
-  statusCode    Int?      @map("status_code")
-  responseBody  Json?     @map("response_body")
-  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(3)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  completedAt   DateTime? @map("completed_at") @db.Timestamptz(3)
-
-  @@unique([companyId, userId, route, key], map: "idempotency_keys_unique")
-  @@index([expiresAt], map: "idempotency_keys_expires_idx")
-  @@map("idempotency_keys")
-}
-
-model AiKnowledgeDocument {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId        String   @map("company_id") @db.Uuid
-  title            String
-  kind             String   @default("POLICY")
-  source           String?
-  content          String
-  embedding        Json?
-  status           String   @default("PUBLISHED")
-  createdByUserId  String?  @map("created_by_user_id") @db.Uuid
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  @@index([companyId, status], map: "ai_knowledge_documents_company_status_idx")
-  @@map("ai_knowledge_documents")
-}
-
-model AiCall {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId     String   @map("company_id") @db.Uuid
-  userId        String   @map("user_id") @db.Uuid
-  feature       String
-  provider      String
-  model         String
-  promptHash    String   @map("prompt_hash")
-  inputTokens   Int      @default(0) @map("input_tokens")
-  outputTokens  Int      @default(0) @map("output_tokens")
-  latencyMs     Int      @default(0) @map("latency_ms")
-  status        String   @default("SUCCESS")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  @@index([companyId, createdAt], map: "ai_calls_company_created_idx")
-  @@map("ai_calls")
-}
-
-model FeatureFlag {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId   String?  @map("company_id") @db.Uuid
-  key         String
-  name        String
-  description String?
-  enabled     Boolean  @default(false)
-  rollout     Json     @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  @@unique([key, companyId], map: "feature_flags_key_company_key")
-  @@index([key, companyId], map: "feature_flags_key_company_idx")
-  @@map("feature_flags")
-}
-
-model DataRetentionSchedule {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId      String   @map("company_id") @db.Uuid
-  resource       String
-  retentionDays  Int      @map("retention_days")
-  purgeAfterDays Int      @default(30) @map("purge_after_days")
-  isEnabled      Boolean  @default(true) @map("is_enabled")
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  @@index([companyId, resource], map: "data_retention_schedules_company_resource_idx")
-  @@map("data_retention_schedules")
-}
-
-model UserGroup {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId   String   @map("company_id") @db.Uuid
-  name        String
-  description String?
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-  members     UserGroupMember[]
-
-  @@unique([companyId, name], map: "user_groups_company_name_key")
-  @@index([companyId, name], map: "user_groups_company_name_idx")
-  @@map("user_groups")
-}
-
-model UserGroupMember {
-  groupId   String   @map("group_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  companyId String   @map("company_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  group       UserGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@id([groupId, userId])
-  @@map("user_group_members")
-}
-
-model DataPolicy {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId        String   @map("company_id") @db.Uuid
-  name             String
-  description      String?
-  classification   String   @default("internal")
-  targetResource   String   @map("target_resource")
-  maskingAction    String   @default("mask") @map("masking_action")
-  isEnabled        Boolean  @default(true) @map("is_enabled")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  @@index([companyId, targetResource], map: "data_policies_company_resource_idx")
-  @@map("data_policies")
-}
-
-model ConfigurationSchema {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId   String   @map("company_id") @db.Uuid
-  resourceKey String   @map("resource_key")
-  name        String
-  description String?
-  schemaJson  Json     @default("{}") @map("schema_json")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  @@unique([companyId, resourceKey], map: "configuration_schemas_unique")
-  @@index([companyId, resourceKey], map: "configuration_schemas_company_resource_idx")
-  @@map("configuration_schemas")
-}
-
-model ExtensionRegistry {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId   String   @map("company_id") @db.Uuid
-  name        String
-  description String?
-  extensionKey String   @map("extension_key")
-  version     String
-  manifest    Json     @default("{}")
-  isEnabled   Boolean  @default(true) @map("is_enabled")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  @@unique([companyId, extensionKey], map: "extension_registry_unique")
-  @@index([companyId, extensionKey], map: "extension_registry_company_extension_idx")
-  @@map("extension_registry")
+enum WorkflowVersionStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
 }

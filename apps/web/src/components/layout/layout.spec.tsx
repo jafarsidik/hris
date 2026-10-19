@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MODULE_IDS } from '@hris/shared-types';
 import { describe, expect, it, vi } from 'vitest';
 
-import { BUILT_ITEMS, ROUTES, moduleLabel, type ModuleId } from '@/lib/navigation';
+import { BUILT_ITEMS, MODULE_MENUS, ROUTES, moduleLabel, type ModuleId } from '@/lib/navigation';
 
 import { AppShell } from './app-shell';
 import { BreadcrumbTrail } from './breadcrumb-trail';
@@ -259,10 +259,21 @@ describe('SidebarTree', () => {
 
     // A header that says how much is left to build is the difference between a roadmap
     // and a list of greyed-out rows. Scoped to the group holding the current page: other
-    // groups carry the same count, so a bare text match would be ambiguous.
-    expect(within(tree()).getByRole('button', { name: /^Workforce/ })).toHaveTextContent(
-      '4 planned',
-    );
+    // groups carry the same count, so a bare text match would be ambiguous. The count
+    // itself is read from the navigation data, so the assertion keeps its force as the
+    // roadmap advances without a stale literal breaking it on every flipped item.
+    const plannedCount =
+      MODULE_MENUS.find((menu) => menu.module === ('M01_CORE_HR' as ModuleId))
+        ?.groups.find((group) => group.id === 'M01_WORKFORCE')
+        ?.items.filter((item) => item.status === 'planned').length ?? -1;
+
+    const header = within(tree()).getByRole('button', { name: /^Workforce/ });
+
+    if (plannedCount === 0) {
+      expect(header).not.toHaveTextContent('planned');
+    } else {
+      expect(header).toHaveTextContent(`${plannedCount} planned`);
+    }
   });
 
   it('links only to routes that exist', () => {

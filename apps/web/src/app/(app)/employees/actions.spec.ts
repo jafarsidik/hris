@@ -1,7 +1,16 @@
 import { DEFAULT_PAGE_SIZE } from '@hris/shared-types';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadMoreEmployees } from './actions';
+
+/**
+ * The paging contract under test belongs to the mock's keyset walk (including the
+ * rejected-cursor behaviour the result encodes). The repository switch defaults to the
+ * API — which tests cannot reach — so this spec pins the mock source explicitly.
+ */
+beforeAll(() => {
+  process.env['HRIS_EMPLOYEE_DATA_SOURCE'] = 'mock';
+});
 
 /**
  * The action is the whole of the "load more" logic; the button only calls it. Exercising

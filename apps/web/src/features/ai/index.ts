@@ -1,2 +1,9 @@
 export { AiAssistantScreen } from './ai-assistant-screen';
 export { aiApi } from './ai-api';
+export { ProvidersScreen } from './providers-screen';
+export { AiLogsScreen } from './ai-logs-screen';
+export { UsageCostScreen } from './usage-cost-screen';
+export { ModelsScreen } from './models-screen';
+export { PromptsScreen } from './prompts-screen';
+export { AgentsScreen } from './agents-screen';
+export { ToolsScreen } from './tools-screen';

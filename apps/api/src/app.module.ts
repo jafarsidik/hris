@@ -23,6 +23,8 @@ import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module
 import { DataRetentionModule } from './modules/data-retention/data-retention.module';
 import { HealthModule } from './modules/health/health.module';
 import { GovernanceModule } from './modules/governance/governance.module';
+import { AccessGovernanceModule } from './modules/access-governance/access-governance.module';
+import { RegistryExtensionsModule } from './modules/registry-extensions/registry-extensions.module';
 import { IdempotencyModule } from './modules/idempotency/idempotency.module';
 import { IdempotencyInterceptor } from './modules/idempotency/idempotency.interceptor';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
@@ -30,6 +32,15 @@ import { LogModule } from './modules/logs/log.module';
 import { MfaModule } from './modules/mfa/mfa.module';
 import { NotificationModule } from './modules/notifications/notification.module';
 import { OrganizationModule } from './modules/organization/organization.module';
+import { EmployeeRecordsModule } from './modules/employee-records/employee-records.module';
+import { EmploymentModule } from './modules/employment/employment.module';
+import { EmployeeModule } from './modules/employees/employee.module';
+import { LeaveModule } from './modules/leave/leave.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
+import { RecruitmentModule } from './modules/recruitment/recruitment.module';
+import { PerformanceModule } from './modules/performance/performance.module';
+import { OffboardingModule } from './modules/offboarding/offboarding.module';
 import { PasskeyModule } from './modules/passkeys/passkey.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { RecordsModule } from './modules/records/records.module';
@@ -97,12 +108,23 @@ import { WorkflowModule } from './modules/workflows/workflow.module';
     SettingsModule,
     NotificationModule,
     OrganizationModule,
+    EmployeeRecordsModule,
+    EmploymentModule,
+    EmployeeModule,
+    LeaveModule,
+    AttendanceModule,
+    PayrollModule,
+    RecruitmentModule,
+    PerformanceModule,
+    OffboardingModule,
     LogModule,
     RegistryModule,
     RecordsModule,
     ScheduledJobsModule,
     HealthModule,
     GovernanceModule,
+    AccessGovernanceModule,
+    RegistryExtensionsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: CsrfGuard },

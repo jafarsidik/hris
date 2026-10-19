@@ -22,9 +22,15 @@ import {
   Patch,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 
-import { INTEGRATION_KINDS, type IntegrationKind } from '@hris/shared-types';
+import {
+  INTEGRATION_KINDS,
+  type DeliveryLogEntry,
+  type IntegrationHealthSummary,
+  type IntegrationKind,
+} from '@hris/shared-types';
 
 import { CurrentAuth, CurrentPrincipal } from '../../common/auth/current.decorator';
 import type { SessionPrincipal } from '../../common/auth/permission.service';
@@ -125,6 +131,32 @@ export class IntegrationsController {
     @CurrentPrincipal() principal: SessionPrincipal,
   ) {
     return this.integrations.list(session.companyId, principal);
+  }
+
+  /**
+   * Literal segments are declared ahead of `:id`: Nest matches in declaration order, and
+   * `@Get(':id')` registered first would capture `deliveries`/`monitor` as an id (there is
+   * no ParseUUIDPipe here to reject them), so these routes would never be reached.
+   */
+  @Get('deliveries')
+  @RequirePermission('integration', 'view')
+  async deliveryLog(
+    @CurrentAuth() session: AuthenticatedRequest,
+    @Query('limit') limit?: string,
+  ): Promise<readonly DeliveryLogEntry[]> {
+    const parsed = limit === undefined ? 100 : Number.parseInt(limit, 10);
+    return this.integrations.listDeliveryLog(
+      session.companyId,
+      Number.isFinite(parsed) ? parsed : 100,
+    );
+  }
+
+  @Get('monitor')
+  @RequirePermission('integration', 'view')
+  async monitor(
+    @CurrentAuth() session: AuthenticatedRequest,
+  ): Promise<readonly IntegrationHealthSummary[]> {
+    return this.integrations.monitor(session.companyId);
   }
 
   @Get(':id')

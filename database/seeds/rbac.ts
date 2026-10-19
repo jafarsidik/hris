@@ -38,13 +38,13 @@ export async function buildPermissionRowsFromRegistry(client: PrismaClient): Pro
   const resources = await client.resourceDefinition.findMany({
     where: { isActive: true },
     orderBy: { key: 'asc' },
-    select: { key: true, actions: { select: { action: true } } },
+    select: { key: true, registeredActions: { select: { action: true } } },
   });
 
   const rows: { key: string; resource: string; action: Action }[] = [];
   for (const resource of resources) {
     const seen = new Set<Action>();
-    for (const { action } of resource.actions) {
+    for (const { action } of resource.registeredActions) {
       if (isAction(action) && !seen.has(action)) {
         seen.add(action);
         rows.push({ key: `${resource.key}.${action}`, resource: resource.key, action });

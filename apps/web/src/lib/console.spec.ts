@@ -130,13 +130,17 @@ describe('consoleFor', () => {
   it('keeps the roadmap visible to an unprivileged caller', () => {
     // Planned surfaces carry no permission, so they stay visible even with no grants: the
     // console is a map of the platform, and a section must never look empty just because a
-    // caller cannot open its built entries yet.
+    // caller cannot open its built entries yet. Sections whose built items are all gated
+    // report `isEmpty` rather than disappearing; what must remain for an unprivileged
+    // caller is the roadmap itself — every planned item, in whatever section it lives.
     const sections = consoleFor([]);
 
     expect(sections).toHaveLength(10);
 
     const identity = must(sections.find((section) => section.id === 'identity'));
     expect(identity.items.some((item) => item.label === 'Users')).toBe(false);
-    expect(identity.items.some((item) => item.status === 'planned')).toBe(true);
+    expect(
+      sections.some((section) => section.items.some((item) => item.status === 'planned')),
+    ).toBe(true);
   });
 });

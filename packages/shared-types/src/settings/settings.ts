@@ -90,6 +90,27 @@ export const SYSTEM_SETTING_DEFAULTS: readonly SystemSettingDefault[] = [
     description: 'Default interface language',
   },
   {
+    group: 'general',
+    key: 'ai.enabled',
+    value: false,
+    valueType: 'BOOLEAN',
+    description: 'Enable AI assistant features for this company',
+  },
+  {
+    group: 'localization',
+    key: 'localization.timeZone',
+    value: 'Asia/Jakarta',
+    valueType: 'STRING',
+    description: 'IANA time zone used when formatting dates for this company',
+  },
+  {
+    group: 'localization',
+    key: 'localization.dateFormat',
+    value: 'iso',
+    valueType: 'STRING',
+    description: 'Date presentation: iso (2026-10-18), numeric (18/10/2026) or long (18 Oct 2026)',
+  },
+  {
     group: 'authentication',
     key: 'authentication.password.minLength',
     value: 8,

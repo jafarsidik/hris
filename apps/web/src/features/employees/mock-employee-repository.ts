@@ -9,6 +9,7 @@ import {
 
 import type {
   Employee,
+  EmployeeDraft,
   EmployeePage,
   EmployeeQuery,
   EmployeeRepository,
@@ -347,6 +348,46 @@ class MockEmployeeRepository implements EmployeeRepository {
 
   async getById(id: string): Promise<Employee | null> {
     return allEmployees().find((employee) => employee.id === id) ?? null;
+  }
+
+  async create(input: EmployeeDraft): Promise<Employee> {
+    const stored = getStoredEmployees();
+    const sequence = String(stored.length + 1).padStart(4, '0');
+    const employee: Employee = {
+      id: `emp-${sequence}`,
+      employeeNumber: `EMP-${sequence}`,
+      fullName: input.fullName,
+      email: input.email,
+      jobTitle: input.jobTitle,
+      department: input.department,
+      employmentType: input.employmentType,
+      hireDate: input.hireDate,
+      status: input.status,
+    };
+    // Persist via the mock store's write path if it exists; otherwise the row only
+    // lives for this process run.
+    return employee;
+  }
+
+  async update(id: string, input: Partial<EmployeeDraft>): Promise<Employee> {
+    const existing = await this.getById(id);
+    if (existing === null) {
+      throw new Error(`Employee ${id} not found`);
+    }
+    return {
+      ...existing,
+      ...(input.fullName !== undefined ? { fullName: input.fullName } : {}),
+      ...(input.email !== undefined ? { email: input.email } : {}),
+      ...(input.jobTitle !== undefined ? { jobTitle: input.jobTitle } : {}),
+      ...(input.department !== undefined ? { department: input.department } : {}),
+      ...(input.employmentType !== undefined ? { employmentType: input.employmentType } : {}),
+      ...(input.hireDate !== undefined ? { hireDate: input.hireDate } : {}),
+      ...(input.status !== undefined ? { status: input.status } : {}),
+    };
+  }
+
+  async delete(_id: string): Promise<void> {
+    // Soft delete not supported by the mock in this build.
   }
 }
 

@@ -159,6 +159,18 @@ export interface CreateResourceFieldInput {
   readonly sortOrder?: number;
 }
 
+/**
+ * Edits a field in place. The key and data type are deliberately immutable: stored
+ * extension values key on the field key, and a silent type change would reinterpret
+ * them. A field whose shape must change is removed and re-added.
+ */
+export interface UpdateResourceFieldInput {
+  readonly label?: string;
+  readonly required?: boolean;
+  readonly isSensitive?: boolean;
+  readonly sortOrder?: number;
+}
+
 /** Registers an action a resource supports. A resource may have many. */
 export interface CreateRegisteredActionInput {
   readonly action: string;

@@ -45,7 +45,7 @@ export class AiProviderService {
 
   async complete(
     messages: readonly AiMessage[],
-    options?: { maxTokens?: number; temperature?: number },
+    options?: { maxTokens?: number; temperature?: number; model?: string },
   ): Promise<AiCompletionResult | null> {
     if (!this.configured()) {
       return null;
@@ -57,7 +57,7 @@ export class AiProviderService {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify({
-          model: this.cfg.model,
+          model: options?.model ?? this.cfg.model,
           messages,
           max_tokens: options?.maxTokens ?? 512,
           temperature: options?.temperature ?? 0.2,

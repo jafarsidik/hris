@@ -9,7 +9,7 @@ Prisma schema, migrations, seeds and the tenant-scoped client factory.
 | `schema.prisma`     | The full platform schema. Source of truth for the data model.   |
 | `prisma.config.ts`  | Prisma 7 CLI configuration (schema, migrations, seed).          |
 | `migrations/`       | Applied migrations, in order. Never edited once applied.         |
-| `seeds/`            | Reference data. Idempotent, and run as the migration owner.     |
+| `seeds/`            | Reference data + demo workforce. Idempotent, run as the migration owner. |
 | `scripts/`          | Maintenance commands that are not migrations.                   |
 | `src/`              | The client factory, tenant context and soft-delete filter.      |
 | `tests/`            | `*.test.ts` runs hermetically; `*.integration.ts` needs a database. |
@@ -23,7 +23,7 @@ npm run db:generate -w @hris/database        # regenerate the client
 npm run db:migrate   -w @hris/database       # create and apply a migration (dev)
 npm run db:deploy    -w @hris/database       # apply migrations (CI, production)
 npm run db:status    -w @hris/database       # has anything drifted?
-npm run db:seed      -w @hris/database       # reference data, idempotent
+npm run db:seed      -w @hris/database       # reference data + demo workforce, idempotent
 npm run db:grant     -w @hris/database       # provision the application role
 npm run db:reset     -w @hris/database       # drop, re-migrate and re-seed (local only)
 npm run test:integration -w @hris/database   # RLS, audit and seed tests

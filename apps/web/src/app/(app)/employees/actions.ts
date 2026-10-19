@@ -1,6 +1,6 @@
 'use server';
 
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from '@hris/shared-types';
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, EMPLOYMENT_TYPES } from '@hris/shared-types';
 
 import {
   EMPLOYEE_STATUSES,
@@ -10,7 +10,6 @@ import {
   type Employee,
   type EmployeeDraft,
 } from '@/features/employees';
-import { upsertStoredEmployee } from '@/features/employees/mock-employee-store';
 import { InvalidCursorError } from '@/features/employees/mock-employee-repository';
 import type { EmployeePage, EmployeeSort } from '@/features/employees/employee-types';
 
@@ -96,6 +95,10 @@ type FieldErrors = Record<string, string>;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+/** Units and positions arrive from the API as UUID ids, not free text. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Both vocabularies are accepted: the API enums and the mock's display strings. */
+const EMPLOYEE_EMPLOYMENT_TYPES: readonly string[] = EMPLOYMENT_TYPES;
 
 /** Reads a field, coercing anything non-string (files, absent names) to an empty string. */
 const readString = (formData: FormData, key: string): string => {
@@ -113,16 +116,7 @@ function isValidHireDate(value: string): boolean {
   return parsed.getTime() <= today;
 }
 
-/** The elements of the sort tie-break id (`emp-0001`) as a number, or 0. */
-const numericId = (id: string): number => {
-  const match = /^emp-(\d+)$/.exec(id);
-  return match ? Number(match[1]) : 0;
-};
-
-/**
- * Validates the raw draft into field errors. Validation lives here, server-side, so the
- * rules are the authority even if a client submits the form without running any script.
- */
+/** Validates the raw draft into field errors. */
 function validateDraft(draft: EmployeeDraft): FieldErrors {
   const errors: FieldErrors = {};
   const { fullName, email, jobTitle, department, employmentType, hireDate, status } = draft;
@@ -132,30 +126,21 @@ function validateDraft(draft: EmployeeDraft): FieldErrors {
 
   if (!EMAIL_PATTERN.test(email.trim())) errors.email = 'Enter a valid email address.';
 
-  if (jobTitle.trim() === '') errors.jobTitle = 'Job title is required.';
-  if (!MOCK_DEPARTMENTS.includes(department)) errors.department = 'Choose a department.';
-  if (!MOCK_EMPLOYMENT_TYPES.includes(employmentType))
+  if (jobTitle.trim() === '') errors.jobTitle = 'Choose a position.';
+  if (!UUID_PATTERN.test(draft.unitId ?? '') && !MOCK_DEPARTMENTS.includes(department)) {
+    errors.department = 'Choose a department.';
+  }
+  if (
+    !EMPLOYEE_EMPLOYMENT_TYPES.includes(employmentType) &&
+    !MOCK_EMPLOYMENT_TYPES.includes(employmentType)
+  ) {
     errors.employmentType = 'Choose an employment type.';
+  }
   if (!isValidHireDate(hireDate)) errors.hireDate = 'Enter a valid hire date, not in the future.';
   if (!(EMPLOYEE_STATUSES as readonly string[]).includes(status))
     errors.status = 'Choose a status.';
 
   return errors;
-}
-
-/** All rows currently served by the repository — generated plus stored overrides. */
-async function allEmployeeRecords(): Promise<readonly Employee[]> {
-  const page = await getEmployeeRepository().list({ page: { limit: MAX_PAGE_SIZE } });
-  return page.items;
-}
-
-/** Allocates the next `emp-NNNN` id and `EMP-NNNN` number strictly above the current rows. */
-function allocateIdentityFor(
-  records: readonly Employee[],
-): Pick<Employee, 'id' | 'employeeNumber'> {
-  const sequence = records.reduce((max, employee) => Math.max(max, numericId(employee.id)), 0) + 1;
-  const padded = String(sequence).padStart(4, '0');
-  return { id: `emp-${padded}`, employeeNumber: `EMP-${padded}` };
 }
 
 export async function saveEmployee(
@@ -172,6 +157,8 @@ export async function saveEmployee(
     hireDate: readString(formData, 'hireDate'),
     status: readString(formData, 'status'),
     employeeNumber: readString(formData, 'employeeNumber') || undefined,
+    unitId: readString(formData, 'unitId') || undefined,
+    positionId: readString(formData, 'positionId') || undefined,
   };
 
   const errors = validateDraft(draft);
@@ -179,33 +166,62 @@ export async function saveEmployee(
     return { ok: false, fieldErrors: errors };
   }
 
-  const records = await allEmployeeRecords();
-  const emailTaken = records.some(
-    (employee) => employee.email === draft.email.trim().toLowerCase() && employee.id !== draft.id,
-  );
-  if (emailTaken) {
-    return { ok: false, fieldErrors: { email: 'Another employee already uses this email.' } };
-  }
-
-  const identity =
-    draft.id !== undefined
-      ? { id: draft.id, employeeNumber: draft.employeeNumber ?? draft.id }
-      : allocateIdentityFor(records);
-
+  const repository = getEmployeeRepository();
   const employee: Employee = {
-    id: identity.id,
-    employeeNumber: identity.employeeNumber,
+    id: draft.id ?? '',
+    employeeNumber: draft.employeeNumber ?? '',
     fullName: draft.fullName.trim().replace(/\s+/g, ' '),
     email: draft.email.trim().toLowerCase(),
-    jobTitle: draft.jobTitle.trim(),
+    jobTitle: draft.jobTitle.trim() || draft.positionId || '',
     department: draft.department,
     employmentType: draft.employmentType,
     hireDate: draft.hireDate,
     status: draft.status,
   };
+  /** Placement ids ride along for the API repository; labels stay for the mock. */
+  const placement = {
+    unitId: UUID_PATTERN.test(draft.unitId ?? '') ? draft.unitId : undefined,
+    positionId: UUID_PATTERN.test(draft.positionId ?? '') ? draft.positionId : undefined,
+  };
 
-  upsertStoredEmployee(employee);
-  return { ok: true, mode: draft.id === undefined ? 'created' : 'updated', employee };
+  try {
+    if (draft.id !== undefined) {
+      const saved = await repository.update(draft.id, {
+        fullName: employee.fullName,
+        email: employee.email,
+        jobTitle: employee.jobTitle,
+        department: employee.department,
+        employmentType: employee.employmentType,
+        hireDate: employee.hireDate,
+        status: employee.status,
+        ...placement,
+      });
+      return { ok: true, mode: 'updated', employee: saved };
+    }
+    const saved = await repository.create({ ...employee, ...placement });
+    return { ok: true, mode: 'created', employee: saved };
+  } catch (error) {
+    if (error instanceof Error) {
+      // An ApiRequestError from the API carries structured field details.
+      const details = (error as { details?: readonly { field?: string; message?: string }[] })
+        .details;
+      if (Array.isArray(details)) {
+        const fieldErrors: FieldErrors = {};
+        for (const detail of details) {
+          if (detail.field && detail.message) {
+            fieldErrors[detail.field] = detail.message;
+          }
+        }
+        if (Object.keys(fieldErrors).length > 0) {
+          return { ok: false, fieldErrors };
+        }
+      }
+      // An API error without per-field details still holds user-facing copy: report it
+      // against the form so the dialog can show it instead of the page dying.
+      return { ok: false, fieldErrors: { form: error.message } };
+    }
+    throw error;
+  }
 }
 
 /**

@@ -59,6 +59,7 @@ export function HrisDataTable<TRow extends { readonly id: string }>({
   views,
   bulkActions,
   actions,
+  presentationBody,
   status = 'ready',
   loadingRows = 8,
   errorCopy = 'Something went wrong while loading the rows.',
@@ -90,6 +91,14 @@ export function HrisDataTable<TRow extends { readonly id: string }>({
   bulkActions?: readonly DataTableBulkAction<TRow>[];
   /** Controls rendered on the right edge of the toolbar. */
   actions?: React.ReactNode;
+  /**
+   * Renders the row area with this instead of the table (an image-list/card
+   * presentation) while the toolbar — search, filters, chips — stays in place
+   * and shared. Receives the filtered, sorted rows of the current page, so
+   * pagination and sort apply to the custom body too. Only presentation: the
+   * wire format and query never change.
+   */
+  presentationBody?: (pagedRows: readonly TRow[]) => React.ReactNode;
   status?: 'ready' | 'loading' | 'error';
   loadingRows?: number;
   errorCopy?: string;
@@ -463,7 +472,11 @@ export function HrisDataTable<TRow extends { readonly id: string }>({
         />
       )}
 
-      {status === 'ready' && !noResults && (
+      {status === 'ready' && !noResults && presentationBody !== undefined && (
+        <div>{presentationBody(pagedRows)}</div>
+      )}
+
+      {status === 'ready' && !noResults && presentationBody === undefined && (
         <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
           <Table containerClassName="max-h-[70vh] overflow-auto overscroll-contain">
             <TableHeader className="sticky top-0 z-10 bg-table-header backdrop-blur-sm">

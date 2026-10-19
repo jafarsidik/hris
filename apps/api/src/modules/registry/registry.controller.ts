@@ -11,6 +11,7 @@ import {
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -33,6 +34,7 @@ import {
   type ResourceSummary,
   type UpdateApplicationInput,
   type UpdateModuleInput,
+  type UpdateResourceFieldInput,
   type UpdateResourceInput,
 } from '@hris/shared-types';
 
@@ -211,6 +213,26 @@ export class CreateResourceFieldDto implements CreateResourceFieldInput {
   sortOrder?: number;
 }
 
+export class UpdateResourceFieldDto implements UpdateResourceFieldInput {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  label?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  required?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
+}
+
 export class CreateRegisteredActionDto implements CreateRegisteredActionInput {
   @IsString()
   @MinLength(2)
@@ -351,6 +373,31 @@ export class RegistryController {
     @Body() dto: CreateResourceFieldDto,
   ): Promise<ResourceSummary> {
     return this.registry.addResourceField(key, dto, this.actor(session, principal));
+  }
+
+  @Patch('resources/:key/fields/:fieldKey')
+  @RequirePermission('registry', 'update')
+  @HttpCode(HttpStatus.OK)
+  async updateResourceField(
+    @CurrentAuth() session: AuthenticatedRequest,
+    @CurrentPrincipal() principal: SessionPrincipal,
+    @Param('key') key: string,
+    @Param('fieldKey') fieldKey: string,
+    @Body() dto: UpdateResourceFieldDto,
+  ): Promise<ResourceSummary> {
+    return this.registry.updateResourceField(key, fieldKey, dto, this.actor(session, principal));
+  }
+
+  @Delete('resources/:key/fields/:fieldKey')
+  @RequirePermission('registry', 'delete')
+  @HttpCode(HttpStatus.OK)
+  async removeResourceField(
+    @CurrentAuth() session: AuthenticatedRequest,
+    @CurrentPrincipal() principal: SessionPrincipal,
+    @Param('key') key: string,
+    @Param('fieldKey') fieldKey: string,
+  ): Promise<ResourceSummary> {
+    return this.registry.removeResourceField(key, fieldKey, this.actor(session, principal));
   }
 
   @Post('resources/:key/actions')

@@ -11,11 +11,7 @@ import { formatHireDate } from './employee-presentation';
 import { EmployeeRowMenu } from './employee-row-menu';
 import { EmployeeStatusBadge } from './employee-status-badge';
 import type { Employee } from './employee-types';
-import {
-  EMPLOYEE_STATUSES,
-  MOCK_DEPARTMENTS,
-  MOCK_EMPLOYMENT_TYPES,
-} from './mock-employee-repository';
+import { EMPLOYEE_STATUSES } from './mock-employee-repository';
 
 /**
  * The directory's table contract: what columns it shows, how it filters, and which
@@ -28,43 +24,64 @@ export const EMPLOYEE_VIEWS_STORAGE_KEY = 'hris:employee-directory:views';
 export const EMPLOYEE_SEARCH_TEXT = (employee: Employee): string =>
   `${employee.fullName} ${employee.email} ${employee.employeeNumber} ${employee.jobTitle} ${employee.department} ${employee.employmentType}`;
 
-/** The quick filters the toolbar shows, and the advanced ones under "More filters". */
-export const EMPLOYEE_FILTERS: readonly DataTableFilter<Employee>[] = [
-  {
-    kind: 'select',
-    id: 'status',
-    label: 'Status',
-    placeholder: 'All statuses',
-    getValue: (employee) => employee.status,
-    options: EMPLOYEE_STATUSES.map((status) => ({ value: status, label: status })),
-  },
-  {
-    kind: 'select',
-    id: 'department',
-    label: 'Department',
-    placeholder: 'All departments',
-    getValue: (employee) => employee.department,
-    advanced: true,
-    options: MOCK_DEPARTMENTS.map((department) => ({ value: department, label: department })),
-  },
-  {
-    kind: 'select',
-    id: 'employmentType',
-    label: 'Type',
-    placeholder: 'All types',
-    getValue: (employee) => employee.employmentType,
-    advanced: true,
-    options: MOCK_EMPLOYMENT_TYPES.map((type) => ({ value: type, label: type })),
-  },
-  {
-    kind: 'range',
-    id: 'hireDate',
-    label: 'Hire date',
-    fromLabel: 'From',
-    toLabel: 'To',
-    getValue: (employee) => employee.hireDate,
-  },
-];
+/**
+ * The quick filters the toolbar shows, and the advanced ones under "More
+ * filters", built from the directory rows in memory.
+ *
+ * The options are derived from the rows rather than a hard-coded vocabulary
+ * because the data source is now the real API: the departments, employment
+ * types and statuses that exist are what the company's data defines, and a
+ * constant list could drift behind it.
+ */
+export function buildEmployeeFilters(
+  rows: readonly Employee[],
+): readonly DataTableFilter<Employee>[] {
+  const uniqueSorted = (
+    values: readonly (string | null)[],
+  ): readonly { value: string; label: string }[] =>
+    [...new Set(values.filter((value): value is string => value !== null && value !== ''))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value }));
+
+  const statuses = uniqueSorted([...EMPLOYEE_STATUSES, ...rows.map((employee) => employee.status)]);
+
+  return [
+    {
+      kind: 'select',
+      id: 'status',
+      label: 'Status',
+      placeholder: 'All statuses',
+      getValue: (employee) => employee.status,
+      options: statuses,
+    },
+    {
+      kind: 'select',
+      id: 'department',
+      label: 'Department',
+      placeholder: 'All departments',
+      getValue: (employee) => employee.department,
+      advanced: true,
+      options: uniqueSorted(rows.map((employee) => employee.department)),
+    },
+    {
+      kind: 'select',
+      id: 'employmentType',
+      label: 'Type',
+      placeholder: 'All types',
+      getValue: (employee) => employee.employmentType,
+      advanced: true,
+      options: uniqueSorted(rows.map((employee) => employee.employmentType)),
+    },
+    {
+      kind: 'range',
+      id: 'hireDate',
+      label: 'Hire date',
+      fromLabel: 'From',
+      toLabel: 'To',
+      getValue: (employee) => employee.hireDate,
+    },
+  ];
+}
 
 const withStatus = (status: string) => {
   const filters = { ...EMPTY_FILTERS, select: { status } };

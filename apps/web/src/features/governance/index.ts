@@ -3,3 +3,7 @@ export { DataPoliciesScreen } from './data-policies-screen';
 export { AccessPoliciesScreen } from './access-policies-screen';
 export { userGroupsApi } from './governance-api';
 export { dataPoliciesApi } from './governance-api';
+export { AccessReviewsScreen } from './access-reviews-screen';
+export { ServiceAccountsScreen } from './service-accounts-screen';
+export { accessReviewsApi } from './access-reviews-api';
+export { serviceAccountsApi } from './service-accounts-api';

@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 
+import { PerformanceController } from './performance.controller';
 import { QueueMonitorController } from './queue-monitor.controller';
 import { QueueMonitorService } from './queue-monitor.service';
 import { QueueService } from './queue.service';
@@ -13,7 +14,7 @@ import { QueueService } from './queue.service';
  */
 @Global()
 @Module({
-  controllers: [QueueMonitorController],
+  controllers: [QueueMonitorController, PerformanceController],
   providers: [QueueService, QueueMonitorService],
   exports: [QueueService, QueueMonitorService],
 })
