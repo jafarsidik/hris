@@ -7,6 +7,7 @@ import type { TenantSummary } from '@hris/shared-types';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -71,7 +72,7 @@ export function UsageQuotasScreen() {
       {tenants.loading && rows.length === 0 ? (
         <Skeleton className="h-60 w-full" />
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No tenants.</p>
+        <EmptyState title="No tenants" />
       ) : (
         <Card>
           <CardHeader>

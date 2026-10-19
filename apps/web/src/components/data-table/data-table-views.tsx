@@ -97,7 +97,7 @@ export function DataTableViews({
               <DropdownMenuRadioItem key={view.id} value={view.id}>
                 <span className="min-w-0 flex-1 truncate">{view.name}</span>
                 {view.id === defaultId && (
-                  <StarIcon aria-hidden="true" className="size-3.5 fill-current text-amber-500" />
+                  <StarIcon aria-hidden="true" className="size-3.5 fill-current text-warning" />
                 )}
               </DropdownMenuRadioItem>
             ))}

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -256,7 +257,7 @@ export function ApplicationsScreen() {
           {applications.loading && rows.length === 0 ? (
             <Skeleton className="h-40 w-full" />
           ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No applications are registered yet.</p>
+            <EmptyState title="No applications are registered yet" />
           ) : (
             <Table>
               <TableHeader>

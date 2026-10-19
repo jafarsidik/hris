@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -316,7 +317,7 @@ export function ModulesScreen() {
           </CardHeader>
           <CardContent>
             {moduleRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No modules are registered yet.</p>
+              <EmptyState title="No modules are registered yet" />
             ) : (
               <Table>
                 <TableHeader>

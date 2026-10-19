@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -105,7 +106,7 @@ export function ApprovalAuthorityScreen() {
           {authorities.loading ? (
             <Skeleton className="h-12 w-full" />
           ) : (authorities.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No authority rules are configured.</p>
+            <EmptyState title="No authority rules are configured" />
           ) : (
             <ul className="flex flex-col divide-y divide-border">
               {(authorities.data ?? []).map((row) => (
@@ -192,7 +193,7 @@ export function ApprovalAuthorityScreen() {
           {delegations.loading ? (
             <Skeleton className="h-12 w-full" />
           ) : (delegations.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No delegations are active.</p>
+            <EmptyState title="No delegations are active" />
           ) : (
             <ul className="flex flex-col divide-y divide-border">
               {(delegations.data ?? []).map((row) => (

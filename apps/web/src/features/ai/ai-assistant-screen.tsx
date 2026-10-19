@@ -8,6 +8,7 @@ import type { AiAskResponse, AiKnowledgeDocumentSummary } from '@hris/shared-typ
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -205,7 +206,7 @@ export function AiAssistantScreen() {
             {docs.loading ? (
               <Skeleton className="h-24 w-full" />
             ) : docRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No published documents.</p>
+              <EmptyState title="No published documents" />
             ) : (
               <ul className="flex flex-col gap-2">
                 {docRows.map((doc: AiKnowledgeDocumentSummary) => (

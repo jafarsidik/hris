@@ -100,7 +100,7 @@ export function SessionMenu() {
               <Settings aria-hidden="true" className="size-4" />
               Sessions
             </DropdownMenuItem>
-            <DropdownMenuItem disabled>
+            <DropdownMenuItem onClick={() => router.push('/status')}>
               <LifeBuoy aria-hidden="true" className="size-4" />
               Help
             </DropdownMenuItem>

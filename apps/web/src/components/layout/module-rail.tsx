@@ -149,8 +149,8 @@ function RailButton({
             aria-hidden="true"
             className={
               builtCount === items.length
-                ? 'absolute right-1 top-1 size-1.5 rounded-full bg-emerald-500'
-                : 'absolute right-1 top-1 size-1.5 rounded-full bg-amber-500'
+                ? 'absolute right-1 top-1 size-1.5 rounded-full bg-success'
+                : 'absolute right-1 top-1 size-1.5 rounded-full bg-warning'
             }
           />
         )}

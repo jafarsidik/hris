@@ -7,6 +7,7 @@ import type { AccessReviewItemSummary, AccessReviewSummary } from '@hris/shared-
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -129,7 +130,7 @@ export function AccessReviewsScreen() {
       {reviews.loading && rows.length === 0 ? (
         <Skeleton className="h-60 w-full" />
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No access reviews.</p>
+        <EmptyState title="No access reviews" />
       ) : (
         <Card>
           <CardHeader>
@@ -204,7 +205,7 @@ export function AccessReviewsScreen() {
           </CardHeader>
           <CardContent>
             {openReview.items.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No items in this review.</p>
+              <EmptyState title="No items in this review" />
             ) : (
               <Table>
                 <TableHeader>

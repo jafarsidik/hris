@@ -7,6 +7,7 @@ import type { QueueJobState, QueueSummary } from '@hris/shared-types';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -90,7 +91,7 @@ export function QueueMonitorScreen() {
           {queues.loading ? (
             <Skeleton className="h-16 w-full" />
           ) : (queues.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No queues are registered.</p>
+            <EmptyState title="No queues are registered" />
           ) : (
             <ul className="flex flex-col divide-y divide-border">
               {(queues.data ?? []).map((queue: QueueSummary) => (
@@ -140,7 +141,7 @@ export function QueueMonitorScreen() {
           {selected === null || jobs.loading ? (
             <Skeleton className="h-12 w-full" />
           ) : (jobs.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No jobs in this state.</p>
+            <EmptyState title="No jobs in this state" />
           ) : (
             <ul className="flex flex-col divide-y divide-border">
               {(jobs.data ?? []).map((job) => (

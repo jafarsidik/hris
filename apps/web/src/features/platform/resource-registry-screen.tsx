@@ -7,6 +7,7 @@ import type { ModuleSummary, ResourceSummary } from '@hris/shared-types';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { ResourceFieldsTable } from '@/components/metadata/resource-fields-table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -80,7 +81,7 @@ export function ResourceRegistryScreen() {
           {loading ? (
             <Skeleton className="h-10 w-full" />
           ) : (applications.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No applications are registered.</p>
+            <EmptyState title="No applications are registered" />
           ) : (
             <ul className="flex flex-col divide-y divide-border">
               {(applications.data ?? []).map((application) => (

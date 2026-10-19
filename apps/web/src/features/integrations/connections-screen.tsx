@@ -9,6 +9,7 @@ import type { IntegrationConnectionTestResult, IntegrationSummary } from './inte
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -155,7 +156,7 @@ export function ConnectionsScreen() {
       {loading ? (
         <Skeleton className="h-48 w-full" />
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No connections configured.</p>
+        <EmptyState title="No connections configured" />
       ) : (
         <Card>
           <CardHeader>

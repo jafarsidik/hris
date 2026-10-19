@@ -16,8 +16,8 @@ coverage
 **/*.tsbuildinfo
 *.log
 **/*.log
-docs
-**/docs
+docs/*
+!**/docs/*
 README.md
 .env
 .env.*

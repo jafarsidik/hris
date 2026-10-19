@@ -74,7 +74,7 @@ export function EmployeeDirectoryKpis({
                   data-em={card.emph}
                   className={cn(
                     'font-semibold',
-                    card.emph === 'ok' ? 'text-emerald-600' : 'text-amber-600',
+                    card.emph === 'ok' ? 'text-success' : 'text-warning',
                   )}
                 >
                   {isOn ? '· filtered' : ''}

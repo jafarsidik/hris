@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,7 +50,7 @@ export function ShiftPatternsScreen({ rows }: { rows: readonly ShiftPattern[] })
         <CardContent>
           {' '}
           {rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No shift patterns defined yet.</p>
+            <EmptyState title="No shift patterns defined yet" />
           ) : (
             <Table>
               <TableHeader>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -115,21 +116,21 @@ export function PayrollRunsScreen({
 
       <div className="mb-4 grid gap-4 sm:grid-cols-3">
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1.5">
             <CardDescription>Runs</CardDescription>
-            <CardTitle className="text-2xl">{filtered.length}</CardTitle>
+            <CardTitle className="text-xl tabular-nums">{filtered.length}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1.5">
             <CardDescription>Paid</CardDescription>
-            <CardTitle className="text-2xl">{paidCount}</CardTitle>
+            <CardTitle className="text-xl tabular-nums">{paidCount}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1.5">
             <CardDescription>Total net pay (filtered)</CardDescription>
-            <CardTitle className="text-2xl">{formatMoney(totalNet)}</CardTitle>
+            <CardTitle className="text-xl tabular-nums">{formatMoney(totalNet)}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -179,7 +180,10 @@ export function PayrollRunsScreen({
         </CardHeader>
         <CardContent>
           {filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No payroll runs found.</p>
+            <EmptyState
+              title="No payroll runs match this view yet."
+              description="Pick another period to see its runs."
+            />
           ) : (
             <Table>
               <TableHeader>

@@ -7,6 +7,7 @@ import { WORKFLOW_INSTANCE_STATUSES, type WorkflowInstanceStatus } from '@hris/s
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -111,7 +112,7 @@ export function WorkflowInstancesScreen() {
           {instances.loading ? (
             <Skeleton className="h-16 w-full" />
           ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No instances match this filter.</p>
+            <EmptyState title="No instances match this filter" />
           ) : (
             <ul className="flex flex-col divide-y divide-border">
               {rows.map((instance) => (
@@ -167,7 +168,7 @@ export function WorkflowInstancesScreen() {
                 <section className="flex flex-col gap-2">
                   <h3 className="text-sm font-semibold">Tasks</h3>
                   {detail.data.tasks.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No tasks were raised.</p>
+                    <EmptyState title="No tasks were raised" />
                   ) : (
                     <ul className="flex flex-col divide-y divide-border">
                       {detail.data.tasks.map((task) => (
@@ -196,7 +197,7 @@ export function WorkflowInstancesScreen() {
                 <section className="flex flex-col gap-2">
                   <h3 className="text-sm font-semibold">Transitions</h3>
                   {detail.data.history.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No transitions recorded yet.</p>
+                    <EmptyState title="No transitions recorded yet" />
                   ) : (
                     <ol className="flex flex-col divide-y divide-border">
                       {detail.data.history.map((event) => (

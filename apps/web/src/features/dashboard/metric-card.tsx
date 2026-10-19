@@ -43,19 +43,19 @@ export function MetricCard({
   const colors = TONE_CLASSES[tone];
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className="relative overflow-hidden rounded-lg border border-border bg-card p-3.5 shadow-sm">
       <span aria-hidden="true" className={cn('absolute inset-x-0 top-0 h-1', colors.bar)} />
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-muted-foreground">{label}</span>
+        <span className="text-xs font-medium text-muted-foreground">{label}</span>
         <span
           aria-hidden="true"
-          className={cn('grid size-8 shrink-0 place-items-center rounded-md', colors.chip)}
+          className={cn('grid size-7 shrink-0 place-items-center rounded-md', colors.chip)}
         >
-          <Icon className="size-4" />
+          <Icon className="size-3.5" />
         </span>
       </div>
-      <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
+      <p className="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>
     </div>
   );
 }

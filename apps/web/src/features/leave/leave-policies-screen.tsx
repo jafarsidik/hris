@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -48,7 +49,7 @@ export function LeavePoliciesScreen({ rows }: { rows: readonly LeavePolicy[] }) 
         <CardContent>
           {' '}
           {rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No leave policies defined yet.</p>
+            <EmptyState title="No leave policies defined yet" />
           ) : (
             <Table>
               <TableHeader>

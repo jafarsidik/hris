@@ -88,7 +88,7 @@ function ToastCard({ record, onDismiss }: { record: ToastRecord; onDismiss: () =
     <div
       data-slot="toast"
       className={cn(
-        'pointer-events-auto flex items-start gap-2.5 rounded-lg border bg-card p-3 pr-2 text-sm shadow-lg ring-1 ring-foreground/10',
+        'pointer-events-auto flex items-start gap-2.5 rounded-lg border bg-card p-3 pr-2 text-sm shadow-lg ring-1 ring-foreground/[0.08]',
       )}
     >
       <Icon

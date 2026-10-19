@@ -57,7 +57,7 @@
 :root {
   color-scheme: light;
 
-  --background: #f1f5f9;
+  --background: #f8fafc;
   --foreground: #1e293b;
 
   --card: #ffffff;
@@ -136,7 +136,7 @@
   --sidebar-border: #e2e8f0;
   --sidebar-ring: #1d4ed8;
 
-  --radius: 10px;
+  --radius: 8px;
 }
 
 /*

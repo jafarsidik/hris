@@ -8,6 +8,7 @@ import type { FileObjectStatus } from '@hris/shared-types';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { PageToolbar } from '@/components/layout/page-toolbar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -258,7 +259,7 @@ export function FilesScreen() {
           {files.loading && rows.length === 0 ? (
             <Skeleton className="h-40 w-full" />
           ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No files match this view.</p>
+            <EmptyState title="No files match this view" />
           ) : (
             <Table>
               <TableHeader>

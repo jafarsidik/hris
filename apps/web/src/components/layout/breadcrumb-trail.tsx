@@ -42,7 +42,7 @@ export function BreadcrumbTrail() {
 
   return (
     <Breadcrumb>
-      <BreadcrumbList>
+      <BreadcrumbList className="text-xs">
         {trail.map((crumb, index) => {
           const isLast = index === trail.length - 1;
           const key = `${crumb.href ?? 'current'}-${crumb.label}`;

@@ -8,6 +8,7 @@ import type { AiUsageBucket, AiUsageSummary } from '@hris/shared-types';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,9 +29,9 @@ import { useIamLoad } from '@/features/iam/use-iam-data';
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-1.5">
         <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl">{value}</CardTitle>
+        <CardTitle className="text-xl tabular-nums">{value}</CardTitle>
         {hint !== undefined && <p className="text-muted-foreground text-xs">{hint}</p>}
       </CardHeader>
     </Card>
@@ -108,7 +109,7 @@ export function UsageCostScreen() {
       {usage.loading ? (
         <Skeleton className="h-60 w-full" />
       ) : data === undefined ? (
-        <p className="text-sm text-muted-foreground">No usage recorded yet.</p>
+        <EmptyState title="No usage recorded yet" />
       ) : (
         <div className="flex flex-col gap-6">
           {!data.pricingConfigured && (
@@ -131,7 +132,7 @@ export function UsageCostScreen() {
             </CardHeader>
             <CardContent>
               {data.byModel.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No calls in the sample.</p>
+                <EmptyState title="No calls in the sample" />
               ) : (
                 <Table>
                   <TableHeader>
@@ -167,7 +168,7 @@ export function UsageCostScreen() {
             </CardHeader>
             <CardContent>
               {data.byDay.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No calls in the sample.</p>
+                <EmptyState title="No calls in the sample" />
               ) : (
                 <Table>
                   <TableHeader>
@@ -200,7 +201,7 @@ export function UsageCostScreen() {
             </CardHeader>
             <CardContent>
               {data.byFeature.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No calls in the sample.</p>
+                <EmptyState title="No calls in the sample" />
               ) : (
                 <Table>
                   <TableHeader>

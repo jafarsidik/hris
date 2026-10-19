@@ -67,10 +67,6 @@ export const SOFT_DELETED_MODELS = [
   'EmploymentContract',
   'EmployeeMovement',
   'WorkLocation',
-  'ExpenseClaim',
-  'MedicalClaim',
-  'BenefitPlan',
-  'BenefitEnrollment',
 ] as const;
 
 export type SoftDeletedModel = (typeof SOFT_DELETED_MODELS)[number];

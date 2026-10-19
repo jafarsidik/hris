@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,9 +35,9 @@ function formatWhen(value: string): string {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-1.5">
         <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl">{value}</CardTitle>
+        <CardTitle className="text-xl tabular-nums">{value}</CardTitle>
       </CardHeader>
     </Card>
   );
@@ -121,7 +122,10 @@ export function AttendanceRecordsScreen({
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No attendance records found.</p>
+        <EmptyState
+          title="No attendance records match this view yet."
+          description="Adjust the filters to see records."
+        />
       ) : (
         <Card>
           <CardHeader>

@@ -97,7 +97,7 @@ function Group({ group, pathname }: { group: MenuGroup; pathname: string }) {
               <span className="ml-auto flex shrink-0 items-center gap-1.5">
                 {builtCount > 0 && (
                   <span
-                    className="text-xs font-normal tabular-nums text-emerald-600 dark:text-emerald-400"
+                    className="text-xs font-normal tabular-nums text-success dark:text-success"
                     title={`${builtCount} of ${group.items.length} menus built`}
                   >
                     {builtCount}/{group.items.length}
@@ -159,7 +159,7 @@ function Group({ group, pathname }: { group: MenuGroup; pathname: string }) {
                         <span className="truncate">{item.label}</span>
                         <CircleCheck
                           aria-hidden="true"
-                          className="ml-auto size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                          className="ml-auto size-3.5 shrink-0 text-success"
                         />
                       </SidebarMenuSubButton>
                     )}

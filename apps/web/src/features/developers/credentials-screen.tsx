@@ -6,6 +6,7 @@ import { Check, Copy, RefreshCw } from 'lucide-react';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,9 +50,9 @@ function formatWhen(value: string | null): string {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-1.5">
         <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl">{value}</CardTitle>
+        <CardTitle className="text-xl tabular-nums">{value}</CardTitle>
       </CardHeader>
     </Card>
   );
@@ -182,7 +183,7 @@ export function CredentialsScreen() {
       {loading ? (
         <Skeleton className="h-60 w-full" />
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No API clients have been created yet.</p>
+        <EmptyState title="No API clients have been created yet" />
       ) : (
         <Card>
           <CardHeader>

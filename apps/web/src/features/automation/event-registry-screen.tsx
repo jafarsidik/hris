@@ -8,6 +8,7 @@ import type { EventCategory } from '@hris/shared-types';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { PageToolbar } from '@/components/layout/page-toolbar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -257,7 +258,7 @@ export function EventRegistryScreen() {
             {snapshot.loading && events.length === 0 ? (
               <Skeleton className="h-60 w-full" />
             ) : events.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No events match this view.</p>
+              <EmptyState title="No events match this view" />
             ) : (
               <Table>
                 <TableHeader>

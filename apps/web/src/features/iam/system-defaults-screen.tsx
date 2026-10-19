@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -101,15 +102,15 @@ export function SystemDefaultsScreen() {
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-2">
             <Card>
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-1.5">
                 <CardDescription>Settings in catalogue</CardDescription>
-                <CardTitle className="text-2xl">{String(rows.length)}</CardTitle>
+                <CardTitle className="text-xl tabular-nums">{String(rows.length)}</CardTitle>
               </CardHeader>
             </Card>
             <Card>
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-1.5">
                 <CardDescription>Customized from default</CardDescription>
-                <CardTitle className="text-2xl">{String(changed)}</CardTitle>
+                <CardTitle className="text-xl tabular-nums">{String(changed)}</CardTitle>
               </CardHeader>
             </Card>
           </div>
@@ -123,7 +124,7 @@ export function SystemDefaultsScreen() {
             </CardHeader>
             <CardContent>
               {rows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No settings defined.</p>
+                <EmptyState title="No settings defined" />
               ) : (
                 <Table>
                   <TableHeader>

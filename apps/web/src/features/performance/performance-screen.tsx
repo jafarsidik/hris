@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,21 +67,21 @@ export function PerformanceScreen({
 
       <div className="mb-4 grid gap-4 sm:grid-cols-3">
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1.5">
             <CardDescription>Goals</CardDescription>
-            <CardTitle className="text-2xl">{goals.length}</CardTitle>
+            <CardTitle className="text-xl tabular-nums">{goals.length}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1.5">
             <CardDescription>Achieved</CardDescription>
-            <CardTitle className="text-2xl">{achieved}</CardTitle>
+            <CardTitle className="text-xl tabular-nums">{achieved}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1.5">
             <CardDescription>Average progress</CardDescription>
-            <CardTitle className="text-2xl">{averageProgress}%</CardTitle>
+            <CardTitle className="text-xl tabular-nums">{averageProgress}%</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -132,7 +133,7 @@ export function PerformanceScreen({
         <CardContent>
           {' '}
           {goals.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No goals yet.</p>
+            <EmptyState title="No goals yet" />
           ) : (
             <Table>
               <TableHeader>
@@ -178,7 +179,7 @@ export function PerformanceScreen({
         <CardContent>
           {' '}
           {reviews.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No reviews submitted yet.</p>
+            <EmptyState title="No reviews submitted yet" />
           ) : (
             <Table>
               <TableHeader>

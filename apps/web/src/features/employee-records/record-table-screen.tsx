@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -64,7 +65,7 @@ export function RecordTableScreen({ table }: { table: RecordTableParams }) {
         <CardContent>
           {' '}
           {table.rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No records yet.</p>
+            <EmptyState title="No records yet" />
           ) : (
             <Table>
               <TableHeader>

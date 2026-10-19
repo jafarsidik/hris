@@ -321,7 +321,7 @@ function RoleDetailScreen({
         {loading ? (
           <Skeleton className="h-64 w-full" />
         ) : groups.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No resources are registered.</p>
+          <EmptyState title="No resources are registered" />
         ) : (
           <div className="max-h-[60vh] overflow-auto">
             {groups.map((group) => (

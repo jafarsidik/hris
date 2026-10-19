@@ -7,6 +7,7 @@ import type { NotificationChannel, NotificationPreferenceReadModel } from '@hris
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -101,7 +102,7 @@ export function NotificationPreferencesScreen() {
       {preferences.loading && rows.length === 0 ? (
         <Skeleton className="h-48 w-full" />
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No channels available.</p>
+        <EmptyState title="No channels available" />
       ) : (
         <Card className="max-w-2xl">
           <CardHeader>

@@ -6,6 +6,7 @@ import { Trash2 } from 'lucide-react';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -261,7 +262,7 @@ export function DataPoliciesScreen() {
           {policies.loading && rows.length === 0 ? (
             <Skeleton className="h-40 w-full" />
           ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No policies yet.</p>
+            <EmptyState title="No policies yet" />
           ) : (
             <Table>
               <TableHeader>

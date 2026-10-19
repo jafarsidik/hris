@@ -8,6 +8,7 @@ import type { PasskeySummary } from '@hris/shared-types';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -221,7 +222,7 @@ export function AccountSecurityScreen() {
           {passkeys.loading ? (
             <Skeleton className="h-9 w-full" />
           ) : (passkeys.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No passkeys are registered yet.</p>
+            <EmptyState title="No passkeys are registered yet" />
           ) : (
             <ul className="flex flex-col divide-y divide-border">
               {(passkeys.data ?? []).map((passkey: PasskeySummary) => (

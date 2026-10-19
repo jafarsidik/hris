@@ -7,6 +7,7 @@ import type { PerformanceMetricsSummary, QueuePerformanceSummary } from '@hris/s
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,9 +35,9 @@ function ms(value: number): string {
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-1.5">
         <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl">{value}</CardTitle>
+        <CardTitle className="text-xl tabular-nums">{value}</CardTitle>
         {hint !== undefined && <p className="text-muted-foreground text-xs">{hint}</p>}
       </CardHeader>
     </Card>
@@ -81,7 +82,7 @@ export function PerformanceMetricsScreen() {
       {metrics.loading ? (
         <Skeleton className="h-60 w-full" />
       ) : data === undefined ? (
-        <p className="text-sm text-muted-foreground">No metrics available.</p>
+        <EmptyState title="No metrics available" />
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

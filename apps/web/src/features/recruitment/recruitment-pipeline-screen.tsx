@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
+import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -90,27 +91,27 @@ export function RecruitmentPipelineScreen({
 
       <div className="mb-4 grid gap-4 sm:grid-cols-4">
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1.5">
             <CardDescription>Applied</CardDescription>
-            <CardTitle className="text-2xl">{stageCounts.applied}</CardTitle>
+            <CardTitle className="text-xl tabular-nums">{stageCounts.applied}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1.5">
             <CardDescription>Screening</CardDescription>
-            <CardTitle className="text-2xl">{stageCounts.screening}</CardTitle>
+            <CardTitle className="text-xl tabular-nums">{stageCounts.screening}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1.5">
             <CardDescription>Interview</CardDescription>
-            <CardTitle className="text-2xl">{stageCounts.interview}</CardTitle>
+            <CardTitle className="text-xl tabular-nums">{stageCounts.interview}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1.5">
             <CardDescription>Hired</CardDescription>
-            <CardTitle className="text-2xl">{stageCounts.hired}</CardTitle>
+            <CardTitle className="text-xl tabular-nums">{stageCounts.hired}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -156,7 +157,7 @@ export function RecruitmentPipelineScreen({
         <CardContent>
           {' '}
           {applications.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No applications in the pipeline.</p>
+            <EmptyState title="No applications in the pipeline" />
           ) : (
             <Table>
               <TableHeader>

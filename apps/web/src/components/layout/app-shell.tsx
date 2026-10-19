@@ -26,7 +26,8 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { MODULE_MENUS, activeModule, type ModuleId, type ModuleMenu } from '@/lib/navigation';
-import { Building2, Check, ChevronsUpDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Building2, Check, ChevronsUpDown, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
@@ -171,7 +172,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Sidebar>
 
       <SidebarInset id="main-content" className="min-h-0 overflow-y-auto">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 backdrop-blur-sm supports-backdrop-filter:bg-card/85">
           <SidebarTrigger className="size-8 md:hidden" aria-label="Open navigation" />
 
           {/*
@@ -181,6 +182,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           <BreadcrumbTrail />
 
           <div className="ml-auto flex items-center gap-1.5">
+            {/*
+              Quick create targets the one create flow the platform has: the employee
+              form, whose directory page reads `?action=new` and opens the dialog on
+              arrival. A menu of dead entries would be worse than a single honest link.
+            */}
+            <Button
+              variant="outline"
+              size="sm"
+              render={<Link href="/employees?action=new" />}
+              className="hidden sm:inline-flex"
+            >
+              <Plus aria-hidden="true" className="size-4" />
+              Create
+            </Button>
             <CommandPalette />
             <NotificationBell />
             <SessionMenu />

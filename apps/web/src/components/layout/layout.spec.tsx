@@ -287,7 +287,11 @@ describe('SidebarTree', () => {
         continue; // In-page and placeholder links, not navigation.
       }
 
-      expect([...ROUTES], link.textContent ?? '').toContain(href);
+      // Query strings are parameters on an existing route, not new routes: the
+      // quick-create link opens the directory with its create dialog.
+      const route = href.split('?')[0] ?? href;
+
+      expect([...ROUTES], link.textContent ?? '').toContain(route);
     }
   });
 
