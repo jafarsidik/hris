@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable, type DataTableColumn } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { PageToolbar } from '@/components/layout/page-toolbar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,15 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import type { AuditLogReadModel, LogEvent, Paginated } from '@hris/shared-types';
 
 import { useSession } from '@/features/auth/session-context';
@@ -51,28 +42,78 @@ function humanDate(value: string): string {
   );
 }
 
-function Pagination({
+/**
+ * A log table on top of the shared one, with the client-side half switched off on purpose.
+ *
+ * Logs are the one list in the platform that cannot be searched, sorted or paged in the
+ * browser. The API returns a cursor page of an unbounded, newest-first stream, so a
+ * client-side sort would reorder the twenty-five rows in hand and present that as "sorted by
+ * actor", and a client-side search would look for a string in those same twenty-five rows and
+ * answer "nothing matches" about events it never asked for. Both would be worse than the
+ * plain list, because both would be confidently wrong.
+ *
+ * So the shared table is used for what it does honestly here: the same chrome as every other
+ * list, consistent loading and empty states, column visibility, and one place for the page's
+ * own controls. Filtering stays a server query — passed through `actions`, which is the
+ * toolbar's right-hand slot — and paging stays the API's cursor, rendered under the table.
+ */
+function LogsTable<TRow extends { readonly id: string }>({
+  rows,
+  columns,
+  note,
+  actions,
+  loading,
+  error,
+  onRetry,
+  emptyTitle,
   pageInfo,
   historyLength,
   onPrevious,
   onNext,
 }: {
-  pageInfo: Paginated<never>['pageInfo'];
-  historyLength: number;
-  onPrevious: () => void;
-  onNext: () => void;
+  readonly rows: readonly TRow[];
+  readonly columns: readonly DataTableColumn<TRow>[];
+  readonly note: string;
+  readonly actions?: ReactNode;
+  readonly loading: boolean;
+  readonly error: string | undefined;
+  readonly onRetry: () => void;
+  readonly emptyTitle: string;
+  readonly pageInfo: Paginated<never>['pageInfo'];
+  readonly historyLength: number;
+  readonly onPrevious: () => void;
+  readonly onNext: () => void;
 }) {
   return (
-    <div className="flex items-center justify-end gap-2">
-      <Button variant="outline" disabled={historyLength === 0} onClick={() => onPrevious()}>
-        <ChevronLeft aria-hidden="true" className="size-4" />
-        Previous
-      </Button>
-      <Button variant="outline" disabled={!pageInfo.hasNextPage} onClick={() => onNext()}>
-        Next
-        <ChevronRight aria-hidden="true" className="size-4" />
-      </Button>
-    </div>
+    <>
+      <HrisDataTable
+        rows={rows}
+        columns={columns}
+        searchable={false}
+        selectable={false}
+        pagination={false}
+        actions={actions}
+        status={loading ? 'loading' : error !== undefined ? 'error' : 'ready'}
+        errorCopy={error}
+        onRetry={onRetry}
+        emptyTitle={emptyTitle}
+        emptyDescription="Events are recorded as the platform is used; nothing has been written for this filter yet."
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm text-muted-foreground">{note}</span>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" disabled={historyLength === 0} onClick={() => onPrevious()}>
+            <ChevronLeft aria-hidden="true" className="size-4" />
+            Previous
+          </Button>
+          <Button variant="outline" disabled={!pageInfo.hasNextPage} onClick={() => onNext()}>
+            Next
+            <ChevronRight aria-hidden="true" className="size-4" />
+          </Button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -127,116 +168,104 @@ function EventsView({ presetCategory, title, description }: LogViewProps) {
     }
   }
 
+  const columns: readonly DataTableColumn<LogEvent>[] = [
+    {
+      id: 'event',
+      header: 'Event',
+      cellClassName: 'font-mono text-xs',
+      cell: (entry) => entry.eventType,
+    },
+    {
+      id: 'category',
+      header: 'Category',
+      cell: (entry) => <Badge variant="secondary">{entry.category}</Badge>,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (entry) => <Badge variant={STATUS_VARIANT(entry.status)}>{entry.status}</Badge>,
+    },
+    {
+      id: 'actor',
+      header: 'Actor',
+      responsive: 'hidden md:table-cell',
+      cellClassName: 'text-sm text-muted-foreground',
+      cell: (entry) => entry.actorDisplayName ?? entry.actorUserId ?? '—',
+    },
+    {
+      id: 'when',
+      header: 'When',
+      cellClassName: 'whitespace-nowrap text-muted-foreground',
+      cell: (entry) => humanDate(entry.createdAt),
+    },
+  ];
+
   return (
     <PageBody>
       <PageHeader title={title} description={description} />
 
-      <PageToolbar>
-        <Select
-          value={category}
-          onValueChange={(value) => {
-            if (value !== null) {
-              setCategory(value);
-              setCursor(undefined);
-              setHistory([]);
-            }
-          }}
-        >
-          <SelectTrigger aria-label="Filter by category" className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((item) => (
-              <SelectItem key={item} value={item}>
-                {item}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {presetCategory === undefined && (
-          <Select
-            value={status}
-            onValueChange={(value) => {
-              if (value !== null) {
-                setStatus(value);
-                setCursor(undefined);
-                setHistory([]);
-              }
-            }}
-          >
-            <SelectTrigger aria-label="Filter by status" className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All statuses</SelectItem>
-              {STATUSES.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <span className="ml-auto text-sm text-muted-foreground">Operational event log</span>
-      </PageToolbar>
-
-      {list.loading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      ) : list.error !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {list.error}
-        </p>
-      ) : (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Event</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actor</TableHead>
-                <TableHead>When</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {list.data?.items.map((entry: LogEvent) => (
-                <TableRow key={entry.id}>
-                  <TableCell className="font-mono text-xs">{entry.eventType}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{entry.category}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_VARIANT(entry.status)}>{entry.status}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {entry.actorDisplayName ?? entry.actorUserId ?? '—'}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {humanDate(entry.createdAt)}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {(list.data?.items.length ?? 0) === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    No log entries match this filter.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          <Pagination
-            pageInfo={list.data?.pageInfo ?? { hasNextPage: false, endCursor: null }}
-            historyLength={history.length}
-            onPrevious={() => previousPage()}
-            onNext={() => nextPage()}
-          />
-        </>
-      )}
+      <LogsTable
+        rows={list.data?.items ?? []}
+        columns={columns}
+        note="Operational event log"
+        actions={
+          <div className="flex items-center gap-2">
+            <Select
+              value={category}
+              onValueChange={(value) => {
+                if (value !== null) {
+                  setCategory(value);
+                  setCursor(undefined);
+                  setHistory([]);
+                }
+              }}
+            >
+              <SelectTrigger aria-label="Filter by category" className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {presetCategory === undefined && (
+              <Select
+                value={status}
+                onValueChange={(value) => {
+                  if (value !== null) {
+                    setStatus(value);
+                    setCursor(undefined);
+                    setHistory([]);
+                  }
+                }}
+              >
+                <SelectTrigger aria-label="Filter by status" className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All statuses</SelectItem>
+                  {STATUSES.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        }
+        loading={list.loading}
+        error={list.error}
+        onRetry={() => list.reload()}
+        emptyTitle="No log entries match this filter"
+        pageInfo={list.data?.pageInfo ?? { hasNextPage: false, endCursor: null }}
+        historyLength={history.length}
+        onPrevious={previousPage}
+        onNext={nextPage}
+      />
     </PageBody>
   );
 }
@@ -272,88 +301,73 @@ function AuditView({ title, description }: LogViewProps) {
     }
   }
 
+  const columns: readonly DataTableColumn<AuditLogReadModel>[] = [
+    {
+      id: 'action',
+      header: 'Action',
+      cellClassName: 'font-mono text-xs',
+      cell: (entry) => entry.action,
+    },
+    {
+      id: 'resource',
+      header: 'Resource',
+      cell: (entry) => (
+        <span className="text-sm">
+          {entry.resource}
+          {entry.resourceId !== null && (
+            <span className="ml-1 font-mono text-xs text-muted-foreground">{entry.resourceId}</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      id: 'actor',
+      header: 'Actor',
+      responsive: 'hidden md:table-cell',
+      cellClassName: 'text-sm text-muted-foreground',
+      cell: (entry) => entry.actorUserId ?? '—',
+    },
+    {
+      id: 'chain',
+      header: 'Chain',
+      cell: (entry) =>
+        entry.chainVerified ? (
+          <Badge variant="default">
+            <ShieldCheck aria-hidden="true" className="size-3" />
+            Verified
+          </Badge>
+        ) : (
+          <Badge variant="destructive">
+            <ShieldAlert aria-hidden="true" className="size-3" />
+            Integrity error
+          </Badge>
+        ),
+    },
+    {
+      id: 'when',
+      header: 'When',
+      cellClassName: 'whitespace-nowrap text-muted-foreground',
+      cell: (entry) => humanDate(entry.createdAt),
+    },
+  ];
+
   return (
     <PageBody>
       <PageHeader title={title} description={description} />
 
-      <PageToolbar>
-        <span className="ml-auto text-sm text-muted-foreground">Hash-chained audit trail</span>
-      </PageToolbar>
-
-      {list.loading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      ) : list.error !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {list.error}
-        </p>
-      ) : (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Action</TableHead>
-                <TableHead>Resource</TableHead>
-                <TableHead>Actor</TableHead>
-                <TableHead>Chain</TableHead>
-                <TableHead>When</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {list.data?.items.map((entry: AuditLogReadModel) => (
-                <TableRow key={entry.id}>
-                  <TableCell className="font-mono text-xs">{entry.action}</TableCell>
-                  <TableCell>
-                    <span className="text-sm">
-                      {entry.resource}
-                      {entry.resourceId !== null && (
-                        <span className="ml-1 font-mono text-xs text-muted-foreground">
-                          {entry.resourceId}
-                        </span>
-                      )}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {entry.actorUserId ?? '—'}
-                  </TableCell>
-                  <TableCell>
-                    {entry.chainVerified ? (
-                      <Badge variant="default">
-                        <ShieldCheck aria-hidden="true" className="size-3" />
-                        Verified
-                      </Badge>
-                    ) : (
-                      <Badge variant="destructive">
-                        <ShieldAlert aria-hidden="true" className="size-3" />
-                        Integrity error
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {humanDate(entry.createdAt)}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {(list.data?.items.length ?? 0) === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    No audit entries match this filter.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          <Pagination
-            pageInfo={list.data?.pageInfo ?? { hasNextPage: false, endCursor: null }}
-            historyLength={history.length}
-            onPrevious={() => previousPage()}
-            onNext={() => nextPage()}
-          />
-        </>
-      )}
+      <LogsTable
+        rows={list.data?.items ?? []}
+        columns={columns}
+        note="Hash-chained audit trail"
+        loading={list.loading}
+        error={list.error}
+        onRetry={() => list.reload()}
+        emptyTitle="No audit entries match this filter"
+        pageInfo={list.data?.pageInfo ?? { hasNextPage: false, endCursor: null }}
+        historyLength={history.length}
+        onPrevious={previousPage}
+        onNext={nextPage}
+      />
     </PageBody>
   );
 }

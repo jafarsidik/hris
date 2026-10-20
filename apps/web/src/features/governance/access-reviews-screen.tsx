@@ -5,15 +5,14 @@ import { useRouter } from 'next/navigation';
 
 import type { AccessReviewItemSummary, AccessReviewSummary } from '@hris/shared-types';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -36,6 +35,13 @@ import {
   accessReviewsApi,
   type AccessReviewDetail,
 } from '@/features/governance/access-reviews-api';
+import {
+  ACCESS_REVIEW_BUILT_IN_VIEWS,
+  ACCESS_REVIEW_SEARCH_TEXT,
+  ACCESS_REVIEW_VIEWS_STORAGE_KEY,
+  buildAccessReviewColumns,
+  buildAccessReviewFilters,
+} from '@/features/governance/access-reviews-table-config';
 import { ApiRequestError } from '@/lib/api/http-client';
 
 function messageOf(error: unknown): string {
@@ -127,66 +133,26 @@ export function AccessReviewsScreen() {
         </Alert>
       )}
 
-      {reviews.loading && rows.length === 0 ? (
-        <Skeleton className="h-60 w-full" />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No access reviews" />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Reviews</CardTitle>
-            <CardDescription>
-              {rows.length} review{rows.length === 1 ? '' : 's'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Scope</TableHead>
-                  <TableHead>Reviewer</TableHead>
-                  <TableHead>Progress</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Due</TableHead>
-                  <TableHead className="text-right">Open</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((review) => {
-                  return (
-                    <TableRow key={review.id}>
-                      <TableCell className="font-medium">{review.name}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {review.scope}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">
-                        {review.reviewerId}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {review.decidedCount} / {review.itemCount}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={review.status === 'COMPLETED' ? 'success' : 'warning'}>
-                          {review.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {review.dueAt ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm" onClick={() => void openDetail(review)}>
-                          Open
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={buildAccessReviewColumns({ onOpen: (review) => void openDetail(review) })}
+        filters={buildAccessReviewFilters(rows)}
+        searchable
+        searchText={ACCESS_REVIEW_SEARCH_TEXT}
+        searchPlaceholder="Search by name, scope or reviewer…"
+        selectable={false}
+        views={{
+          builtIn: ACCESS_REVIEW_BUILT_IN_VIEWS,
+          storageKey: ACCESS_REVIEW_VIEWS_STORAGE_KEY,
+        }}
+        status={reviews.loading ? 'loading' : reviews.error !== undefined ? 'error' : 'ready'}
+        errorCopy={reviews.error}
+        onRetry={() => reviews.reload()}
+        emptyTitle="No access reviews"
+        emptyDescription="Access reviews created on the platform appear here."
+        noResultsTitle="No reviews match this filter"
+        noResultsDescription="Try a different search or status, or clear the filters to see every review."
+      />
 
       {openReview !== null && (
         <Card className="mt-6">
@@ -251,7 +217,7 @@ export function AccessReviewsScreen() {
                             }
                             disabled={item.decision !== 'NO_ACTION'}
                           >
-                            <SelectTrigger className="w-40">
+                            <SelectTrigger className="w-40" aria-label="Decision">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { describeStatus, formatHireDate, initialsFor } from './employee-presentation';
+import {
+  describeStatus,
+  formatApiHireDate,
+  formatHireDate,
+  initialsFor,
+} from './employee-presentation';
 
 describe('describeStatus', () => {
   it.each([
@@ -71,6 +76,29 @@ describe('formatHireDate', () => {
     for (const value of ['', 'x', '2020-99-99', '2020-02-31', '0000-00-00', '2020-1-1']) {
       expect(formatHireDate(value)).not.toContain('Invalid');
     }
+  });
+
+  it('formats the timestamp the API actually sends', () => {
+    // The API returns hire dates as full timestamps, which `formatHireDate` refuses by
+    // design — it returns its input unchanged. Without the date-part reduction the
+    // directory's "Hire date" column rendered `2026-01-15T00:00:00.000Z`.
+    expect(formatApiHireDate('2026-01-15T00:00:00.000Z')).toBe('15 Jan 2026');
+    expect(formatApiHireDate('2020-03-07T09:30:00.000Z')).toBe('07 Mar 2020');
+  });
+
+  it('still accepts a date-only value', () => {
+    // Callers that already hold `YYYY-MM-DD` (a form value, a test fixture) keep working:
+    // the reduction is a superset of what `formatHireDate` accepts, not a replacement.
+    expect(formatApiHireDate('2020-03-07')).toBe('07 Mar 2020');
+  });
+
+  it('leaves a malformed value visible', () => {
+    // The strictness `formatHireDate` documents must survive the timestamp handling: an
+    // impossible date is a fact about the record and has to stay readable rather than
+    // rolling over to 2 March. The date part is what survives, because the date part is
+    // what this column is about.
+    expect(formatApiHireDate('2020-02-31T00:00:00.000Z')).toBe('2020-02-31');
+    expect(formatApiHireDate('not-a-date')).toBe('not-a-date');
   });
 });
 

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/feedback/empty-state';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -91,11 +91,7 @@ export function ApprovalAuthorityScreen() {
         description="Approval limits and temporary delegation of approval rights."
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
 
       <Card>
         <CardHeader>

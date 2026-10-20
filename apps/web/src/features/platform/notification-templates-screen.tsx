@@ -3,15 +3,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import type { NotificationTemplateReadModel } from '@hris/shared-types';
-
+import {
+  HrisDataTable,
+  EMPTY_FILTERS,
+  PINNED_ACTIONS_CELL_CLASS,
+  PINNED_ACTIONS_HEADER_CLASS,
+  type DataTableColumn,
+  type DataTableFilter,
+  type DataTableView,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -22,22 +27,15 @@ import {
 } from '@/components/ui/dialog';
 import { FormErrorSummary, FormField, FormSubmitButton } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useCan, useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { platformApi } from '@/features/platform/platform-api';
 import { ApiRequestError } from '@/lib/api/http-client';
+
+import type { NotificationTemplateReadModel } from '@hris/shared-types';
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiRequestError) {
@@ -53,6 +51,119 @@ interface Draft {
   readonly subjectTemplate: string;
   readonly bodyTemplate: string;
   readonly enabled: boolean;
+}
+
+const TEMPLATE_VIEWS_STORAGE_KEY = 'hris:notification-templates:views';
+
+const CHANNEL_OPTIONS = [
+  { value: 'IN_APP', label: 'In-app' },
+  { value: 'EMAIL', label: 'Email' },
+  { value: 'PUSH', label: 'Push' },
+];
+
+const STATE_OPTIONS = [
+  { value: 'ENABLED', label: 'Enabled' },
+  { value: 'DISABLED', label: 'Disabled' },
+];
+
+function buildTemplateFilters(): readonly DataTableFilter<NotificationTemplateReadModel>[] {
+  return [
+    {
+      kind: 'select',
+      id: 'channel',
+      label: 'Channel',
+      placeholder: 'All channels',
+      getValue: (row) => row.channel,
+      options: CHANNEL_OPTIONS,
+    },
+    {
+      kind: 'select',
+      id: 'state',
+      label: 'State',
+      placeholder: 'All states',
+      getValue: (row) => (row.enabled ? 'ENABLED' : 'DISABLED'),
+      options: STATE_OPTIONS,
+    },
+  ];
+}
+
+const withTemplateState = (state: 'ENABLED' | 'DISABLED') => ({
+  filters: { ...EMPTY_FILTERS, select: { state } },
+  search: '',
+});
+
+const TEMPLATE_BUILT_IN_VIEWS: readonly DataTableView[] = [
+  {
+    id: 'all',
+    name: 'All templates',
+    builtIn: true,
+    default: true,
+    state: { filters: EMPTY_FILTERS, search: '' },
+  },
+  { id: 'enabled', name: 'Enabled', builtIn: true, state: withTemplateState('ENABLED') },
+  { id: 'disabled', name: 'Disabled', builtIn: true, state: withTemplateState('DISABLED') },
+];
+
+function buildTemplateColumns({
+  onEdit,
+}: {
+  readonly onEdit?: (template: NotificationTemplateReadModel) => void;
+}): readonly DataTableColumn<NotificationTemplateReadModel>[] {
+  const columns: DataTableColumn<NotificationTemplateReadModel>[] = [
+    {
+      id: 'event',
+      header: 'Event',
+      sortValue: (row) => row.eventKey,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.eventKey,
+    },
+    {
+      id: 'channel',
+      header: 'Channel',
+      sortValue: (row) => row.channel,
+      cell: (row) => <Badge variant="outline">{row.channel}</Badge>,
+    },
+    {
+      id: 'subject',
+      header: 'Subject',
+      sortValue: (row) => row.subjectTemplate,
+      cellClassName: 'max-w-72 truncate text-sm',
+      cell: (row) => (
+        <span className="block truncate" title={row.subjectTemplate}>
+          {row.subjectTemplate}
+        </span>
+      ),
+    },
+    {
+      id: 'state',
+      header: 'State',
+      sortValue: (row) => (row.enabled ? 'ENABLED' : 'DISABLED'),
+      cell: (row) => (
+        <Badge variant={row.enabled ? 'success' : 'secondary'}>
+          {row.enabled ? 'ENABLED' : 'DISABLED'}
+        </Badge>
+      ),
+    },
+  ];
+
+  if (onEdit !== undefined) {
+    columns.push({
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      hideable: false,
+      headerClassName: PINNED_ACTIONS_HEADER_CLASS,
+      cellClassName: PINNED_ACTIONS_CELL_CLASS,
+      cell: (row) => (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => onEdit(row)}>
+            Edit
+          </Button>
+        </div>
+      ),
+    });
+  }
+
+  return columns;
 }
 
 /**
@@ -123,64 +234,32 @@ export function NotificationTemplatesScreen() {
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
-      {templates.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{templates.error}</AlertDescription>
-        </Alert>
-      )}
 
-      {templates.loading && rows.length === 0 ? (
-        <Skeleton className="h-60 w-full" />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No templates defined" />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Templates</CardTitle>
-            <CardDescription>
-              {rows.length} template{rows.length === 1 ? '' : 's'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Event</TableHead>
-                  <TableHead>Channel</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((template) => (
-                  <TableRow key={`${template.eventKey}:${template.channel}`}>
-                    <TableCell className="font-mono text-sm">{template.eventKey}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{template.channel}</Badge>
-                    </TableCell>
-                    <TableCell className="max-w-72 truncate text-sm">
-                      {template.subjectTemplate}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={template.enabled ? 'success' : 'secondary'}>
-                        {template.enabled ? 'ENABLED' : 'DISABLED'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {canManage && (
-                        <Button variant="outline" size="sm" onClick={() => open(template)}>
-                          Edit
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={buildTemplateColumns({
+          onEdit: canManage ? open : undefined,
+        })}
+        filters={buildTemplateFilters()}
+        searchable
+        searchText={(row) => `${row.eventKey} ${row.channel} ${row.subjectTemplate}`}
+        searchPlaceholder="Search by event, channel or subject…"
+        selectable={false}
+        views={{ builtIn: TEMPLATE_BUILT_IN_VIEWS, storageKey: TEMPLATE_VIEWS_STORAGE_KEY }}
+        status={
+          templates.loading && rows.length === 0
+            ? 'loading'
+            : templates.error !== undefined
+              ? 'error'
+              : 'ready'
+        }
+        errorCopy={templates.error}
+        onRetry={() => templates.reload()}
+        emptyTitle="No templates defined"
+        emptyDescription="Templates appear here once the platform seeds them."
+        noResultsTitle="No templates match this filter"
+        noResultsDescription="Try a different search or clear the filters to see every template."
+      />
 
       <Dialog
         open={editing !== null}

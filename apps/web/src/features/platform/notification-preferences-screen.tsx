@@ -8,6 +8,7 @@ import type { NotificationChannel, NotificationPreferenceReadModel } from '@hris
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/feedback/empty-state';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -82,22 +83,14 @@ export function NotificationPreferencesScreen() {
         description="Choose which channels deliver notifications to you."
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
       {notice !== undefined && (
         <Alert>
           <AlertTitle>Updated</AlertTitle>
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
-      {preferences.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{preferences.error}</AlertDescription>
-        </Alert>
-      )}
+      <ErrorPanel error={preferences.error} onRetry={() => preferences.reload()} />
 
       {preferences.loading && rows.length === 0 ? (
         <Skeleton className="h-48 w-full" />

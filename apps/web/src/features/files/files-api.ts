@@ -73,9 +73,24 @@ export const filesApi = {
  * `PUT` aborts before confirmation, leaving the reservation PENDING rather than a row that
  * claims bytes it does not have.
  */
-export async function uploadFile(file: File): Promise<FileObjectSummary> {
+export interface UploadFileOptions {
+  /** The record the file belongs to, e.g. `employee` with the employee's id. */
+  readonly entity?: string;
+  readonly entityId?: string;
+}
+
+export async function uploadFile(
+  file: File,
+  options: UploadFileOptions = {},
+): Promise<FileObjectSummary> {
   const mimeType = file.type.length > 0 ? file.type : 'application/octet-stream';
-  const ticket = await filesApi.reserve({ name: file.name, mimeType, size: file.size });
+  const ticket = await filesApi.reserve({
+    name: file.name,
+    mimeType,
+    size: file.size,
+    ...(options.entity === undefined ? {} : { entity: options.entity }),
+    ...(options.entityId === undefined ? {} : { entityId: options.entityId }),
+  });
 
   let stored: Response;
   try {

@@ -2,16 +2,21 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus } from 'lucide-react';
-
+import { MoreHorizontalIcon, PencilIcon, Plus, Trash2Icon } from 'lucide-react';
 import type { AiPromptSummary } from '@hris/shared-types';
 
+import {
+  HrisDataTable,
+  PINNED_ACTIONS_CELL_CLASS,
+  PINNED_ACTIONS_HEADER_CLASS,
+  type DataTableColumn,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -20,20 +25,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { FormErrorSummary, FormField, FormSubmitButton } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useToast } from '@/components/ui/toast';
 import { useCan, useSession } from '@/features/auth/session-context';
 import { aiApi } from '@/features/ai/ai-api';
 import { useIamLoad } from '@/features/iam/use-iam-data';
@@ -57,6 +60,153 @@ interface PromptDraft {
 }
 
 /**
+ * The per-row actions menu for prompt versions.
+ *
+ * The screen's previous controls were bare "Edit" and "Delete" buttons in the last
+ * column: they named no record, so a reader scanning a row had to work out which
+ * version a button belonged to, and "Delete" wrote straight through on a single
+ * click behind a `window.confirm`. Moving them into a menu gives the trigger an
+ * accessible name that includes the key and version, keeps the row uncluttered, and
+ * — with `ConfirmDialog` on the screen — lets the destructive direction be confirmed
+ * while the safe one stays a single click.
+ *
+ * Items are omitted entirely when the permission is absent, so a reader without
+ * `ai.update` sees no Edit rather than a control that silently does nothing.
+ */
+function PromptRowMenu({
+  row,
+  canUpdate,
+  canDelete,
+  onEdit,
+  onDelete,
+}: {
+  readonly row: AiPromptSummary;
+  readonly canUpdate: boolean;
+  readonly canDelete: boolean;
+  readonly onEdit: (row: AiPromptSummary) => void;
+  readonly onDelete: (row: AiPromptSummary) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Actions for ${row.key} v${row.version}`}
+            className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+          />
+        }
+      >
+        <MoreHorizontalIcon aria-hidden="true" className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        {canUpdate && (
+          <DropdownMenuItem onClick={() => onEdit(row)}>
+            <PencilIcon aria-hidden="true" className="size-4" />
+            Edit
+          </DropdownMenuItem>
+        )}
+        {canDelete && (
+          <DropdownMenuItem variant="destructive" onClick={() => onDelete(row)}>
+            <Trash2Icon aria-hidden="true" className="size-4" />
+            Delete
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * The prompts table's columns.
+ *
+ * The actions column is omitted entirely when the reader has neither `ai.update` nor
+ * `ai.delete`, rather than rendering a column of controls that do nothing — the same
+ * rule the users directory follows.
+ */
+function buildPromptColumns({
+  canUpdate,
+  canDelete,
+  onEdit,
+  onToggleEnabled,
+  onDelete,
+}: {
+  readonly canUpdate: boolean;
+  readonly canDelete: boolean;
+  readonly onEdit: (row: AiPromptSummary) => void;
+  readonly onToggleEnabled: (row: AiPromptSummary, enabled: boolean) => void;
+  readonly onDelete: (row: AiPromptSummary) => void;
+}): readonly DataTableColumn<AiPromptSummary>[] {
+  const columns: DataTableColumn<AiPromptSummary>[] = [
+    {
+      id: 'key',
+      header: 'Key',
+      sortValue: (row) => row.key,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.key,
+    },
+    {
+      id: 'version',
+      header: 'Version',
+      align: 'right',
+      sortValue: (row) => row.version,
+      cellClassName: 'text-right font-mono text-sm',
+      cell: (row) => row.version,
+    },
+    {
+      id: 'name',
+      header: 'Name',
+      sortValue: (row) => row.name ?? '',
+      cellClassName: 'text-sm',
+      cell: (row) => row.name ?? '—',
+    },
+    {
+      id: 'content',
+      header: 'Content',
+      sortValue: (row) => row.content,
+      cellClassName: 'max-w-72 truncate text-muted-foreground text-sm',
+      cell: (row) => row.content,
+    },
+    {
+      id: 'live',
+      header: 'Live',
+      sortValue: (row) => (row.isEnabled ? 1 : 0),
+      cell: (row) => (
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={row.isEnabled}
+            disabled={!canUpdate}
+            onCheckedChange={(next) => void onToggleEnabled(row, next)}
+          />
+          {row.isEnabled && <Badge variant="success">LIVE</Badge>}
+        </div>
+      ),
+    },
+  ];
+
+  if (canUpdate || canDelete) {
+    columns.push({
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      hideable: false,
+      headerClassName: PINNED_ACTIONS_HEADER_CLASS,
+      cellClassName: PINNED_ACTIONS_CELL_CLASS,
+      cell: (row) => (
+        <PromptRowMenu
+          row={row}
+          canUpdate={canUpdate}
+          canDelete={canDelete}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      ),
+    });
+  }
+
+  return columns;
+}
+
+/**
  * Prompts: versioned system-prompt templates. Enabling a version retires its siblings,
  * and the gateway picks up the enabled version for its key on the next ask — the
  * built-in prompt stays in effect until a key has an enabled version.
@@ -64,6 +214,7 @@ interface PromptDraft {
 export function PromptsScreen() {
   const router = useRouter();
   const { state } = useSession();
+  const { toast } = useToast();
   const prompts = useIamLoad(() => aiApi.listPrompts(), []);
   const canManage = useCan('ai.create');
   const canUpdate = useCan('ai.update');
@@ -86,8 +237,11 @@ export function PromptsScreen() {
     isEnabled: false,
   });
   const [pending, setPending] = useState(false);
+  const [deleting, setDeleting] = useState<AiPromptSummary | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
 
-  const rows = (prompts.data ?? []) as readonly AiPromptSummary[];
+  const rows = prompts.data ?? [];
 
   const open = (row: AiPromptSummary | null) => {
     setEditingId(row?.id ?? null);
@@ -138,14 +292,23 @@ export function PromptsScreen() {
     }
   }, [draft, editingId, prompts]);
 
-  const remove = async (row: AiPromptSummary) => {
-    if (!window.confirm(`Delete ${row.key} v${row.version}?`)) return;
+  const confirmDelete = async () => {
+    if (deleting === null) return;
+    setDeletePending(true);
+    setDeleteError(undefined);
     try {
-      await aiApi.removePrompt(row.id);
-      setNotice(`Deleted ${row.key} v${row.version}.`);
+      await aiApi.removePrompt(deleting.id);
+      toast({
+        title: 'Prompt version deleted',
+        description: `${deleting.key} v${deleting.version} was removed.`,
+        variant: 'success',
+      });
+      setDeleting(null);
       prompts.reload();
     } catch (cause) {
-      setError(messageOf(cause));
+      setDeleteError(messageOf(cause));
+    } finally {
+      setDeletePending(false);
     }
   };
 
@@ -177,95 +340,65 @@ export function PromptsScreen() {
           )
         }
       />
-
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
       {notice !== undefined && (
         <Alert>
           <AlertTitle>Saved</AlertTitle>
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
-      {prompts.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{prompts.error}</AlertDescription>
-        </Alert>
-      )}
 
-      {prompts.loading && rows.length === 0 ? (
-        <Skeleton className="h-48 w-full" />
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No prompt versions yet — the gateway uses its built-in prompt.
-        </p>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Versions</CardTitle>
-            <CardDescription>
-              {rows.length} version{rows.length === 1 ? '' : 's'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Key</TableHead>
-                  <TableHead className="text-right">Version</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Content</TableHead>
-                  <TableHead>Live</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-mono text-sm">{row.key}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{row.version}</TableCell>
-                    <TableCell className="text-sm">{row.name ?? '—'}</TableCell>
-                    <TableCell className="max-w-72 truncate text-muted-foreground text-sm">
-                      {row.content}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={row.isEnabled}
-                          disabled={!canUpdate}
-                          onCheckedChange={(next) => void setEnabled(row, next)}
-                        />
-                        {row.isEnabled && <Badge variant="success">LIVE</Badge>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {canUpdate && (
-                          <Button variant="outline" size="sm" onClick={() => open(row)}>
-                            Edit
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() => void remove(row)}
-                          >
-                            Delete
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={buildPromptColumns({
+          canUpdate,
+          canDelete,
+          onEdit: open,
+          onToggleEnabled: setEnabled,
+          onDelete: (row) => {
+            setDeleteError(undefined);
+            setDeleting(row);
+          },
+        })}
+        searchable
+        searchText={(row) => [row.key, row.name ?? '', row.content].join(' ')}
+        searchPlaceholder="Search by key, name or content…"
+        selectable={false}
+        status={prompts.loading ? 'loading' : prompts.error !== undefined ? 'error' : 'ready'}
+        errorCopy={prompts.error}
+        onRetry={() => prompts.reload()}
+        emptyTitle="No prompt versions yet"
+        emptyDescription="The gateway uses its built-in prompt."
+        noResultsTitle="No prompt versions match this filter"
+        noResultsDescription="Try a different search, or clear the filters to see every version."
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setDeleting(null);
+            setDeleteError(undefined);
+          }
+        }}
+        title={deleting !== null ? `Delete ${deleting.key} v${deleting.version}?` : ''}
+        description={
+          deleting === null ? (
+            'This version is removed permanently.'
+          ) : (
+            <>
+              This version is removed permanently. Other versions of {deleting.key} are unaffected;
+              if this was the live version, the gateway falls back to the built-in prompt for the
+              key until another version is enabled.
+            </>
+          )
+        }
+        confirmLabel="Delete"
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+      />
 
       <Dialog
         open={dialogOpen}

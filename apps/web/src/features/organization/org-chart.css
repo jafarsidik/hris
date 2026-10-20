@@ -1,0 +1,575 @@
+/*
+ * Org chart.
+ *
+ * The only screen in the app that is a node graph rather than a table or a form, so it
+ * carries its own stylesheet: the connectors between generations are drawn with
+ * pseudo-elements on the tree's list items, which utility classes cannot express without
+ * a wall of arbitrary variants. Everything is scoped under `.orgchart` and written with
+ * the same design tokens as the rest of the app, so light and dark both come for free
+ * and nothing here can leak into another screen.
+ *
+ * `--dh` is the department hue, set per node inline by the component; it colours the
+ * node's left edge and the legend swatch so a reader can group a generation at a glance.
+ */
+
+.orgchart {
+  --node-width: 15rem;
+  --link: 2px;
+  --gap: 1.25rem;
+  /* The connectors are chrome, not content, but they carry the hierarchy: at the border
+     token's own value they sit at about 1.1:1 against the canvas and the tree reads as a
+     loose pile of cards. Mixing the border toward the muted foreground keeps them quiet
+     while staying legible in both themes. */
+  --line: color-mix(in oklab, var(--muted-foreground) 72%, var(--border));
+}
+
+/* ── Shell ─────────────────────────────────────────────────────────────────── */
+
+.orgchart .card {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.orgchart .tool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.orgchart .search {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 15rem;
+  height: 2rem;
+  padding: 0 0.625rem;
+  color: var(--muted-foreground);
+  background-color: var(--card);
+  border: 1px solid var(--input);
+  border-radius: 0.5rem;
+}
+
+.orgchart .search:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 25%, transparent);
+}
+
+.orgchart .search input {
+  width: 100%;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.orgchart select {
+  height: 2rem;
+  padding: 0 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  background-color: var(--card);
+  border: 1px solid var(--input);
+  border-radius: 0.5rem;
+}
+
+.orgchart .sp {
+  flex: 1 1 auto;
+}
+
+.orgchart .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--foreground);
+  background-color: var(--card);
+  border: 1px solid var(--input);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.orgchart .btn:hover {
+  background-color: var(--accent);
+}
+
+.orgchart .btn.pri {
+  color: var(--primary-foreground);
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+.orgchart .btn.pri:hover {
+  background-color: color-mix(in oklab, var(--primary) 88%, var(--foreground));
+}
+
+.orgchart .btn .i {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.orgchart .zm {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  background-color: var(--card);
+  border: 1px solid var(--input);
+  border-radius: 0.5rem;
+}
+
+.orgchart .zm button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  height: 2rem;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.orgchart .zm button:hover {
+  color: var(--primary);
+  background-color: var(--accent);
+}
+
+.orgchart .zm #zl {
+  min-width: 2.75rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.orgchart .leg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+}
+
+.orgchart .leg span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.orgchart .leg i {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 999px;
+}
+
+/* ── Viewport: the scroll container that panning moves and zoom scales ──────── */
+
+.orgchart .vp {
+  position: relative;
+  overflow: auto;
+  min-height: 26rem;
+  max-height: 70vh;
+  cursor: grab;
+  background-color: color-mix(in oklab, var(--muted) 35%, var(--card));
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--foreground) 12%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+  overscroll-behavior: contain;
+}
+
+.orgchart .vp.dg {
+  cursor: grabbing;
+}
+
+.orgchart .vp.dg * {
+  user-select: none;
+}
+
+.orgchart .stage {
+  display: flex;
+  justify-content: center;
+  width: max-content;
+  min-width: 100%;
+  padding: 2rem 1.5rem 3rem;
+  transform: scale(var(--z, 1));
+  transform-origin: top center;
+  transition: transform 0.12s ease-out;
+}
+
+/* ── Tree and connectors ───────────────────────────────────────────────────── */
+
+.orgchart .tree ul {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.orgchart .tree li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--gap) 0.5rem 0;
+}
+
+/* The rail above a row of siblings, and the elbow that turns down into each child. */
+.orgchart .tree li::before,
+.orgchart .tree li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: var(--gap);
+  border-top: var(--link) solid var(--line);
+}
+
+.orgchart .tree li::after {
+  right: auto;
+  left: 50%;
+  border-left: var(--link) solid var(--line);
+}
+
+.orgchart .tree li:only-child::before,
+.orgchart .tree li:only-child::after {
+  display: none;
+}
+
+.orgchart .tree li:only-child {
+  padding-top: var(--gap);
+}
+
+.orgchart .tree li:first-child::before,
+.orgchart .tree li:last-child::after {
+  border: 0 none;
+}
+
+.orgchart .tree li:last-child::before {
+  border-right: var(--link) solid var(--line);
+  border-radius: 0 6px 0 0;
+}
+
+.orgchart .tree li:first-child::after {
+  border-radius: 6px 0 0 0;
+}
+
+/* The stub that drops from a parent into the rail above its children. */
+.orgchart .tree ul ul::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: var(--gap);
+  border-left: var(--link) solid var(--line);
+}
+
+/* ── Node card ─────────────────────────────────────────────────────────────── */
+
+.orgchart .nd {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: var(--node-width);
+  padding: 0.5rem 0.625rem;
+  text-align: left;
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid hsl(var(--dh, 215) 65% 44%);
+  border-radius: 0.625rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.orgchart .nd:hover {
+  border-color: color-mix(in oklab, var(--primary) 45%, var(--border));
+  box-shadow: 0 4px 12px rgb(15 23 42 / 8%);
+}
+
+.orgchart .nd:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 35%, transparent);
+}
+
+.orgchart .nd.sel {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 22%, transparent);
+}
+
+/* A search hit or a highlighted department. */
+.orgchart .nd.hit {
+  background-color: color-mix(in oklab, var(--primary) 10%, var(--card));
+}
+
+.orgchart .nd img {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  background-color: var(--muted);
+  border-radius: 999px;
+}
+
+.orgchart .nd > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.orgchart .nd b {
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orgchart .nd small {
+  overflow: hidden;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orgchart .nd em {
+  margin-top: 0.125rem;
+  font-size: 0.625rem;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: color-mix(in oklab, hsl(var(--dh, 215) 65% 44%) 65%, var(--foreground));
+  text-transform: uppercase;
+}
+
+.orgchart .tg {
+  position: absolute;
+  bottom: -0.6875rem;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+.orgchart .tg:hover {
+  color: var(--primary);
+  border-color: color-mix(in oklab, var(--primary) 45%, var(--border));
+}
+
+/* A collapsed branch advertises the reports it is hiding. */
+.orgchart .tree li.col > .nd .tg {
+  color: var(--primary);
+  border-color: color-mix(in oklab, var(--primary) 40%, var(--border));
+}
+
+/* ── Detail drawer ─────────────────────────────────────────────────────────── */
+
+.orgchart .dr {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  width: min(22rem, 100vw);
+  height: 100vh;
+  padding: 1rem;
+  overflow-y: auto;
+  background-color: var(--card);
+  border-left: 1px solid var(--border);
+  box-shadow: -12px 0 32px rgb(15 23 42 / 12%);
+}
+
+.orgchart .dr .x {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 0;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.orgchart .dr .x:hover {
+  color: var(--foreground);
+  background-color: var(--accent);
+}
+
+.orgchart .dr > img {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 999px;
+}
+
+.orgchart .dr h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.orgchart .dr .t {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.orgchart .dr .bd {
+  align-self: flex-start;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  border-radius: 999px;
+}
+
+.orgchart .dr h3 {
+  margin-top: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+}
+
+.orgchart .dr .kv {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.orgchart .dr .kv > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+}
+
+.orgchart .dr .kv dt {
+  color: var(--muted-foreground);
+}
+
+.orgchart .dr .kv dd {
+  margin: 0;
+  color: var(--foreground);
+  text-align: right;
+}
+
+.orgchart .dr .kv .w dd {
+  overflow-wrap: anywhere;
+}
+
+.orgchart .dr .lk {
+  padding: 0;
+  font: inherit;
+  color: var(--primary);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.orgchart .dr .pr {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.orgchart .dr .pr:hover {
+  background-color: var(--accent);
+}
+
+.orgchart .dr .pr img {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+}
+
+.orgchart .dr .pr span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.orgchart .dr .pr b {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.orgchart .dr .pr small {
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+}
+
+.orgchart .dr .acts {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.75rem;
+}
+
+.orgchart .dr .acts .btn {
+  flex: 1 1 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orgchart .stage,
+  .orgchart .nd,
+  .orgchart .btn {
+    transition: none;
+  }
+}

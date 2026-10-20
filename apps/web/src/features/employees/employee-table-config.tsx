@@ -1,13 +1,15 @@
 import {
   EMPTY_FILTERS,
   ALL_ROWS_VIEW_STATE,
+  PINNED_ACTIONS_CELL_CLASS,
+  PINNED_ACTIONS_HEADER_CLASS,
   type DataTableColumn,
   type DataTableFilter,
   type DataTableView,
 } from '@/components/data-table';
 
 import { EmployeeAvatar } from './employee-avatar';
-import { formatHireDate } from './employee-presentation';
+import { formatApiHireDate } from './employee-presentation';
 import { EmployeeRowMenu } from './employee-row-menu';
 import { EmployeeStatusBadge } from './employee-status-badge';
 import type { Employee } from './employee-types';
@@ -198,7 +200,7 @@ export function buildEmployeeColumns({
       sortValue: (employee) => employee.hireDate,
       responsive: 'hidden xl:table-cell',
       cellClassName: 'whitespace-nowrap tabular-nums',
-      cell: (employee) => formatHireDate(employee.hireDate),
+      cell: (employee) => formatApiHireDate(employee.hireDate),
     },
     {
       id: 'status',
@@ -210,7 +212,14 @@ export function buildEmployeeColumns({
       id: 'actions',
       header: <span className="sr-only">Actions</span>,
       hideable: false,
-      cellClassName: 'w-10 text-right',
+      /*
+       * Pinned to the right edge so the row menu is never the thing scrolled out of view.
+       * The class names and the reasoning behind each part live in
+       * `components/data-table/pinned-actions.ts`, because every list that puts its row menu
+       * in the last column needs the same treatment.
+       */
+      headerClassName: PINNED_ACTIONS_HEADER_CLASS,
+      cellClassName: PINNED_ACTIONS_CELL_CLASS,
       cell: (employee) => <EmployeeRowMenu employee={employee} onView={onView} onEdit={onEdit} />,
     },
   ];

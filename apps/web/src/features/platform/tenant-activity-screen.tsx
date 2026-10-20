@@ -3,29 +3,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import type { AuditLogReadModel } from '@hris/shared-types';
-
+import { HrisDataTable, type DataTableColumn } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { tenantActivityApi } from '@/features/platform/tenant-activity-api';
 import { ApiRequestError } from '@/lib/api/http-client';
+
+import type { AuditLogReadModel } from '@hris/shared-types';
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiRequestError) {
@@ -43,6 +32,66 @@ function formatTimestamp(value: string): string {
   );
 }
 
+/**
+ * A read-only, cursor-paged audit log on top of the shared table.
+ *
+ * The audit log is an unbounded, newest-first stream served one cursor page at a time,
+ * so the shared table is used for what it does honestly here: the same chrome as every
+ * other list, consistent loading and empty states, and column visibility. Filtering,
+ * search and paging stay server-side — the API owns the cursor — and the "Load more"
+ * button below the table is the page's own control, rendered through `actions`.
+ */
+function ActivityTable({
+  rows,
+  columns,
+  loading,
+  error,
+  onRetry,
+  emptyTitle,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  loadError,
+}: {
+  readonly rows: readonly AuditLogReadModel[];
+  readonly columns: readonly DataTableColumn<AuditLogReadModel>[];
+  readonly loading: boolean;
+  readonly error: string | undefined;
+  readonly onRetry: () => void;
+  readonly emptyTitle: string;
+  readonly hasMore: boolean;
+  readonly loadingMore: boolean;
+  readonly onLoadMore: () => void;
+  readonly loadError: string | undefined;
+}) {
+  return (
+    <>
+      <HrisDataTable
+        rows={rows}
+        columns={columns}
+        searchable={false}
+        selectable={false}
+        pagination={false}
+        status={loading ? 'loading' : error !== undefined ? 'error' : 'ready'}
+        errorCopy={error}
+        onRetry={onRetry}
+        emptyTitle={emptyTitle}
+        emptyDescription="Events are recorded as the platform is used; nothing has been written yet."
+      />
+      {(hasMore || loadError !== undefined) && (
+        <div className="mt-4 flex flex-col items-center gap-2">
+          {loadError !== undefined && <p className="text-sm text-destructive">{loadError}</p>}
+          {hasMore && (
+            <Button variant="outline" disabled={loadingMore} onClick={() => onLoadMore()}>
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </Button>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function TenantActivityScreen() {
   const router = useRouter();
   const { state } = useSession();
@@ -56,7 +105,7 @@ export function TenantActivityScreen() {
     }
   }, [state.status, router]);
 
-  const [error, setError] = useState<string | undefined>();
+  const [loadError, setLoadError] = useState<string | undefined>();
 
   const rows = (logs.data?.items ?? []) as AuditLogReadModel[];
   const hasMore = logs.data?.pageInfo.hasNextPage ?? false;
@@ -71,11 +120,55 @@ export function TenantActivityScreen() {
       const next = await tenantActivityApi.list({ limit: 50, cursor: endCursor });
       setCursor(next.items[next.items.length - 1]?.createdAt ?? endCursor);
     } catch (cause) {
-      setError(messageOf(cause));
+      setLoadError(messageOf(cause));
     } finally {
       setLoadingMore(false);
     }
   }, [hasMore, loadingMore, endCursor]);
+
+  const columns: readonly DataTableColumn<AuditLogReadModel>[] = [
+    {
+      id: 'when',
+      header: 'When',
+      sortValue: (row) => row.createdAt,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => formatTimestamp(row.createdAt),
+    },
+    {
+      id: 'actor',
+      header: 'Actor',
+      sortValue: (row) => row.actorUserId ?? '',
+      responsive: 'hidden md:table-cell',
+      cellClassName: 'text-muted-foreground text-sm',
+      cell: (row) => row.actorUserId ?? 'system',
+    },
+    {
+      id: 'action',
+      header: 'Action',
+      sortValue: (row) => row.action,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.action,
+    },
+    {
+      id: 'resource',
+      header: 'Resource',
+      sortValue: (row) => row.resource,
+      responsive: 'hidden md:table-cell',
+      cellClassName: 'text-muted-foreground text-sm',
+      cell: (row) => `${row.resource}/${row.resourceId ?? '—'}`,
+    },
+    {
+      id: 'chain',
+      header: 'Chain',
+      sortValue: (row) => (row.chainVerified ? 'OK' : 'BROKEN'),
+      align: 'right',
+      cell: (row) => (
+        <Badge variant={row.chainVerified ? 'success' : 'secondary'}>
+          {row.chainVerified ? 'OK' : 'BROKEN'}
+        </Badge>
+      ),
+    },
+  ];
 
   return (
     <PageBody>
@@ -84,72 +177,18 @@ export function TenantActivityScreen() {
         description="Cross-tenant operational activity (audit log)."
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      {logs.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{logs.error}</AlertDescription>
-        </Alert>
-      )}
-
-      {logs.loading && rows.length === 0 ? (
-        <Skeleton className="h-60 w-full" />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No activity recorded" />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Audit events</CardTitle>
-            <CardDescription>
-              {rows.length} event{rows.length === 1 ? '' : 's'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>When</TableHead>
-                  <TableHead>Actor</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Resource</TableHead>
-                  <TableHead className="text-right">Chain</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-mono text-sm">
-                      {formatTimestamp(row.createdAt)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {row.actorUserId ?? 'system'}
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{row.action}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {row.resource}/{row.resourceId ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant={row.chainVerified ? 'success' : 'secondary'}>
-                        {row.chainVerified ? 'OK' : 'BROKEN'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {hasMore && (
-              <div className="mt-4 flex justify-center">
-                <Button disabled={loadingMore} onClick={() => void loadMore()}>
-                  {loadingMore ? 'Loading…' : 'Load more'}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      <ActivityTable
+        rows={rows}
+        columns={columns}
+        loading={logs.loading && rows.length === 0}
+        error={logs.error}
+        onRetry={() => logs.reload()}
+        emptyTitle="No activity recorded"
+        hasMore={hasMore}
+        loadingMore={loadingMore}
+        onLoadMore={() => void loadMore()}
+        loadError={loadError}
+      />
     </PageBody>
   );
 }

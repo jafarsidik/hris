@@ -3,34 +3,35 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import type { ConfigurationSchemaSummary } from '@hris/shared-types';
-
-import { Trash2 } from 'lucide-react';
-
+import {
+  EMPTY_FILTERS,
+  HrisDataTable,
+  PINNED_ACTIONS_CELL_CLASS,
+  PINNED_ACTIONS_HEADER_CLASS,
+  type DataTableColumn,
+  type DataTableFilter,
+  type DataTableView,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useToast } from '@/components/ui/toast';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { Trash2 } from 'lucide-react';
 
 import { useCan, useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { configurationSchemasApi } from '@/features/platform/registry-extensions-api';
 import { ApiRequestError } from '@/lib/api/http-client';
+
+import type { ConfigurationSchemaSummary } from '@hris/shared-types';
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiRequestError) {
@@ -42,11 +43,124 @@ function messageOf(error: unknown): string {
   return 'Could not complete the request.';
 }
 
+const STATE_FILTER = [
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'INACTIVE', label: 'Inactive' },
+];
+
+const withState = (state: 'ACTIVE' | 'INACTIVE') => ({
+  filters: { ...EMPTY_FILTERS, select: { state } },
+  search: '',
+});
+
+const SCHEMA_VIEWS_STORAGE_KEY = 'hris:configuration-schemas:views';
+
+const SCHEMA_BUILT_IN_VIEWS: readonly DataTableView[] = [
+  {
+    id: 'all',
+    name: 'All schemas',
+    builtIn: true,
+    default: true,
+    state: { filters: EMPTY_FILTERS, search: '' },
+  },
+  { id: 'active', name: 'Active', builtIn: true, state: withState('ACTIVE') },
+  { id: 'inactive', name: 'Inactive', builtIn: true, state: withState('INACTIVE') },
+];
+
+const SCHEMA_FILTERS: readonly DataTableFilter<ConfigurationSchemaSummary>[] = [
+  {
+    kind: 'select',
+    id: 'state',
+    label: 'State',
+    placeholder: 'All states',
+    getValue: (schema) => (schema.isActive ? 'ACTIVE' : 'INACTIVE'),
+    options: STATE_FILTER,
+  },
+];
+
+/**
+ * The schema list's columns.
+ *
+ * The actions column is pinned because the table scrolls horizontally on narrower
+ * windows; an actions cell that scrolls out of sight cannot be clicked. Both actions
+ * are offered only to a reader with `registry.manage`.
+ */
+function buildSchemaColumns({
+  canManage,
+  onToggle,
+  onRemove,
+}: {
+  readonly canManage: boolean;
+  readonly onToggle: (schema: ConfigurationSchemaSummary) => void;
+  readonly onRemove: (schema: ConfigurationSchemaSummary) => void;
+}): readonly DataTableColumn<ConfigurationSchemaSummary>[] {
+  const columns: DataTableColumn<ConfigurationSchemaSummary>[] = [
+    {
+      id: 'resourceKey',
+      header: 'Resource',
+      sortValue: (schema) => schema.resourceKey,
+      cellClassName: 'font-mono text-sm',
+      cell: (schema) => schema.resourceKey,
+    },
+    {
+      id: 'name',
+      header: 'Name',
+      sortValue: (schema) => schema.name,
+      cellClassName: 'font-medium',
+      cell: (schema) => schema.name,
+    },
+    {
+      id: 'state',
+      header: 'State',
+      sortValue: (schema) => (schema.isActive ? 'ACTIVE' : 'INACTIVE'),
+      cell: (schema) => (
+        <Badge variant={schema.isActive ? 'success' : 'secondary'}>
+          {schema.isActive ? 'ACTIVE' : 'INACTIVE'}
+        </Badge>
+      ),
+    },
+  ];
+
+  if (canManage) {
+    columns.push({
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      hideable: false,
+      headerClassName: PINNED_ACTIONS_HEADER_CLASS,
+      cellClassName: PINNED_ACTIONS_CELL_CLASS,
+      cell: (schema) => (
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => onToggle(schema)}>
+            {schema.isActive ? 'Disable' : 'Enable'}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => onRemove(schema)}>
+            <Trash2 className="mr-1 size-4" aria-hidden />
+            Delete
+          </Button>
+        </div>
+      ),
+    });
+  }
+
+  return columns;
+}
+
+/**
+ * Configuration Schemas: the validated configuration shapes per registered resource.
+ *
+ * The list used to be a bare `<table>` inside a `Card` — no search, no sorting, no
+ * pagination, no column visibility — and its delete action was a `window.confirm`,
+ * which cannot name the record, cannot say what the deletion costs and cannot report
+ * a failure. It now renders through the shared table, and delete goes through the
+ * confirm dialog: the schema is named, the consequence is stated, the failure stays
+ * inside the dialog, and a success raises a toast.
+ */
 export function ConfigurationSchemasScreen() {
   const router = useRouter();
   const { state } = useSession();
   const schemas = useIamLoad(() => configurationSchemasApi.list(), []);
   const canManage = useCan('registry.manage');
+  const { toast } = useToast();
 
   useEffect(() => {
     if (state.status === 'anonymous') {
@@ -64,6 +178,10 @@ export function ConfigurationSchemasScreen() {
   const [description, setDescription] = useState('');
   const [schemaJson, setSchemaJson] = useState('{}');
   const [isActive, setIsActive] = useState(true);
+
+  const [confirming, setConfirming] = useState<ConfigurationSchemaSummary | null>(null);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | undefined>();
 
   const resetForm = () => {
     setResourceKey('');
@@ -103,25 +221,32 @@ export function ConfigurationSchemasScreen() {
     }
   }, [resourceKey, name, description, schemaJson, isActive, schemas]);
 
-  const remove = useCallback(
-    async (id: string, n: string) => {
-      if (!window.confirm(`Delete “${n}"?`)) {
-        return;
-      }
-      setError(undefined);
-      setBusy(true);
-      try {
-        await configurationSchemasApi.remove(id);
-        setNotice(`Deleted “${n}".`);
-        schemas.reload();
-      } catch (cause) {
-        setError(messageOf(cause));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [schemas],
-  );
+  const remove = useCallback((schema: ConfigurationSchemaSummary) => {
+    setConfirming(schema);
+    setConfirmError(undefined);
+  }, []);
+
+  const confirmRemove = useCallback(async () => {
+    if (confirming === null) {
+      return;
+    }
+    setConfirmPending(true);
+    setConfirmError(undefined);
+    try {
+      await configurationSchemasApi.remove(confirming.id);
+      toast({
+        title: 'Schema deleted',
+        description: `Deleted “${confirming.name}”.`,
+        variant: 'success',
+      });
+      setConfirming(null);
+      schemas.reload();
+    } catch (cause) {
+      setConfirmError(messageOf(cause));
+    } finally {
+      setConfirmPending(false);
+    }
+  }, [confirming, schemas, toast]);
 
   const toggle = useCallback(
     async (schema: ConfigurationSchemaSummary) => {
@@ -145,11 +270,7 @@ export function ConfigurationSchemasScreen() {
         description="Validated configuration shapes per registered resource."
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
       {notice !== undefined && (
         <Alert>
           <AlertDescription>{notice}</AlertDescription>
@@ -220,67 +341,50 @@ export function ConfigurationSchemasScreen() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Schemas</CardTitle>
-          <CardDescription>
-            {schemas.loading ? 'Loading…' : `${rows.length} schema${rows.length === 1 ? '' : 's'}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {schemas.error !== undefined && (
-            <Alert variant="destructive">
-              <AlertDescription>{schemas.error}</AlertDescription>
-            </Alert>
-          )}
-          {schemas.loading && rows.length === 0 ? (
-            <Skeleton className="h-40 w-full" />
-          ) : rows.length === 0 ? (
-            <EmptyState title="No schemas yet" />
+      <HrisDataTable
+        rows={rows}
+        columns={buildSchemaColumns({ canManage, onToggle: toggle, onRemove: remove })}
+        filters={SCHEMA_FILTERS}
+        searchable
+        searchText={(schema) => `${schema.resourceKey} ${schema.name}`}
+        searchPlaceholder="Search by resource or name…"
+        selectable={false}
+        views={{ builtIn: SCHEMA_BUILT_IN_VIEWS, storageKey: SCHEMA_VIEWS_STORAGE_KEY }}
+        status={schemas.loading ? 'loading' : schemas.error !== undefined ? 'error' : 'ready'}
+        errorCopy={schemas.error}
+        onRetry={() => schemas.reload()}
+        emptyTitle="No schemas yet"
+        emptyDescription="Declare the first configuration shape to validate resources against it."
+        noResultsTitle="No schemas match this filter"
+        noResultsDescription="Try a different search or state, or clear the filters to see every schema."
+      />
+
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirming(null);
+            setConfirmError(undefined);
+          }
+        }}
+        title={confirming !== null ? `Delete “${confirming.name}”?` : 'Delete schema?'}
+        description={
+          confirming !== null ? (
+            <>
+              The schema for {confirming.resourceKey} is removed from the registry. Configurations
+              already stored keep their values, but the resource is no longer validated against this
+              shape.
+            </>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Resource</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((schema: ConfigurationSchemaSummary) => (
-                  <TableRow key={schema.id}>
-                    <TableCell className="font-mono text-sm">{schema.resourceKey}</TableCell>
-                    <TableCell className="font-medium">{schema.name}</TableCell>
-                    <TableCell>
-                      <Badge variant={schema.isActive ? 'success' : 'secondary'}>
-                        {schema.isActive ? 'ACTIVE' : 'INACTIVE'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {canManage && (
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => void toggle(schema)}>
-                            {schema.isActive ? 'Disable' : 'Enable'}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void remove(schema.id, schema.name)}
-                          >
-                            <Trash2 className="mr-1 size-4" aria-hidden />
-                            Delete
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+            'The schema is removed from the registry.'
+          )
+        }
+        confirmLabel="Delete"
+        tone="destructive"
+        pending={confirmPending}
+        error={confirmError}
+        onConfirm={() => void confirmRemove()}
+      />
     </PageBody>
   );
 }

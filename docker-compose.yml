@@ -190,6 +190,10 @@ services:
       # network by service name, so these must differ from the NEXT_PUBLIC_ values.
       API_BASE_URL: http://api:3001/api/v1
       API_PLATFORM_URL: http://api:3001
+      # Object storage the browser talks to for presigned uploads and photo previews.
+      # The CSP in apps/web/src/middleware.ts allows exactly this origin, so it must
+      # match the host-facing endpoint the API signs URLs with.
+      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-http://localhost:${STORAGE_PORT:-9000}}
     ports:
       - '${WEB_PORT:-3000}:3000'
     depends_on:
@@ -305,7 +309,9 @@ services:
       # discovering the setting was wrong after payslips have landed in it.
       - >
         rc alias set hris "$$STORAGE_ENDPOINT" "$$STORAGE_ACCESS_KEY" "$$STORAGE_SECRET_KEY" &&
-        rc bucket create "hris/$$STORAGE_BUCKET" --with-versioning --ignore-existing
+        rc bucket create "hris/$$STORAGE_BUCKET" --with-versioning --ignore-existing &&
+        printf '%s' '{"rules":[{"allowedOrigins":["http://localhost:3000","http://127.0.0.1:3000","http://localhost:3100","http://127.0.0.1:3100"],"allowedMethods":["GET","PUT","HEAD"],"allowedHeaders":["*"],"exposeHeaders":["ETag"],"maxAgeSeconds":3000}]}' > /tmp/cors.json &&
+        rc bucket cors set "hris/$$STORAGE_BUCKET" /tmp/cors.json
     security_opt:
       - no-new-privileges:true
     networks:

@@ -111,3 +111,25 @@ export function formatHireDate(isoDate: string): string {
 
   return dateFormat.format(parsed);
 }
+
+/**
+ * Formats a hire date as the API sends it.
+ *
+ * The API returns hire dates as full timestamps (`2026-01-15T00:00:00.000Z`), while
+ * {@link formatHireDate} refuses anything that is not a real `YYYY-MM-DD` date and returns
+ * its input unchanged. That strictness is worth keeping — it is what stops `2020-02-31`
+ * from rendering as 2 March — so the timestamp is reduced to its date part here, before
+ * the strictness applies. A column headed "Hire date" then shows a date instead of
+ * `2026-01-15T00:00:00.000Z`, and a genuinely malformed value still comes through
+ * unchanged so it can be traced to the record.
+ *
+ * The date part is read from the string rather than obtained by converting the instant to
+ * the reader's local date: a hire date is a calendar date the record already carries, and
+ * an offset would move everyone hired near midnight into the wrong day — the same reason
+ * `dateFormat` pins UTC.
+ */
+export function formatApiHireDate(value: string): string {
+  const dateOnly = /^(\d{4}-\d{2}-\d{2})(?:T|$)/.exec(value)?.[1];
+
+  return formatHireDate(dateOnly ?? value);
+}

@@ -3,24 +3,30 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable, type DataTableColumn } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
 import { useCan, useSession } from '@/features/auth/session-context';
 import { ApiRequestError } from '@/lib/api/http-client';
 import { platformApi } from '@/features/platform/platform-api';
+
+/**
+ * One row of the scope catalogue.
+ *
+ * The catalogue is keyed by the scope string itself (`resource.action`), which is what the
+ * shared table needs as `id`; carrying it as a field of the row keeps the mapping in one
+ * place instead of a spread at the call site.
+ */
+interface ScopeRow {
+  readonly id: string;
+  readonly scope: string;
+  readonly resource: string;
+  readonly action: string;
+  readonly description: string | null;
+  readonly custom: boolean;
+}
 
 /**
  * API Scopes: the grantable `resource.action` scope vocabulary exposed by the
@@ -33,15 +39,7 @@ export function ScopesScreen() {
   const canView = useCan('registry.view');
 
   const [error, setError] = useState<string | undefined>();
-  const [rows, setRows] = useState<
-    {
-      scope: string;
-      resource: string;
-      action: string;
-      description: string | null;
-      custom: boolean;
-    }[]
-  >([]);
+  const [rows, setRows] = useState<readonly ScopeRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -55,11 +53,13 @@ export function ScopesScreen() {
     setError(undefined);
     try {
       const resources = await platformApi.listRegistryResources();
-      const scopes: typeof rows = [];
+      const scopes: ScopeRow[] = [];
       for (const resource of resources) {
         for (const action of resource.actions ?? []) {
+          const scope = `${resource.key}.${action.action}`;
           scopes.push({
-            scope: `${resource.key}.${action.action}`,
+            id: scope,
+            scope,
             resource: resource.name,
             action: action.action,
             description: action.description,
@@ -80,6 +80,48 @@ export function ScopesScreen() {
     void load();
   }, [load]);
 
+  const columns: readonly DataTableColumn<ScopeRow>[] = [
+    {
+      id: 'scope',
+      header: 'Scope',
+      headerClassName: 'font-mono text-sm',
+      sortValue: (row) => row.scope,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.scope,
+    },
+    {
+      id: 'resource',
+      header: 'Resource',
+      sortValue: (row) => row.resource,
+      cell: (row) => row.resource,
+    },
+    {
+      id: 'action',
+      header: 'Action',
+      headerClassName: 'font-mono text-sm',
+      sortValue: (row) => row.action,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.action,
+    },
+    {
+      id: 'description',
+      header: 'Description',
+      sortValue: (row) => row.description ?? '',
+      cellClassName: 'text-muted-foreground text-sm',
+      cell: (row) => row.description ?? '—',
+    },
+    {
+      id: 'origin',
+      header: 'Origin',
+      sortValue: (row) => (row.custom ? 'Custom' : 'Built-in'),
+      cell: (row) => (
+        <Badge variant={row.custom ? 'outline' : 'secondary'}>
+          {row.custom ? 'Custom' : 'Built-in'}
+        </Badge>
+      ),
+    },
+  ];
+
   return (
     <PageBody>
       <PageHeader
@@ -87,59 +129,29 @@ export function ScopesScreen() {
         description="Grantable scopes for machine access — each scope is a registered resource action."
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertTitle>Could not load scopes</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <Card className="max-w-4xl">
-        <CardHeader>
-          <CardTitle>Scope catalogue</CardTitle>
-          <CardDescription>
-            {rows.length} grantable scope{rows.length === 1 ? '' : 's'} across registered resources
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <Skeleton className="h-48 w-full" />
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No grantable scopes yet — register resource actions to create scopes.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="font-mono text-sm">Scope</TableHead>
-                  <TableHead>Resource</TableHead>
-                  <TableHead className="font-mono text-sm">Action</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Origin</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.scope}>
-                    <TableCell className="font-mono text-sm">{row.scope}</TableCell>
-                    <TableCell>{row.resource}</TableCell>
-                    <TableCell className="font-mono text-sm">{row.action}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {row.description ?? '—'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={row.custom ? 'outline' : 'secondary'}>
-                        {row.custom ? 'Custom' : 'Built-in'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/*
+        The catalogue is narrow by design — five columns of scope strings — so the table
+        keeps the max-w-4xl measure the hand-rolled card had, without the card around it:
+        the shared table brings its own.
+      */}
+      <div className="max-w-4xl">
+        <HrisDataTable
+          rows={rows}
+          columns={columns}
+          searchable
+          searchText={(row) =>
+            [row.scope, row.resource, row.action, row.description ?? ''].join(' ')
+          }
+          searchPlaceholder="Search scopes…"
+          selectable={false}
+          status={loading ? 'loading' : error !== undefined ? 'error' : 'ready'}
+          errorCopy={error}
+          onRetry={() => void load()}
+          emptyTitle="No grantable scopes yet — register resource actions to create scopes."
+          noResultsTitle="No scopes match this filter"
+          noResultsDescription="Try a different search, or clear the filters to see the whole catalogue."
+        />
+      </div>
 
       {!canView && (
         <Alert>

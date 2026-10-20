@@ -73,6 +73,18 @@ describe('uploadFile', () => {
     expect(calls[1]?.body).toBe(file);
   });
 
+  it('reserves the file against the record it belongs to', async () => {
+    const calls = stubUpload();
+    const file = new File(['image'], 'photo.png', { type: 'image/png' });
+
+    await uploadFile(file, { entity: 'employee', entityId: 'employee-1' });
+
+    const body = JSON.parse(String(calls[0]?.body)) as Record<string, unknown>;
+    expect(body['entity']).toBe('employee');
+    expect(body['entityId']).toBe('employee-1');
+    expect(body['mimeType']).toBe('image/png');
+  });
+
   it('does not confirm when storage rejects the upload', async () => {
     const calls = stubUpload(403);
     const file = new File(['nope'], 'policy.pdf', { type: 'application/pdf' });

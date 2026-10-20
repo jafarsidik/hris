@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable, type DataTableColumn } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
@@ -38,6 +39,9 @@ function cycleBadge(status: string) {
 
 /**
  * Performance: cycles, employee goals with progress and submitted reviews.
+ *
+ * The goals list is the primary table and uses the shared data table. Cycles and
+ * reviews are smaller embedded sub-tables in cards and keep their bespoke markup.
  */
 export function PerformanceScreen({
   cycles,
@@ -60,6 +64,51 @@ export function PerformanceScreen({
       router.replace('/login');
     }
   }, [state.status, router]);
+
+  const goalColumns: readonly DataTableColumn<PerformanceGoal>[] = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      sortValue: (row) => row.employeeName,
+      cell: (row) => (
+        <div>
+          <div className="font-medium">{row.employeeName}</div>
+          <div className="text-xs text-muted-foreground">{row.employeeNumber}</div>
+        </div>
+      ),
+    },
+    {
+      id: 'goal',
+      header: 'Goal',
+      sortValue: (row) => row.title,
+      cellClassName: 'font-medium',
+      cell: (row) => row.title,
+    },
+    {
+      id: 'weight',
+      header: 'Weight',
+      sortValue: (row) => row.weight,
+      align: 'center',
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => `${row.weight}%`,
+    },
+    {
+      id: 'progress',
+      header: 'Progress',
+      sortValue: (row) => row.progress,
+      align: 'center',
+      cell: (row) => (
+        <div className="flex items-center justify-center gap-2">
+          <span className="font-mono text-sm">{row.progress}%</span>
+          {row.status === 'ACHIEVED' && (
+            <Badge variant="success" className="hidden sm:inline-flex">
+              Achieved
+            </Badge>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <PageBody>
@@ -125,53 +174,24 @@ export function PerformanceScreen({
         </Card>
       )}
 
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle>Goals</CardTitle>
-          <CardDescription>{goals.length} goal(s) across active cycles</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {' '}
-          {goals.length === 0 ? (
-            <EmptyState title="No goals yet" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Goal</TableHead>
-                  <TableHead>Weight</TableHead>
-                  <TableHead className="text-center">Progress</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {goals.map((goal) => (
-                  <TableRow key={goal.id}>
-                    <TableCell>
-                      <div className="font-medium">{goal.employeeName}</div>
-                      <div className="text-xs text-muted-foreground">{goal.employeeNumber}</div>
-                    </TableCell>
-                    <TableCell className="font-medium">{goal.title}</TableCell>
-                    <TableCell className="font-mono text-sm text-center">{goal.weight}%</TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-center gap-2">
-                        <span className="font-mono text-sm">{goal.progress}%</span>
-                        {goal.status === 'ACHIEVED' && (
-                          <Badge variant="success" className="hidden sm:inline-flex">
-                            Achieved
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold">Goals</h2>
+        <p className="text-sm text-muted-foreground">{goals.length} goal(s) across active cycles</p>
+      </div>
+      <HrisDataTable
+        rows={goals}
+        columns={goalColumns}
+        searchable
+        searchText={(row) => `${row.employeeName} ${row.employeeNumber} ${row.title}`}
+        searchPlaceholder="Search goals…"
+        selectable={false}
+        emptyTitle="No goals yet"
+        emptyDescription="Employee goals across active cycles appear here."
+        noResultsTitle="No goals match this filter"
+        noResultsDescription="Try a different search, or clear the filters to see every goal."
+      />
 
-      <Card>
+      <Card className="mt-4">
         <CardHeader>
           <CardTitle>Reviews</CardTitle>
           <CardDescription>{reviews.length} submitted review(s)</CardDescription>

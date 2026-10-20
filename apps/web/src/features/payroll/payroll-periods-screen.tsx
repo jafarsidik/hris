@@ -3,23 +3,21 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+import {
+  HrisDataTable,
+  EMPTY_FILTERS,
+  type DataTableColumn,
+  type DataTableFilter,
+  type DataTableView,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
 import { useSession } from '@/features/auth/session-context';
 
 import type { PayrollPeriod } from './payroll-types';
+
+const PERIOD_VIEWS_STORAGE_KEY = 'hris:payroll-periods:views';
 
 function formatWhen(value: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value));
@@ -44,6 +42,73 @@ function periodBadge(status: string) {
   }
 }
 
+const PERIOD_STATUS_OPTIONS = [
+  { value: 'DRAFT', label: 'Draft' },
+  { value: 'OPEN', label: 'Open' },
+  { value: 'PROCESSING', label: 'Processing' },
+  { value: 'APPROVED', label: 'Approved' },
+  { value: 'PAID', label: 'Paid' },
+  { value: 'CLOSED', label: 'Closed' },
+];
+
+const PERIOD_COLUMNS: readonly DataTableColumn<PayrollPeriod>[] = [
+  {
+    id: 'code',
+    header: 'Code',
+    sortValue: (row) => row.code,
+    cellClassName: 'font-mono text-sm',
+    cell: (row) => row.code,
+  },
+  {
+    id: 'name',
+    header: 'Name',
+    sortValue: (row) => row.name,
+    cellClassName: 'font-medium',
+    cell: (row) => row.name,
+  },
+  {
+    id: 'range',
+    header: 'Range',
+    sortValue: (row) => row.startDate,
+    cellClassName: 'font-mono text-sm',
+    cell: (row) => `${formatWhen(row.startDate)} – ${formatWhen(row.endDate)}`,
+  },
+  {
+    id: 'payDate',
+    header: 'Pay date',
+    sortValue: (row) => row.payDate ?? '',
+    cellClassName: 'font-mono text-sm',
+    cell: (row) => (row.payDate === null ? '—' : formatWhen(row.payDate)),
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    sortValue: (row) => row.status,
+    cell: (row) => periodBadge(row.status),
+  },
+];
+
+const PERIOD_FILTERS: readonly DataTableFilter<PayrollPeriod>[] = [
+  {
+    kind: 'select',
+    id: 'status',
+    label: 'Status',
+    placeholder: 'All statuses',
+    getValue: (row) => row.status,
+    options: PERIOD_STATUS_OPTIONS,
+  },
+];
+
+const PERIOD_VIEWS: readonly DataTableView[] = [
+  {
+    id: 'all',
+    name: 'All periods',
+    builtIn: true,
+    default: true,
+    state: { filters: EMPTY_FILTERS, search: '' },
+  },
+];
+
 /**
  * Payroll Periods: the pay period calendar and its lifecycle status.
  */
@@ -63,46 +128,27 @@ export function PayrollPeriodsScreen({ rows }: { rows: readonly PayrollPeriod[] 
         title="Payroll Periods"
         description="Pay period calendar with lifecycle from draft to locked."
       />
-      <Card>
-        <CardHeader>
-          <CardTitle>Periods</CardTitle>
-          <CardDescription>
-            {rows.length} period{rows.length === 1 ? '' : 's'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {rows.length === 0 ? (
-            <EmptyState title="No payroll periods defined yet" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Range</TableHead>
-                  <TableHead>Pay date</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((period) => (
-                  <TableRow key={period.id}>
-                    <TableCell className="font-mono text-sm">{period.code}</TableCell>
-                    <TableCell className="font-medium">{period.name}</TableCell>
-                    <TableCell className="font-mono text-sm">
-                      {formatWhen(period.startDate)} – {formatWhen(period.endDate)}
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">
-                      {period.payDate === null ? '—' : formatWhen(period.payDate)}
-                    </TableCell>
-                    <TableCell>{periodBadge(period.status)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+
+      {/*
+        The periods list used to be a bare `<table>` inside a `Card` with no search, no sort
+        and no way to hide a column. It now uses the shared table, which brings the toolbar,
+        sorting, filters, column visibility, saved views and the empty/no-results states.
+      */}
+      <HrisDataTable
+        rows={rows}
+        columns={PERIOD_COLUMNS}
+        filters={PERIOD_FILTERS}
+        searchable
+        searchText={(row) => `${row.code} ${row.name}`}
+        searchPlaceholder="Search by code or name…"
+        selectable={false}
+        views={{ builtIn: PERIOD_VIEWS, storageKey: PERIOD_VIEWS_STORAGE_KEY }}
+        status="ready"
+        emptyTitle="No payroll periods defined yet"
+        emptyDescription="Pay periods appear here once they are created."
+        noResultsTitle="No period matches this filter"
+        noResultsDescription="Try a different search or status, or clear the filters to see every period."
+      />
     </PageBody>
   );
 }

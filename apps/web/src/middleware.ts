@@ -14,7 +14,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  * returning it on the response alone would leave every inline script blocked.
  */
 
-/** Only the API origin may be contacted; CSP source lists take origins, not paths. */
+/** Only these origins may be contacted; CSP source lists take origins, not paths. */
 const apiOrigin = (): string => {
   const raw = process.env.NEXT_PUBLIC_API_PLATFORM_URL ?? 'http://localhost:3001';
   try {
@@ -25,16 +25,36 @@ const apiOrigin = (): string => {
   }
 };
 
-const buildPolicy = (nonce: string): string =>
-  [
+/**
+ * The object store the browser talks to directly.
+ *
+ * File uploads are presigned PUTs and downloads are presigned GETs, both aimed at the
+ * storage host rather than the API. Without this origin in `connect-src` the browser
+ * refuses the upload before it leaves the page, and without it in `img-src` a stored
+ * photo cannot be rendered. `STORAGE_PUBLIC_ENDPOINT` is the same value the API signs
+ * its URLs with, so the two can never point at different hosts.
+ */
+const storageOrigin = (): string | null => {
+  const raw = process.env.STORAGE_PUBLIC_ENDPOINT ?? 'http://localhost:9000';
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return null;
+  }
+};
+
+const buildPolicy = (nonce: string): string => {
+  const storage = storageOrigin();
+  const media = storage === null ? '' : ` ${storage}`;
+  return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
     // Next injects inline styles for critical CSS; styles cannot be nonced
     // reliably, so this stays permissive while scripts do not.
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    `img-src 'self' data: blob:${media}`,
     "font-src 'self' data:",
-    `connect-src 'self' ${apiOrigin()}`,
+    `connect-src 'self' ${apiOrigin()}${media}`,
     "frame-ancestors 'none'",
     "object-src 'none'",
     "base-uri 'self'",
@@ -43,6 +63,7 @@ const buildPolicy = (nonce: string): string =>
     "worker-src 'self' blob:",
     "manifest-src 'self'",
   ].join('; ');
+};
 
 export function middleware(request: NextRequest): NextResponse {
   // 128 bits of entropy, base64 encoded as CSP requires.

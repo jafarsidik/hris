@@ -2,15 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trash2 } from 'lucide-react';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -20,20 +19,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useCan, useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { dataPoliciesApi } from '@/features/governance/governance-api';
+import {
+  DATA_POLICY_BUILT_IN_VIEWS,
+  DATA_POLICY_SEARCH_TEXT,
+  DATA_POLICY_VIEWS_STORAGE_KEY,
+  buildDataPolicyColumns,
+  buildDataPolicyFilters,
+} from '@/features/governance/data-policies-table-config';
 import { ApiRequestError } from '@/lib/api/http-client';
+import type { DataPolicySummary } from '@hris/shared-types';
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiRequestError) {
@@ -72,6 +70,10 @@ export function DataPoliciesScreen() {
   const [maskingAction, setMaskingAction] = useState('mask');
   const [isEnabled, setIsEnabled] = useState(true);
 
+  const [deleting, setDeleting] = useState<DataPolicySummary | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
+
   const resetForm = () => {
     setName('');
     setDescription('');
@@ -105,34 +107,25 @@ export function DataPoliciesScreen() {
     }
   }, [name, description, classification, targetResource, maskingAction, isEnabled, policies]);
 
-  const remove = useCallback(
-    async (id: string, n: string) => {
-      if (!window.confirm(`Delete “${n}”?`)) {
-        return;
-      }
-      setError(undefined);
-      setBusy(true);
-      try {
-        await dataPoliciesApi.remove(id);
-        setNotice(`Deleted “${n}”.`);
-        policies.reload();
-      } catch (cause) {
-        setError(messageOf(cause));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [policies],
-  );
+  const confirmDelete = useCallback(async () => {
+    if (deleting === null) {
+      return;
+    }
+    setDeletePending(true);
+    setDeleteError(undefined);
+    try {
+      await dataPoliciesApi.remove(deleting.id);
+      setNotice(`Deleted "${deleting.name}".`);
+      setDeleting(null);
+      policies.reload();
+    } catch (cause) {
+      setDeleteError(messageOf(cause));
+    } finally {
+      setDeletePending(false);
+    }
+  }, [deleting, policies]);
 
-  const rows = (policies.data ?? []) as Array<{
-    readonly id: string;
-    readonly name: string;
-    readonly classification: string;
-    readonly targetResource: string;
-    readonly maskingAction: string;
-    readonly isEnabled: boolean;
-  }>;
+  const rows = (policies.data ?? []) as DataPolicySummary[];
 
   return (
     <PageBody>
@@ -180,7 +173,7 @@ export function DataPoliciesScreen() {
                       if (v !== null && v !== undefined) setClassification(v);
                     }}
                   >
-                    <SelectTrigger className="w-40">
+                    <SelectTrigger className="w-40" aria-label="Classification">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -218,7 +211,7 @@ export function DataPoliciesScreen() {
                     if (v !== null && v !== undefined) setMaskingAction(v);
                   }}
                 >
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-40" aria-label="Masking action">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -246,77 +239,43 @@ export function DataPoliciesScreen() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Policies</CardTitle>
-          <CardDescription>
-            {policies.loading ? 'Loading…' : `${rows.length} policy${rows.length === 1 ? '' : 's'}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {policies.error !== undefined && (
-            <Alert variant="destructive">
-              <AlertDescription>{policies.error}</AlertDescription>
-            </Alert>
-          )}
-          {policies.loading && rows.length === 0 ? (
-            <Skeleton className="h-40 w-full" />
-          ) : rows.length === 0 ? (
-            <EmptyState title="No policies yet" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Classification</TableHead>
-                  <TableHead>Resource</TableHead>
-                  <TableHead>Masking</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map(
-                  (policy: {
-                    id: string;
-                    name: string;
-                    classification: string;
-                    targetResource: string;
-                    maskingAction: string;
-                    isEnabled: boolean;
-                  }) => (
-                    <TableRow key={policy.id}>
-                      <TableCell className="font-medium">{policy.name}</TableCell>
-                      <TableCell className="font-mono text-sm">{policy.classification}</TableCell>
-                      <TableCell className="font-mono text-sm">{policy.targetResource}</TableCell>
-                      <TableCell className="font-mono text-sm">{policy.maskingAction}</TableCell>
-                      <TableCell>
-                        <Badge variant={policy.isEnabled ? 'success' : 'secondary'}>
-                          {policy.isEnabled ? 'ENABLED' : 'DISABLED'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {canManage && (
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => void remove(policy.id, policy.name)}
-                            >
-                              <Trash2 className="mr-1 size-4" aria-hidden />
-                              Delete
-                            </Button>
-                          </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ),
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <HrisDataTable
+        rows={rows}
+        columns={buildDataPolicyColumns({ onDelete: (policy) => setDeleting(policy) })}
+        filters={buildDataPolicyFilters(rows)}
+        searchable
+        searchText={DATA_POLICY_SEARCH_TEXT}
+        searchPlaceholder="Search by name, classification, resource or masking…"
+        selectable={false}
+        views={{
+          builtIn: DATA_POLICY_BUILT_IN_VIEWS,
+          storageKey: DATA_POLICY_VIEWS_STORAGE_KEY,
+        }}
+        status={policies.loading ? 'loading' : policies.error !== undefined ? 'error' : 'ready'}
+        errorCopy={policies.error}
+        onRetry={() => policies.reload()}
+        emptyTitle="No policies yet"
+        emptyDescription="Create a data policy to classify and protect a platform resource."
+        noResultsTitle="No policies match this filter"
+        noResultsDescription="Try a different search or classification, or clear the filters to see every policy."
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null);
+            setDeleteError(undefined);
+          }
+        }}
+        title={`Delete "${deleting?.name ?? ''}"?`}
+        description="The policy is removed and its classification, masking and handling rules no longer apply to the target resource. This cannot be undone."
+        confirmLabel="Delete policy"
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+      />
     </PageBody>
   );
 }

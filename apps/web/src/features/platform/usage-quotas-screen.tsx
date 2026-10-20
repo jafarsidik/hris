@@ -3,27 +3,21 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-import type { TenantSummary } from '@hris/shared-types';
-
+import {
+  HrisDataTable,
+  EMPTY_FILTERS,
+  type DataTableColumn,
+  type DataTableView,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useCan, useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { tenantsApi } from '@/features/tenants/tenants-api';
+
+import type { TenantSummary } from '@hris/shared-types';
 
 function bytesLabel(value: number | null): string {
   if (value === null) {
@@ -40,6 +34,75 @@ function percent(used: number | null, limit: number | null): number {
     return 0;
   }
   return Math.min(100, Math.round((used / limit) * 100));
+}
+
+const QUOTAS_VIEWS_STORAGE_KEY = 'hris:usage-quotas:views';
+
+const QUOTAS_BUILT_IN_VIEWS: readonly DataTableView[] = [
+  {
+    id: 'all',
+    name: 'All tenants',
+    builtIn: true,
+    default: true,
+    state: { filters: EMPTY_FILTERS, search: '' },
+  },
+];
+
+function buildTenantColumns(): readonly DataTableColumn<TenantSummary>[] {
+  return [
+    {
+      id: 'tenant',
+      header: 'Tenant',
+      sortValue: (row) => row.name,
+      cellClassName: 'font-medium',
+      cell: (row) => row.name,
+    },
+    {
+      id: 'users',
+      header: 'Users',
+      sortValue: (row) => row.userCount,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => (
+        <span>
+          {row.userCount}
+          {row.seatLimit !== null ? ` / ${row.seatLimit}` : ''}
+        </span>
+      ),
+    },
+    {
+      id: 'storage',
+      header: 'Storage',
+      sortValue: (row) => row.storageUsedBytes,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => (
+        <span>
+          {bytesLabel(row.storageUsedBytes)}
+          {row.storageQuotaBytes !== null ? ` / ${bytesLabel(row.storageQuotaBytes)}` : ''}
+        </span>
+      ),
+    },
+    {
+      id: 'utilization',
+      header: 'Utilization',
+      sortValue: (row) =>
+        Math.max(
+          percent(row.userCount, row.seatLimit),
+          percent(row.storageUsedBytes, row.storageQuotaBytes),
+        ),
+      align: 'right',
+      cell: (row) => {
+        const userPct = percent(row.userCount, row.seatLimit);
+        const storagePct = percent(row.storageUsedBytes, row.storageQuotaBytes);
+        const maxPct = Math.max(userPct, storagePct);
+        return (
+          <div className="flex items-center gap-2">
+            <Progress value={maxPct} />
+            <span className="font-mono text-xs">{maxPct}%</span>
+          </div>
+        );
+      },
+    },
+  ];
 }
 
 export function UsageQuotasScreen() {
@@ -63,71 +126,33 @@ export function UsageQuotasScreen() {
         description="Per-tenant consumption against seat and storage quotas."
       />
 
-      {tenants.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{tenants.error}</AlertDescription>
-        </Alert>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={buildTenantColumns()}
+        searchable
+        searchText={(row) => row.name}
+        searchPlaceholder="Search by tenant name…"
+        selectable={false}
+        views={{ builtIn: QUOTAS_BUILT_IN_VIEWS, storageKey: QUOTAS_VIEWS_STORAGE_KEY }}
+        status={
+          tenants.loading && rows.length === 0
+            ? 'loading'
+            : tenants.error !== undefined
+              ? 'error'
+              : 'ready'
+        }
+        errorCopy={tenants.error}
+        onRetry={() => tenants.reload()}
+        emptyTitle="No tenants"
+        emptyDescription="Tenants appear here once they are provisioned."
+        noResultsTitle="No tenants match this filter"
+        noResultsDescription="Try a different search to find the tenant you're looking for."
+      />
 
-      {tenants.loading && rows.length === 0 ? (
-        <Skeleton className="h-60 w-full" />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No tenants" />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Tenant quotas</CardTitle>
-            <CardDescription>
-              {rows.length} tenant{rows.length === 1 ? '' : 's'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tenant</TableHead>
-                  <TableHead>Users</TableHead>
-                  <TableHead>Storage</TableHead>
-                  <TableHead className="text-right">Utilization</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((t) => {
-                  const userPct = percent(t.userCount, t.seatLimit);
-                  const storagePct = percent(t.storageUsedBytes, t.storageQuotaBytes);
-                  return (
-                    <TableRow key={t.id}>
-                      <TableCell className="font-medium">{t.name}</TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {t.userCount}
-                        {t.seatLimit !== null ? ` / ${t.seatLimit}` : ''}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {bytesLabel(t.storageUsedBytes)}
-                        {t.storageQuotaBytes !== null
-                          ? ` / ${bytesLabel(t.storageQuotaBytes)}`
-                          : ''}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center gap-2">
-                          <Progress value={Math.max(userPct, storagePct)} />
-                          <span className="font-mono text-xs">
-                            {Math.max(userPct, storagePct)}%
-                          </span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-          <CardDescription className="mt-3 text-sm text-muted-foreground">
-            Utilization shows the higher of user-seat and storage usage against the tenant's quota.{' '}
-            {canManage ? 'Quota limits are managed on the Tenants screen.' : ''}
-          </CardDescription>
-        </Card>
-      )}
+      <p className="mt-3 text-sm text-muted-foreground">
+        Utilization shows the higher of user-seat and storage usage against the tenant's quota.{' '}
+        {canManage ? 'Quota limits are managed on the Tenants screen.' : ''}
+      </p>
     </PageBody>
   );
 }

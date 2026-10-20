@@ -211,7 +211,13 @@ export function EmployeeDirectory({
         Export, Add) never move when the view flips.
       */}
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-base font-semibold">Directory</h1>
+        {/*
+          `<h2>`, not `<h1>`: the page's own top-level heading is the `<h1>` that
+          `PageHeader` renders above this block ("Employees"). A second `<h1>` here left the
+          document outline with two top-level headings on one page — see `page-header.tsx`
+          for why the `<h1>` lives there and nowhere else.
+        */}
+        <h2 className="text-base font-semibold">Directory</h2>
         <div className="flex items-center gap-2">{directoryActions}</div>
       </div>
 

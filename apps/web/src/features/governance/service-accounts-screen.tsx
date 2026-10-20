@@ -2,17 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Copy, Plus, Trash2 } from 'lucide-react';
+import { Copy, Plus } from 'lucide-react';
 
 import type { ServiceAccountSummary } from '@hris/shared-types';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -24,19 +23,17 @@ import {
 } from '@/components/ui/dialog';
 import { FormErrorSummary, FormField, FormSubmitButton } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useCan, useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { serviceAccountsApi } from '@/features/governance/service-accounts-api';
+import {
+  SERVICE_ACCOUNT_BUILT_IN_VIEWS,
+  SERVICE_ACCOUNT_SEARCH_TEXT,
+  SERVICE_ACCOUNT_VIEWS_STORAGE_KEY,
+  buildServiceAccountColumns,
+  buildServiceAccountFilters,
+} from '@/features/governance/service-accounts-table-config';
 import { ApiRequestError } from '@/lib/api/http-client';
 
 function messageOf(error: unknown): string {
@@ -71,6 +68,13 @@ export function ServiceAccountsScreen() {
   const [description, setDescription] = useState('');
   const [key, setKey] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
+
+  const [confirming, setConfirming] = useState<{
+    readonly account: ServiceAccountSummary;
+    readonly action: 'delete' | 'disable';
+  } | null>(null);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | undefined>();
 
   const resetForm = () => {
     setName('');
@@ -117,23 +121,6 @@ export function ServiceAccountsScreen() {
     }
   };
 
-  const remove = async (id: string, n: string) => {
-    if (!window.confirm(`Delete “${n}"?`)) {
-      return;
-    }
-    setError(undefined);
-    setBusy(true);
-    try {
-      await serviceAccountsApi.remove(id);
-      setNotice(`Deleted “${n}".`);
-      accounts.reload();
-    } catch (cause) {
-      setError(messageOf(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const toggle = async (a: ServiceAccountSummary) => {
     setError(undefined);
     try {
@@ -141,6 +128,29 @@ export function ServiceAccountsScreen() {
       accounts.reload();
     } catch (cause) {
       setError(messageOf(cause));
+    }
+  };
+
+  const confirmAction = async () => {
+    if (confirming === null) {
+      return;
+    }
+    setConfirmPending(true);
+    setConfirmError(undefined);
+    try {
+      if (confirming.action === 'delete') {
+        await serviceAccountsApi.remove(confirming.account.id);
+        setNotice(`Deleted "${confirming.account.name}".`);
+      } else {
+        await serviceAccountsApi.update(confirming.account.id, { isActive: false });
+        setNotice(`Disabled "${confirming.account.name}".`);
+      }
+      setConfirming(null);
+      accounts.reload();
+    } catch (cause) {
+      setConfirmError(messageOf(cause));
+    } finally {
+      setConfirmPending(false);
     }
   };
 
@@ -161,67 +171,41 @@ export function ServiceAccountsScreen() {
         </Alert>
       )}
 
-      {accounts.loading && rows.length === 0 ? (
-        <Skeleton className="h-40 w-full" />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No service accounts" />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Service accounts</CardTitle>
-            <CardDescription>
-              {rows.length} account{rows.length === 1 ? '' : 's'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Key</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((a) => (
-                  <TableRow key={a.id}>
-                    <TableCell className="font-medium">{a.name}</TableCell>
-                    <TableCell className="font-mono text-sm">{a.key}</TableCell>
-                    <TableCell>
-                      <Badge variant={a.isActive ? 'success' : 'secondary'}>
-                        {a.isActive ? 'ACTIVE' : 'INACTIVE'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{a.expiresAt ?? '—'}</TableCell>
-                    <TableCell className="text-right">
-                      {canManage && (
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => void rotate(a.id)}>
-                            Rotate secret
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => void toggle(a)}>
-                            {a.isActive ? 'Disable' : 'Enable'}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void remove(a.id, a.name)}
-                          >
-                            <Trash2 className="mr-1 size-4" aria-hidden />
-                            Delete
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={buildServiceAccountColumns({
+          canManage,
+          onRotate: (account) => void rotate(account.id),
+          onToggle: (account) => {
+            if (account.isActive) {
+              setConfirmError(undefined);
+              setConfirming({ account, action: 'disable' });
+            } else {
+              void toggle(account);
+            }
+          },
+          onDelete: (account) => {
+            setConfirmError(undefined);
+            setConfirming({ account, action: 'delete' });
+          },
+        })}
+        filters={buildServiceAccountFilters(rows)}
+        searchable
+        searchText={SERVICE_ACCOUNT_SEARCH_TEXT}
+        searchPlaceholder="Search by name or key…"
+        selectable={false}
+        views={{
+          builtIn: SERVICE_ACCOUNT_BUILT_IN_VIEWS,
+          storageKey: SERVICE_ACCOUNT_VIEWS_STORAGE_KEY,
+        }}
+        status={accounts.loading ? 'loading' : accounts.error !== undefined ? 'error' : 'ready'}
+        errorCopy={accounts.error}
+        onRetry={() => accounts.reload()}
+        emptyTitle="No service accounts"
+        emptyDescription="Create a service account for non-human identities used in automation."
+        noResultsTitle="No accounts match this filter"
+        noResultsDescription="Try a different search or state, or clear the filters to see every account."
+      />
 
       {showSecret !== null && (
         <Dialog open={true} onOpenChange={(o) => setShowSecret(o ? showSecret : null)}>
@@ -323,6 +307,39 @@ export function ServiceAccountsScreen() {
           </DialogContent>
         </Dialog>
       )}
+
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setConfirming(null);
+            setConfirmError(undefined);
+          }
+        }}
+        title={
+          confirming?.action === 'delete'
+            ? `Delete "${confirming?.account.name}"?`
+            : `Disable "${confirming?.account.name}"?`
+        }
+        description={
+          confirming?.action === 'delete' ? (
+            <>
+              The service account and its API access are permanently removed. Any automation using
+              its credentials will fail until new credentials are issued.
+            </>
+          ) : (
+            <>
+              The service account keeps its configuration but can no longer authenticate. Any
+              automation using its credentials will fail until it is enabled again.
+            </>
+          )
+        }
+        confirmLabel={confirming?.action === 'delete' ? 'Delete' : 'Disable'}
+        tone="destructive"
+        pending={confirmPending}
+        error={confirmError}
+        onConfirm={() => void confirmAction()}
+      />
     </PageBody>
   );
 }

@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RefreshCw } from 'lucide-react';
 
+import { HrisDataTable, type DataTableColumn } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,15 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useCan, useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
@@ -45,6 +38,43 @@ function messageOf(error: unknown): string {
 }
 
 const SCHEDULES = ['off', 'daily', 'weekly', 'monthly'] as const;
+
+/**
+ * One recorded restore point.
+ *
+ * The screen stores a single latest run rather than a history, so the row is computed
+ * from the config and the list holds at most one entry. `lastRunAt` doubles as the id:
+ * it is the restore point's identity and it is unique because there is only one.
+ */
+interface RestorePointRow {
+  readonly id: string;
+  readonly startedAt: string;
+  readonly type: string;
+  readonly status: string;
+}
+
+const RESTORE_POINT_COLUMNS: readonly DataTableColumn<RestorePointRow>[] = [
+  {
+    id: 'startedAt',
+    header: 'Started at',
+    sortValue: (row) => row.startedAt,
+    cellClassName: 'font-mono text-sm',
+    cell: (row) => row.startedAt,
+  },
+  {
+    id: 'type',
+    header: 'Type',
+    sortValue: (row) => row.type,
+    cellClassName: 'text-muted-foreground',
+    cell: (row) => row.type,
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    sortValue: (row) => row.status,
+    cell: (row) => <Badge variant="success">{row.status}</Badge>,
+  },
+];
 
 export function BackupRestoreScreen() {
   const router = useRouter();
@@ -109,6 +139,12 @@ export function BackupRestoreScreen() {
     }
   }, [config]);
 
+  const lastRunAt = config.data?.lastRunAt ?? null;
+  const restorePoints: readonly RestorePointRow[] =
+    lastRunAt === null
+      ? []
+      : [{ id: lastRunAt, startedAt: lastRunAt, type: 'Full tenant', status: 'Completed' }];
+
   return (
     <PageBody>
       <PageHeader
@@ -116,11 +152,7 @@ export function BackupRestoreScreen() {
         description="Automated backup schedule and restore entry point."
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} onRetry={() => config.reload()} />}
       {notice !== undefined && (
         <Alert>
           <AlertDescription>{notice}</AlertDescription>
@@ -143,7 +175,7 @@ export function BackupRestoreScreen() {
                 onValueChange={(v) => setDraft({ ...draft, schedule: v ?? draft.schedule })}
                 disabled={!canManage || busy}
               >
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-40" aria-label="Backup schedule">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -192,52 +224,36 @@ export function BackupRestoreScreen() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Restore points</CardTitle>
-          <CardDescription>
-            Restore operations are infra-led; use this surface to record and review them.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {config.loading ? (
-            <Skeleton className="h-32 w-full" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Started at</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell className="font-mono text-sm">
-                    {config.data?.lastRunAt ?? 'No restore points'}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">Full tenant</TableCell>
-                  <TableCell>
-                    <Badge variant={config.data?.lastRunAt ? 'success' : 'secondary'}>
-                      {config.data?.lastRunAt ? 'Completed' : '—'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" disabled>
-                      Restore
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          )}
-          <p className="text-xs text-muted-foreground mt-2">
-            Actual backup creation and restore are handled by platform infrastructure; this screen
-            manages the schedule and records the outcome.
-          </p>
-        </CardContent>
-      </Card>
+      {/*
+        The restore points list used to be a one-row `<table>` inside its own card with
+        a skeleton and an empty state, duplicating what the shared table owns. It now
+        renders through the shared table; the outer card went with it because the
+        table brings its own. Search is switched off: the list holds at most one row,
+        so a search box would be a control that can only ever match or not match a
+        single record.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold">Restore points</h2>
+        <p className="text-sm text-muted-foreground">
+          Restore operations are infra-led; use this surface to record and review them.
+        </p>
+      </div>
+      <HrisDataTable
+        rows={restorePoints}
+        columns={RESTORE_POINT_COLUMNS}
+        searchable={false}
+        selectable={false}
+        status={config.loading ? 'loading' : config.error !== undefined ? 'error' : 'ready'}
+        errorCopy={config.error}
+        onRetry={() => config.reload()}
+        emptyTitle="No restore points recorded yet"
+        emptyDescription="Run a backup to create the first restore point."
+      />
+
+      <p className="text-xs text-muted-foreground">
+        Actual backup creation and restore are handled by platform infrastructure; this screen
+        manages the schedule and records the outcome.
+      </p>
     </PageBody>
   );
 }

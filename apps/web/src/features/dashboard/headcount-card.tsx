@@ -13,13 +13,13 @@ const MAX_BARS = 6;
  *
  * Deliberately library-free: a single static chart on a dashboard does not justify a
  * graphing dependency, and an SVG whose geometry is computed in the render below is
- * crisp at any pixel ratio and unchanged between renders — the dataset is identical
- * every server start, so the picture must be too.
+ * crisp at any pixel ratio and cheap to redraw. The rows come from the same employee
+ * repository the directory reads, so the chart always describes the current table.
  *
  * The chart carries a text summary as its accessible name; no screen reader is going to
  * parse two dozen `<rect>` elements into "Finance has eleven people".
  */
-export function HrSampleCard({ employees }: { employees: readonly Employee[] }) {
+export function HeadcountCard({ employees }: { employees: readonly Employee[] }) {
   const counts = new Map<string, number>();
   for (const employee of employees) {
     counts.set(employee.department, (counts.get(employee.department) ?? 0) + 1);
@@ -104,8 +104,7 @@ export function HrSampleCard({ employees }: { employees: readonly Employee[] }) 
         )}
 
         <p className="mt-2 text-xs text-muted-foreground">
-          Sample data &middot; the employee endpoint is not built yet, so this chart sums the
-          generated directory and resets each time the server restarts.
+          Computed from the employee records in the directory.
         </p>
       </CardContent>
     </Card>

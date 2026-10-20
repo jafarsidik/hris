@@ -3,12 +3,19 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import {
+  HrisDataTable,
+  EMPTY_FILTERS,
+  PINNED_ACTIONS_CELL_CLASS,
+  PINNED_ACTIONS_HEADER_CLASS,
+  type DataTableColumn,
+  type DataTableFilter,
+  type DataTableView,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -27,16 +34,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Plus } from 'lucide-react';
 
 import { useCan, useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
@@ -69,7 +66,7 @@ function blankForm(): ModuleFormInput {
 }
 
 /** Create or edit one registered module. */
-function ModuleForm({
+export function ModuleForm({
   open,
   onOpenChange,
   module,
@@ -267,6 +264,120 @@ function ModuleForm({
   );
 }
 
+const MODULE_VIEWS_STORAGE_KEY = 'hris:modules:views';
+
+const MODULE_STATE_OPTIONS = [
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'INACTIVE', label: 'Inactive' },
+];
+
+function buildModuleFilters(
+  applications: readonly ApplicationSummary[],
+): readonly DataTableFilter<ModuleSummary>[] {
+  const appOptions = applications
+    .map((app) => ({ value: app.id, label: app.name }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  return [
+    {
+      kind: 'select',
+      id: 'application',
+      label: 'Application',
+      placeholder: 'All applications',
+      getValue: (row) => row.applicationId,
+      options: appOptions,
+    },
+    {
+      kind: 'select',
+      id: 'state',
+      label: 'State',
+      placeholder: 'All states',
+      getValue: (row) => (row.isActive ? 'ACTIVE' : 'INACTIVE'),
+      options: MODULE_STATE_OPTIONS,
+    },
+  ];
+}
+
+const withModuleState = (state: 'ACTIVE' | 'INACTIVE') => ({
+  filters: { ...EMPTY_FILTERS, select: { state } },
+  search: '',
+});
+
+const MODULE_BUILT_IN_VIEWS: readonly DataTableView[] = [
+  {
+    id: 'all',
+    name: 'All modules',
+    builtIn: true,
+    default: true,
+    state: { filters: EMPTY_FILTERS, search: '' },
+  },
+  { id: 'active', name: 'Active', builtIn: true, state: withModuleState('ACTIVE') },
+  { id: 'inactive', name: 'Inactive', builtIn: true, state: withModuleState('INACTIVE') },
+];
+
+function buildModuleColumns({
+  applications,
+  onEdit,
+}: {
+  readonly applications: readonly ApplicationSummary[];
+  readonly onEdit?: (module: ModuleSummary) => void;
+}): readonly DataTableColumn<ModuleSummary>[] {
+  const appMap = new Map(applications.map((app) => [app.id, app]));
+
+  const columns: DataTableColumn<ModuleSummary>[] = [
+    {
+      id: 'key',
+      header: 'Key',
+      sortValue: (row) => row.key,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.key,
+    },
+    {
+      id: 'name',
+      header: 'Name',
+      sortValue: (row) => row.name,
+      cellClassName: 'font-medium',
+      cell: (row) => row.name,
+    },
+    {
+      id: 'application',
+      header: 'Application',
+      sortValue: (row) => appMap.get(row.applicationId)?.name ?? '',
+      cellClassName: 'text-muted-foreground',
+      cell: (row) => appMap.get(row.applicationId)?.name ?? '—',
+    },
+    {
+      id: 'state',
+      header: 'State',
+      sortValue: (row) => (row.isActive ? 'ACTIVE' : 'INACTIVE'),
+      cell: (row) => (
+        <Badge variant={row.isActive ? 'success' : 'secondary'}>
+          {row.isActive ? 'ACTIVE' : 'INACTIVE'}
+        </Badge>
+      ),
+    },
+  ];
+
+  if (onEdit !== undefined) {
+    columns.push({
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      hideable: false,
+      headerClassName: PINNED_ACTIONS_HEADER_CLASS,
+      cellClassName: PINNED_ACTIONS_CELL_CLASS,
+      cell: (row) => (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => onEdit(row)}>
+            Edit
+          </Button>
+        </div>
+      ),
+    });
+  }
+
+  return columns;
+}
+
 export function ModulesScreen() {
   const router = useRouter();
   const { state } = useSession();
@@ -286,100 +397,64 @@ export function ModulesScreen() {
   const appRows = applications.data ?? [];
   const moduleRows = modules.data ?? [];
 
+  const loading = applications.loading || modules.loading;
+  const error = applications.error ?? modules.error;
+
   return (
     <PageBody>
       <PageHeader
         title="Module Registry"
         description="Modules owned by each application — the functional areas that register resources."
+        actions={
+          <ModuleForm
+            open={open}
+            onOpenChange={(next) => {
+              setOpen(next);
+              if (!next) {
+                setEditing(null);
+              }
+            }}
+            module={editing}
+            applications={appRows}
+            onSaved={() => {
+              modules.reload();
+              applications.reload();
+              setEditing(null);
+            }}
+          />
+        }
       />
-      {applications.loading || modules.loading ? (
-        <Skeleton className="h-40 w-full" />
-      ) : (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Modules</CardTitle>
-                <CardDescription>
-                  {moduleRows.length} module{moduleRows.length === 1 ? '' : 's'} across{' '}
-                  {appRows.length} application{appRows.length === 1 ? '' : 's'}
-                </CardDescription>
-              </div>
-              <DialogTrigger
-                render={
-                  <Button disabled={!canManage || applications.loading || modules.loading}>
-                    <Plus className="mr-1 size-4" />
-                    Register module
-                  </Button>
-                }
-              />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {moduleRows.length === 0 ? (
-              <EmptyState title="No modules are registered yet" />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Key</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Application</TableHead>
-                    <TableHead>State</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {moduleRows.map((module: ModuleSummary) => {
-                    const application = appRows.find((a) => a.id === module.applicationId);
-                    return (
-                      <TableRow key={module.id}>
-                        <TableCell className="font-mono text-sm">{module.key}</TableCell>
-                        <TableCell className="font-medium">{module.name}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {application?.name ?? '—'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={module.isActive ? 'success' : 'secondary'}>
-                            {module.isActive ? 'ACTIVE' : 'INACTIVE'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {canManage && (
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setEditing(module);
-                                  setOpen(true);
-                                }}
-                              >
-                                Edit
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
-      <ModuleForm
-        open={open}
-        onOpenChange={setOpen}
-        module={editing}
-        applications={appRows}
-        onSaved={() => {
-          modules.reload();
-          applications.reload();
-          setEditing(null);
+      <HrisDataTable
+        rows={moduleRows}
+        columns={buildModuleColumns({
+          applications: appRows,
+          onEdit: canManage
+            ? (module) => {
+                setEditing(module);
+                setOpen(true);
+              }
+            : undefined,
+        })}
+        filters={buildModuleFilters(appRows)}
+        searchable
+        searchText={(row) => {
+          const app = appRows.find((a) => a.id === row.applicationId);
+          return [row.key, row.name, app?.name ?? ''].join(' ');
         }}
+        searchPlaceholder="Search by key, name or application…"
+        selectable={false}
+        views={{ builtIn: MODULE_BUILT_IN_VIEWS, storageKey: MODULE_VIEWS_STORAGE_KEY }}
+        status={loading ? 'loading' : error !== undefined ? 'error' : 'ready'}
+        errorCopy={error}
+        onRetry={() => {
+          applications.reload();
+          modules.reload();
+        }}
+        emptyTitle="No modules are registered yet"
+        emptyDescription="Register a module to stand up a new functional area within an application."
+        noResultsTitle="No modules match this filter"
+        noResultsDescription="Try a different search or clear the filters to see every module."
       />
     </PageBody>
   );

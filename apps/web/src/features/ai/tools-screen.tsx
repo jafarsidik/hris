@@ -9,6 +9,7 @@ import type { AiToolSummary } from '@hris/shared-types';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/feedback/empty-state';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -79,22 +80,14 @@ export function ToolsScreen() {
         description="Callable functions an agent may use, and this tenant's availability overrides."
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
       {notice !== undefined && (
         <Alert>
           <AlertTitle>Updated</AlertTitle>
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
-      {tools.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{tools.error}</AlertDescription>
-        </Alert>
-      )}
+      <ErrorPanel error={tools.error} onRetry={() => tools.reload()} />
 
       {tools.loading && rows.length === 0 ? (
         <Skeleton className="h-40 w-full" />

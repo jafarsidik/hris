@@ -4,10 +4,12 @@ A multi-company Human Resources Information System: one platform serving several
 companies, each with its own entity hierarchy, data isolation, currencies, leave
 policies and approval workflows.
 
-This repository is currently at **Phase 0** — the architectural foundation. The
-applications boot, the shared contracts are typed, the toolchain is enforced in
-CI, and the local stack runs in Docker. No business module is implemented yet;
-see [docs/PHASE_STATUS.md](docs/PHASE_STATUS.md).
+This repository is currently at **Phase 0** (architectural foundation) with
+**Phase 2 in progress** — the ClickUp-inspired web UI redesign and the Core HR
+screen migration. The applications boot, the shared contracts are typed, the
+toolchain is enforced in CI, and the local stack runs in Docker. Business
+modules are still being delivered phase by phase; the redesign and its
+verification are tracked in [docs/PHASE_STATUS.md](docs/PHASE_STATUS.md).
 
 ## Architecture at a glance
 
@@ -126,14 +128,16 @@ machine. A change there is a change to the public surface of the platform.
 | --------------------------------------------------- | --------------------------------------------------------------- |
 | [MASTER_PRD.md](docs/MASTER_PRD.md)                 | Product requirements and module catalogue                        |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md)             | System architecture, data model, security model                 |
-| [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Phase plan and acceptance criteria                            |
-| [PHASE_STATUS.md](docs/PHASE_STATUS.md)             | What is done, and what is explicitly not                         |
-| [DATABASE.md](docs/DATABASE.md)                     | Schema conventions, migrations, isolation, backup and recovery   |
-| [API.md](docs/API.md)                               | Versioning, response contract, errors, pagination, correlation  |
-| [SECURITY.md](docs/SECURITY.md)                     | Threat model, controls in place, controls still to come         |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md)                 | Images, environment, release, rollback                          |
-| [AI_SPEC.md](docs/AI_SPEC.md)                       | Provider-agnostic AI layer and its data boundaries               |
-| [ADR/](docs/ADR/)                                   | Architecture decision records                                    |
+|| [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Phase plan and acceptance criteria                            |
+|| [PHASE_STATUS.md](docs/PHASE_STATUS.md)             | What is done, and what is explicitly not                         |
+|| [DATABASE.md](docs/DATABASE.md)                     | Schema conventions, migrations, isolation, backup and recovery   |
+|| [API.md](docs/API.md)                               | Versioning, response contract, errors, pagination, correlation  |
+|| [SECURITY.md](docs/SECURITY.md)                     | Threat model, controls in place, controls still to come          |
+|| [DEPLOYMENT.md](docs/DEPLOYMENT.md)                 | Images, environment, release, rollback                           |
+|| [DIAGNOSTICS.md](docs/DIAGNOSTICS.md)               | Build, image, container and route verification for the web tier  |
+|| [AI_SPEC.md](docs/AI_SPEC.md)                       | Provider-agnostic AI layer and its data boundaries               |
+|| [ADR/](docs/ADR/)                                   | Architecture decision records                                    |
+|| templates/migration-brief.md                         | **Referenced by session notes; not present in the repository**   |
 
 ## Security
 
@@ -162,3 +166,37 @@ mistaken for a finished feature:
 - No business modules, no employee data, no payroll calculation.
 - `/health/ready` reports process health only. It does not yet check the database
   or the queue; that lands with the first connection in phase 1.
+
+## Redesign (visual acceptance) status
+
+The web UI has been redesigned to the ClickUp-inspired enterprise workspace.
+The work is tracked in [docs/PHASE_STATUS.md](docs/PHASE_STATUS.md) under the
+**Phase 2 — Visual acceptance and Core HR** section (a parallel effort to the
+original numbered delivery plan, so it is not one of its 0-17 phases).
+
+Completed:
+
+- **Org chart** — 5 defects fixed and verified end-to-end: the route that crashed
+  on a temporal-dead-zone error; the chart with zero stylesheet; node clicks that
+  never opened the detail drawer; the root held off-screen on open; the nested
+  `<main>` and duplicate breadcrumb. Plus dark-mode correctness and a working
+  responsive layout (390px without page overflow).
+- **Core HR screens (6 routes)** migrated to the shared `HrisDataTable`:
+  `/employees/directory` (card grid), `/employees/onboarding` (probation and
+  confirmation pipeline), `/reports/headcount`, `/reports/workforce`,
+  `/reports/movement`, `/reports/turnover`. Data sources are real where they
+  exist — employees come from the live API; the movement report reads the demo
+  employment dataset and the turnover report reads live employees plus the demo
+  offboarding cases, both labelled on screen.
+- **Phase 5 components** — a ConfirmDialog for destructive actions, a password
+  generator (with spec), and the pinned-actions column fix in the shared table.
+
+Verification:
+
+- `apps/web`: `eslint` clean, `tsc --noEmit` clean, `vitest` 349 passed / 24 files.
+- Production web image builds; the stack runs healthy.
+- All 6 new routes served and exercised in the browser (search, filters, KPIs,
+  pagination, detail drawers); light, dark and 390px viewport checks passed;
+  vision review confirmed the rendered interface is coherent.
+
+## Architecture at a glance

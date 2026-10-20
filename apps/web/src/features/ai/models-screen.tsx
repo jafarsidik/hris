@@ -6,12 +6,13 @@ import { Plus } from 'lucide-react';
 
 import type { AiModelSummary, CreateAiModelInput } from '@hris/shared-types';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -22,19 +23,17 @@ import {
 } from '@/components/ui/dialog';
 import { FormErrorSummary, FormField, FormSubmitButton } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
+import { useToast } from '@/components/ui/toast';
 import { useCan, useSession } from '@/features/auth/session-context';
 import { aiApi } from '@/features/ai/ai-api';
+import {
+  MODEL_BUILT_IN_VIEWS,
+  MODEL_SEARCH_TEXT,
+  MODEL_VIEWS_STORAGE_KEY,
+  buildModelColumns,
+  buildModelFilters,
+} from '@/features/ai/model-table-config';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { ApiRequestError } from '@/lib/api/http-client';
 
@@ -111,6 +110,7 @@ export function ModelsScreen() {
   const canManage = useCan('ai.create');
   const canUpdate = useCan('ai.update');
   const canDelete = useCan('ai.delete');
+  const { toast } = useToast();
 
   useEffect(() => {
     if (state.status === 'anonymous') {
@@ -124,6 +124,9 @@ export function ModelsScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ModelDraft>(EMPTY_DRAFT);
   const [pending, setPending] = useState(false);
+  const [deleting, setDeleting] = useState<AiModelSummary | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
 
   const rows = (models.data ?? []) as readonly AiModelSummary[];
 
@@ -175,14 +178,29 @@ export function ModelsScreen() {
     }
   }, [draft, editingId, models]);
 
-  const remove = async (row: AiModelSummary) => {
-    if (!window.confirm(`Delete model "${row.key}"?`)) return;
+  const requestDelete = (row: AiModelSummary) => {
+    setDeleteError(undefined);
+    setDeleting(row);
+  };
+
+  const confirmDelete = async () => {
+    if (deleting === null) return;
+    setDeletePending(true);
+    setDeleteError(undefined);
     try {
-      await aiApi.removeModel(row.id);
-      setNotice(`Model "${row.key}" deleted.`);
+      await aiApi.removeModel(deleting.id);
+      toast({
+        title: 'Model deleted',
+        description: `Model "${deleting.key}" was deleted.`,
+        variant: 'success',
+      });
+      setDeleting(null);
       models.reload();
     } catch (cause) {
-      setError(messageOf(cause));
+      // Surfaced inside the dialog so the reader can retry or back out.
+      setDeleteError(messageOf(cause));
+    } finally {
+      setDeletePending(false);
     }
   };
 
@@ -213,113 +231,38 @@ export function ModelsScreen() {
         }
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
       {notice !== undefined && (
         <Alert>
           <AlertTitle>Updated</AlertTitle>
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
-      {models.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{models.error}</AlertDescription>
-        </Alert>
-      )}
+      <ErrorPanel error={models.error} onRetry={() => models.reload()} />
 
-      {models.loading && rows.length === 0 ? (
-        <Skeleton className="h-48 w-full" />
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No models catalogued. The gateway falls back to its environment model.
-        </p>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Catalogue</CardTitle>
-            <CardDescription>
-              {rows.length} model{rows.length === 1 ? '' : 's'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead className="text-right">Context</TableHead>
-                  <TableHead className="text-right">Price in / out (per 1M)</TableHead>
-                  <TableHead>Default</TableHead>
-                  <TableHead>Enabled</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>
-                      <div className="font-mono text-sm">{row.key}</div>
-                      <div className="text-xs text-muted-foreground">{row.name}</div>
-                    </TableCell>
-                    <TableCell className="text-sm">{row.provider}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {row.contextWindow ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {row.inputPricePerMillion === null ? '—' : `$${row.inputPricePerMillion}`} /{' '}
-                      {row.outputPricePerMillion === null ? '—' : `$${row.outputPricePerMillion}`}
-                    </TableCell>
-                    <TableCell>
-                      {row.isDefault ? (
-                        <Badge variant="success">DEFAULT</Badge>
-                      ) : (
-                        canUpdate && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void toggle(row, { isDefault: true })}
-                          >
-                            Make default
-                          </Button>
-                        )
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={row.isEnabled}
-                        disabled={!canUpdate}
-                        onCheckedChange={(next) => void toggle(row, { isEnabled: next })}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {canUpdate && (
-                          <Button variant="outline" size="sm" onClick={() => open(row)}>
-                            Edit
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() => void remove(row)}
-                          >
-                            Delete
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={buildModelColumns({
+          canUpdate,
+          canDelete,
+          onToggle: toggle,
+          onEdit: open,
+          onDelete: requestDelete,
+        })}
+        filters={buildModelFilters(rows)}
+        searchable
+        searchText={MODEL_SEARCH_TEXT}
+        searchPlaceholder="Search by model key, name or provider…"
+        selectable={false}
+        views={{ builtIn: MODEL_BUILT_IN_VIEWS, storageKey: MODEL_VIEWS_STORAGE_KEY }}
+        status={models.loading ? 'loading' : models.error !== undefined ? 'error' : 'ready'}
+        errorCopy={models.error}
+        onRetry={() => models.reload()}
+        emptyTitle="No models catalogued"
+        emptyDescription="The gateway falls back to its environment model."
+        noResultsTitle="No models match this filter"
+        noResultsDescription="Try a different search or clear the filters to see every model."
+      />
 
       <Dialog
         open={dialogOpen}
@@ -440,6 +383,29 @@ export function ModelsScreen() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setDeleting(null);
+            setDeleteError(undefined);
+          }
+        }}
+        title={`Delete model "${deleting?.key ?? ''}"?`}
+        description={
+          <>
+            The model's pricing is removed with it. Agents and calls that name{' '}
+            <code className="font-mono">{deleting?.key ?? ''}</code> fall back to the tenant
+            default, or to the gateway's environment model when none is set.
+          </>
+        }
+        confirmLabel="Delete"
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+      />
     </PageBody>
   );
 }

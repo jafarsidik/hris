@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { PageToolbar } from '@/components/layout/page-toolbar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +15,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { FormErrorSummary, FormField, FormSubmitButton } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
@@ -27,17 +25,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/components/ui/toast';
 import { useCan, useSession } from '@/features/auth/session-context';
 import { ApiRequestError } from '@/lib/api/http-client';
 import {
@@ -48,7 +38,14 @@ import {
 import { Plus } from 'lucide-react';
 
 import { getIntegrations } from './index';
-import { KIND_LABELS, statusBadgeVariant } from './integration-presentation';
+import { KIND_LABELS } from './integration-presentation';
+import {
+  INTEGRATION_BUILT_IN_VIEWS,
+  INTEGRATION_SEARCH_TEXT,
+  INTEGRATION_VIEWS_STORAGE_KEY,
+  buildIntegrationColumns,
+  buildIntegrationFilters,
+} from './integration-table-config';
 
 /** Turns an unknown rejection into a message a form or notice can render inline. */
 function messageOf(error: unknown): string {
@@ -59,78 +56,6 @@ function messageOf(error: unknown): string {
     return error.message;
   }
   return 'The change could not be saved.';
-}
-
-function formatTimestamp(value: string | null): string {
-  if (value === null) {
-    return 'Never';
-  }
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value),
-  );
-}
-
-/** Confirms a destructive action in a dialog and surfaces whatever the API rejects with. */
-function ConfirmDelete({
-  label,
-  description,
-  onConfirm,
-}: {
-  readonly label: string;
-  readonly description: string;
-  readonly onConfirm: () => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-
-  async function confirm() {
-    setPending(true);
-    setError(undefined);
-    try {
-      await onConfirm();
-      setOpen(false);
-    } catch (err) {
-      setError(messageOf(err));
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) {
-          setError(undefined);
-        }
-      }}
-    >
-      <DialogTrigger
-        render={
-          <Button variant="outline" size="sm">
-            {label}
-          </Button>
-        }
-      />
-      <DialogContent aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>{label}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        {error !== undefined && <FormErrorSummary>{error}</FormErrorSummary>}
-        <DialogFooter>
-          <Button variant="outline" disabled={pending} onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button variant="destructive" disabled={pending} onClick={() => void confirm()}>
-            {pending ? 'Deleting…' : label}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 interface IntegrationFormState {
@@ -410,6 +335,7 @@ export function IntegrationsScreen({
 }) {
   const router = useRouter();
   const { state } = useSession();
+  const { toast } = useToast();
   const repository = getIntegrations();
   const canCreate = useCan('integration.create');
   const canUpdate = useCan('integration.update');
@@ -422,8 +348,11 @@ export function IntegrationsScreen({
   const [tick, setTick] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<IntegrationSummary | null>(null);
-  const [testing, setTesting] = useState<string | undefined>();
+  const [testingId, setTestingId] = useState<string | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
+  const [deleting, setDeleting] = useState<IntegrationSummary | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
 
   useEffect(() => {
     if (state.status === 'anonymous') {
@@ -462,13 +391,19 @@ export function IntegrationsScreen({
   const reload = () => setTick((value) => value + 1);
   const visible = (rows ?? []).filter((row) => kindFilter === undefined || row.kind === kindFilter);
 
+  // This screen renders twice — the whole registry and a webhook-only view — so the empty
+  // copy has to name what the page actually lists. "No integrations yet" on the Webhooks
+  // page would be false the moment any non-webhook integration exists.
+  const noun = kindFilter === 'WEBHOOK' ? 'webhook' : 'integration';
+  const article = kindFilter === 'WEBHOOK' ? 'a' : 'an';
+
   function openCreate() {
     setEditing(null);
     setDialogOpen(true);
   }
 
   async function runTest(id: string) {
-    setTesting(id);
+    setTestingId(id);
     setNotice(undefined);
     try {
       const result = await repository.testIntegration(id);
@@ -477,7 +412,29 @@ export function IntegrationsScreen({
     } catch (err) {
       setNotice(messageOf(err));
     } finally {
-      setTesting(undefined);
+      setTestingId(undefined);
+    }
+  }
+
+  async function confirmDelete(): Promise<void> {
+    if (deleting === null) {
+      return;
+    }
+    setDeletePending(true);
+    setDeleteError(undefined);
+    try {
+      await repository.deleteIntegration(deleting.id);
+      toast({
+        title: 'Integration deleted',
+        description: `${deleting.name} and its delivery history were removed.`,
+        variant: 'success',
+      });
+      setDeleting(null);
+      reload();
+    } catch (err) {
+      setDeleteError(messageOf(err));
+    } finally {
+      setDeletePending(false);
     }
   }
 
@@ -485,118 +442,49 @@ export function IntegrationsScreen({
     <PageBody>
       <PageHeader title={title} description={description} />
 
-      <PageToolbar className="justify-end">
-        {canCreate && (
-          <Button variant="default" onClick={openCreate}>
-            <Plus aria-hidden="true" className="size-4" />
-            Add integration
-          </Button>
-        )}
-      </PageToolbar>
-
       {notice !== undefined && (
         <p role="status" className="text-sm text-muted-foreground">
           {notice}
         </p>
       )}
 
-      {loading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      ) : loadError !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {loadError}
-        </p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Key</TableHead>
-              <TableHead>Kind</TableHead>
-              <TableHead>Provider</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Last checked</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visible.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell className="font-medium">
-                  <Link href={`/setup/integrations/${row.id}`} className="hover:underline">
-                    {row.name}
-                  </Link>
-                  {!row.isEnabled && (
-                    <Badge variant="outline" className="ml-2">
-                      Disabled
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell className="font-mono text-xs">{row.key}</TableCell>
-                <TableCell>{KIND_LABELS[row.kind]}</TableCell>
-                <TableCell>{row.provider}</TableCell>
-                <TableCell>
-                  <Badge variant={statusBadgeVariant(row.status)}>{row.status}</Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {formatTimestamp(row.lastCheckedAt)}
-                </TableCell>
-                <TableCell className="flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    render={<Link href={`/setup/integrations/${row.id}`} />}
-                  >
-                    Open
-                  </Button>
-                  {canManage && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={testing === row.id}
-                      onClick={() => void runTest(row.id)}
-                    >
-                      {testing === row.id ? 'Testing…' : 'Test'}
-                    </Button>
-                  )}
-                  {canUpdate && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setEditing(row);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                  )}
-                  {canDelete && (
-                    <ConfirmDelete
-                      label="Delete"
-                      description={`Delete "${row.name}"? Its delivery history and subscriptions are removed too.`}
-                      onConfirm={async () => {
-                        await repository.deleteIntegration(row.id);
-                        reload();
-                      }}
-                    />
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-            {visible.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
-                  No integrations yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      )}
+      <HrisDataTable
+        rows={visible}
+        columns={buildIntegrationColumns({
+          canManage,
+          canUpdate,
+          canDelete,
+          testingId,
+          onOpen: (integration) => router.push(`/setup/integrations/${integration.id}`),
+          onTest: (integration) => void runTest(integration.id),
+          onEdit: (integration) => {
+            setEditing(integration);
+            setDialogOpen(true);
+          },
+          onDelete: (integration) => setDeleting(integration),
+        })}
+        filters={buildIntegrationFilters(visible)}
+        searchable
+        searchText={INTEGRATION_SEARCH_TEXT}
+        searchPlaceholder="Search integrations by name, key, provider…"
+        selectable={false}
+        views={{ builtIn: INTEGRATION_BUILT_IN_VIEWS, storageKey: INTEGRATION_VIEWS_STORAGE_KEY }}
+        status={loading ? 'loading' : loadError !== undefined ? 'error' : 'ready'}
+        errorCopy={loadError}
+        onRetry={reload}
+        emptyTitle={`No ${noun}s yet`}
+        emptyDescription={`Register ${article} ${noun} to connect this tenant to an external system.`}
+        noResultsTitle={`No ${noun}s match this filter`}
+        noResultsDescription={`Try a different search or status, or clear the filters to see every ${noun}.`}
+        actions={
+          canCreate ? (
+            <Button variant="default" onClick={openCreate}>
+              <Plus aria-hidden="true" className="size-4" />
+              Add integration
+            </Button>
+          ) : undefined
+        }
+      />
 
       <IntegrationDialog
         open={dialogOpen}
@@ -604,6 +492,23 @@ export function IntegrationsScreen({
         integration={editing}
         defaultKind={createKind ?? 'EMAIL'}
         onSaved={reload}
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null);
+            setDeleteError(undefined);
+          }
+        }}
+        title={`Delete ${deleting?.name ?? 'this integration'}?`}
+        description="The integration, its delivery history and its subscriptions are removed. This cannot be undone."
+        confirmLabel="Delete"
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
       />
     </PageBody>
   );

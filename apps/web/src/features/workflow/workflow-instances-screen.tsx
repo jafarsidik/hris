@@ -8,7 +8,7 @@ import { WORKFLOW_INSTANCE_STATUSES, type WorkflowInstanceStatus } from '@hris/s
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/feedback/empty-state';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -84,11 +84,7 @@ export function WorkflowInstancesScreen() {
         description="Workflow instances, the tasks they raised and the transitions they recorded."
       />
 
-      {instances.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{instances.error}</AlertDescription>
-        </Alert>
-      )}
+      <ErrorPanel error={instances.error} onRetry={() => instances.reload()} />
 
       <div className="flex flex-wrap items-center gap-2">
         {(['ALL', ...WORKFLOW_INSTANCE_STATUSES] as const).map((option) => (

@@ -3,8 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import {
+  HrisDataTable,
+  EMPTY_FILTERS,
+  type DataTableColumn,
+  type DataTableFilter,
+  type DataTableView,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,10 +29,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-
 import { useSession } from '@/features/auth/session-context';
 
 import type { PayrollPeriod, PayrollRun } from './payroll-types';
+
+const RUN_VIEWS_STORAGE_KEY = 'hris:payroll-runs:views';
 
 function formatWhen(value: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value));
@@ -54,6 +61,84 @@ function periodBadge(status: string) {
       return <Badge variant="outline">{status}</Badge>;
   }
 }
+
+const RUN_STATUS_OPTIONS = [
+  { value: 'DRAFT', label: 'Draft' },
+  { value: 'OPEN', label: 'Open' },
+  { value: 'PROCESSING', label: 'Processing' },
+  { value: 'APPROVED', label: 'Approved' },
+  { value: 'PAID', label: 'Paid' },
+  { value: 'CLOSED', label: 'Closed' },
+];
+
+const RUN_COLUMNS: readonly DataTableColumn<PayrollRun>[] = [
+  {
+    id: 'employee',
+    header: 'Employee',
+    sortValue: (row) => row.employeeName,
+    cell: (row) => (
+      <div>
+        <div className="font-medium">{row.employeeName}</div>
+        <div className="text-xs text-muted-foreground">{row.employeeNumber}</div>
+      </div>
+    ),
+  },
+  {
+    id: 'period',
+    header: 'Period',
+    sortValue: (row) => row.periodCode,
+    cellClassName: 'font-mono text-sm',
+    cell: (row) => row.periodCode,
+  },
+  {
+    id: 'base',
+    header: 'Base',
+    sortValue: (row) => row.baseSalary,
+    align: 'right',
+    cellClassName: 'font-mono text-sm',
+    cell: (row) => formatMoney(row.baseSalary),
+  },
+  {
+    id: 'earnings',
+    header: 'Earnings',
+    sortValue: (row) => row.totalEarnings,
+    align: 'right',
+    cellClassName: 'font-mono text-sm',
+    cell: (row) => formatMoney(row.totalEarnings),
+  },
+  {
+    id: 'deductions',
+    header: 'Deductions',
+    sortValue: (row) => row.totalDeductions,
+    align: 'right',
+    cellClassName: 'font-mono text-sm',
+    cell: (row) => formatMoney(row.totalDeductions),
+  },
+  {
+    id: 'netPay',
+    header: 'Net pay',
+    sortValue: (row) => row.netPay,
+    align: 'right',
+    cellClassName: 'font-mono text-sm',
+    cell: (row) => formatMoney(row.netPay),
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    sortValue: (row) => row.status,
+    cell: (row) => periodBadge(row.status),
+  },
+];
+
+const RUN_VIEWS: readonly DataTableView[] = [
+  {
+    id: 'all',
+    name: 'All runs',
+    builtIn: true,
+    default: true,
+    state: { filters: EMPTY_FILTERS, search: '' },
+  },
+];
 
 /**
  * Payroll Runs: calculated payroll per employee per period, with the period
@@ -90,28 +175,20 @@ export function PayrollRunsScreen({
   const paidCount = filtered.filter((r) => r.status === 'PAID').length;
   const totalNet = filtered.reduce((sum, r) => sum + r.netPay, 0);
 
+  const runStatusFilter: DataTableFilter<PayrollRun> = {
+    kind: 'select',
+    id: 'status',
+    label: 'Status',
+    placeholder: 'All statuses',
+    getValue: (row) => row.status,
+    options: RUN_STATUS_OPTIONS,
+  };
+
   return (
     <PageBody>
       <PageHeader
-        title="Payroll"
+        title="Payroll Runs"
         description="Payroll periods, salary structures and calculated runs."
-        actions={
-          <Select value={periodFilter} onValueChange={(value) => setPeriodFilter(value ?? '')}>
-            <SelectTrigger className="w-48" aria-label="Filter by period">
-              <SelectValue placeholder="All periods" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="" key="all">
-                All periods
-              </SelectItem>
-              {periods.map((period) => (
-                <SelectItem key={period.id} value={period.id}>
-                  {period.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        }
       />
 
       <div className="mb-4 grid gap-4 sm:grid-cols-3">
@@ -139,7 +216,9 @@ export function PayrollRunsScreen({
         <Card className="mb-4">
           <CardHeader>
             <CardTitle>Payroll periods</CardTitle>
-            <CardDescription>{periods.length} period target(s) in the calendar</CardDescription>
+            <CardDescription>
+              {periods.length} period{periods.length === 1 ? '' : 's'} in the calendar
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -170,61 +249,46 @@ export function PayrollRunsScreen({
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Payroll runs</CardTitle>
-          <CardDescription>
-            {filtered.length} run{filtered.length === 1 ? '' : 's'}
-            {periodFilter !== '' ? ' in the selected period' : ''}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {filtered.length === 0 ? (
-            <EmptyState
-              title="No payroll runs match this view yet."
-              description="Pick another period to see its runs."
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead className="text-right">Base</TableHead>
-                  <TableHead className="text-right">Earnings</TableHead>
-                  <TableHead className="text-right">Deductions</TableHead>
-                  <TableHead className="text-right">Net pay</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>
-                      <div className="font-medium">{row.employeeName}</div>
-                      <div className="text-xs text-muted-foreground">{row.employeeNumber}</div>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{row.periodCode}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {formatMoney(row.baseSalary)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {formatMoney(row.totalEarnings)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {formatMoney(row.totalDeductions)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {formatMoney(row.netPay)}
-                    </TableCell>
-                    <TableCell>{periodBadge(row.status)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/*
+        The primary "Payroll runs" list used to be a bare `<table>` inside a `Card` with a
+        period filter bolted into the page header. It now uses the shared table, which brings
+        the toolbar, sorting, filters, column visibility, saved views and the empty /
+        no-results states. The period filter stays screen-level state because the summary
+        cards above read the same filtered set; it is handed to the table through the
+        toolbar's `actions` slot so it lives with the other controls.
+      */}
+      <HrisDataTable
+        rows={filtered}
+        columns={RUN_COLUMNS}
+        filters={[runStatusFilter]}
+        searchable
+        searchText={(row) => `${row.employeeName} ${row.employeeNumber} ${row.periodCode}`}
+        searchPlaceholder="Search by employee, number or period…"
+        selectable={false}
+        views={{ builtIn: RUN_VIEWS, storageKey: RUN_VIEWS_STORAGE_KEY }}
+        actions={
+          <Select value={periodFilter} onValueChange={(value) => setPeriodFilter(value ?? '')}>
+            <SelectTrigger className="w-48" aria-label="Filter by period">
+              <SelectValue placeholder="All periods" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="" key="all">
+                All periods
+              </SelectItem>
+              {periods.map((period) => (
+                <SelectItem key={period.id} value={period.id}>
+                  {period.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
+        status="ready"
+        emptyTitle="No payroll runs match this view yet."
+        emptyDescription="Pick another period to see its runs."
+        noResultsTitle="No runs match this filter"
+        noResultsDescription="Try a different search or status, or clear the filters to see every run."
+      />
 
       {salaryStructures.length > 0 && (
         <Card className="mt-4">

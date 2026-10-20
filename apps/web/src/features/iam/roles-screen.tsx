@@ -8,7 +8,9 @@ import { DATA_SCOPES, type DataScope } from '@hris/shared-types';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/feedback/empty-state';
+import { HrisDataTable } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -43,6 +45,13 @@ import { useSession } from '@/features/auth/session-context';
 import { getIam } from '@/features/iam';
 import type { PermissionGrantInput } from '@/features/iam/iam-types';
 import {
+  ROLE_BUILT_IN_VIEWS,
+  ROLE_SEARCH_TEXT,
+  ROLE_VIEWS_STORAGE_KEY,
+  buildRoleColumns,
+  buildRoleFilters,
+} from '@/features/iam/role-table-config';
+import {
   grantsToMap,
   groupMatrixByModule,
   hasGrant,
@@ -52,10 +61,11 @@ import {
   toMatrixResources,
   toggleGrant,
 } from '@/features/iam/permission-matrix';
+import { useToast } from '@/components/ui/toast';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { platformApi } from '@/features/platform/platform-api';
 import { ApiRequestError } from '@/lib/api/http-client';
-import { Plus, Shield, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 function NewRoleDialog({ onChanged }: { onChanged: () => void }) {
   const repository = getIam();
@@ -208,11 +218,14 @@ function RoleDetailScreen({
   open,
   onOpenChange,
   onChanged,
+  onRequestDelete,
 }: {
   roleId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChanged: () => void;
+  /** Hands the deletion to the screen, which owns the one confirmation surface. */
+  onRequestDelete: (role: { readonly id: string; readonly name: string }) => void;
 }) {
   const repository = getIam();
   const detail = useIamLoad(
@@ -277,22 +290,13 @@ function RoleDetailScreen({
     }
   }
 
-  async function removeRole() {
-    if (roleId === null) {
-      return;
-    }
-    setPending(true);
-    setError(undefined);
-    try {
-      await repository.deleteRole(roleId);
-      onOpenChange(false);
-      onChanged();
-    } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : 'The role could not be deleted.');
-    } finally {
-      setPending(false);
-    }
-  }
+  /*
+   * Deletion is not performed here. The dialog closes and hands the role to the screen,
+   * which owns the single `ConfirmDialog`: deleting a role is irreversible from this UI, and
+   * a second confirmation pattern living inside the editor is how the two drift apart. It
+   * also keeps the confirmation out of a modal-inside-a-modal, which is where focus
+   * management starts behaving differently in every browser.
+   */
 
   return (
     <Dialog open={open && roleId !== null} onOpenChange={onOpenChange}>
@@ -415,7 +419,15 @@ function RoleDetailScreen({
         <DialogFooter className="justify-between">
           <div>
             {detail.data !== null && !detail.data?.isSystem && (
-              <Button variant="destructive" disabled={pending} onClick={() => void removeRole()}>
+              <Button
+                variant="destructive"
+                disabled={pending}
+                onClick={() => {
+                  if (detail.data !== null) {
+                    onRequestDelete({ id: detail.data.id, name: detail.data.name });
+                  }
+                }}
+              >
                 <Trash2 aria-hidden="true" className="size-4" />
                 Delete
               </Button>
@@ -438,15 +450,47 @@ function RoleDetailScreen({
 export function RolesScreen() {
   const router = useRouter();
   const { state } = useSession();
+  const { toast } = useToast();
   const repository = getIam();
   const list = useIamLoad(() => repository.listRoles(), []);
   const [openRoleId, setOpenRoleId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<{ readonly id: string; readonly name: string } | null>(
+    null,
+  );
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
 
   useEffect(() => {
     if (state.status === 'anonymous') {
       router.replace('/login');
     }
   }, [state.status, router]);
+
+  async function confirmDelete(): Promise<void> {
+    if (deleting === null) {
+      return;
+    }
+    setDeletePending(true);
+    setDeleteError(undefined);
+    try {
+      await repository.deleteRole(deleting.id);
+      toast({
+        title: 'Role deleted',
+        description: `${deleting.name} and the permission grants it carried are gone.`,
+        variant: 'success',
+      });
+      setDeleting(null);
+      list.reload();
+    } catch (err) {
+      setDeleteError(
+        err instanceof ApiRequestError ? err.message : 'The role could not be deleted.',
+      );
+    } finally {
+      setDeletePending(false);
+    }
+  }
+
+  const rows = list.data ?? [];
 
   return (
     <PageBody>
@@ -460,56 +504,54 @@ export function RolesScreen() {
         open={openRoleId !== null}
         onOpenChange={() => setOpenRoleId(null)}
         onChanged={list.reload}
+        onRequestDelete={(role) => {
+          // Close the editor first: the confirmation is the screen's, not the dialog's.
+          setOpenRoleId(null);
+          setDeleting(role);
+        }}
       />
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Role</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead className="text-right">Members</TableHead>
-            <TableHead className="text-right">Permissions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {list.data?.map((role) => (
-            <TableRow
-              key={role.id}
-              className="cursor-pointer"
-              onClick={() => setOpenRoleId(role.id)}
-            >
-              <TableCell>
-                <div className="flex flex-col">
-                  <span className="font-medium">{role.name}</span>
-                  <span className="font-mono text-xs text-muted-foreground">{role.key}</span>
-                </div>
-              </TableCell>
-              <TableCell>
-                {role.isSystem ? (
-                  <Badge variant="secondary">
-                    <Shield aria-hidden="true" className="size-3" />
-                    System
-                  </Badge>
-                ) : (
-                  <span className="text-sm text-muted-foreground">Custom</span>
-                )}
-              </TableCell>
-              <TableCell className="text-right">{role.memberCount}</TableCell>
-              <TableCell className="text-right">{role.permissionCount}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {!list.loading && (list.data?.length ?? 0) === 0 && (
-        <EmptyState
-          title="No roles are defined yet"
-          description="Create a role to group permissions and assign them to users."
-        />
-      )}
-      {list.error !== undefined && (
-        <p className="text-sm text-destructive" role="alert">
-          {list.error}
-        </p>
-      )}
+
+      <HrisDataTable
+        rows={rows}
+        columns={buildRoleColumns({
+          onOpen: (role) => setOpenRoleId(role.id),
+          onDelete: (role) => setDeleting({ id: role.id, name: role.name }),
+        })}
+        filters={buildRoleFilters(rows)}
+        searchable
+        searchText={ROLE_SEARCH_TEXT}
+        searchPlaceholder="Search roles by name, key or description…"
+        /*
+         * No selection column: there is no bulk role operation to offer, and a checkbox that
+         * only ever leads to "nothing available for 3 selected" is worse than no checkbox.
+         */
+        selectable={false}
+        views={{ builtIn: ROLE_BUILT_IN_VIEWS, storageKey: ROLE_VIEWS_STORAGE_KEY }}
+        status={list.loading ? 'loading' : list.error !== undefined ? 'error' : 'ready'}
+        errorCopy={list.error}
+        onRetry={list.reload}
+        emptyTitle="No roles are defined yet"
+        emptyDescription="Create a role to group permissions and assign them to users."
+        noResultsTitle="No roles match this filter"
+        noResultsDescription="Try a different search or type, or clear the filters to see every role."
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null);
+            setDeleteError(undefined);
+          }
+        }}
+        title={`Delete ${deleting?.name ?? 'this role'}?`}
+        description="The role and every permission grant it carries are removed, and users who held it lose those permissions. Their accounts and history are untouched. This cannot be undone."
+        confirmLabel="Delete role"
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+      />
     </PageBody>
   );
 }

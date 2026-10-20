@@ -2,29 +2,27 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, Copy, RefreshCw } from 'lucide-react';
 
+import {
+  HrisDataTable,
+  PINNED_ACTIONS_CELL_CLASS,
+  PINNED_ACTIONS_HEADER_CLASS,
+  type DataTableColumn,
+  type DataTableFilter,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Switch } from '@/components/ui/switch';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
 import { useCan, useSession } from '@/features/auth/session-context';
 import { ApiRequestError } from '@/lib/api/http-client';
+import { Check, Copy, RefreshCw } from 'lucide-react';
 
+import { formatTimestamp } from './client-table-config';
 import type { DeveloperApiClient } from './developer-types';
 import { getDevelopers } from './index';
 
@@ -36,15 +34,6 @@ function messageOf(error: unknown): string {
     return error.message;
   }
   return 'The change could not be saved.';
-}
-
-function formatWhen(value: string | null): string {
-  if (value === null) {
-    return 'Never';
-  }
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value),
-  );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -81,6 +70,24 @@ function CopyButton({ value }: { readonly value: string }) {
   );
 }
 
+/** The state filter, labelled the way the State column is. */
+const STATE_FILTER: readonly DataTableFilter<DeveloperApiClient>[] = [
+  {
+    kind: 'select',
+    id: 'state',
+    label: 'State',
+    placeholder: 'All states',
+    getValue: (row) => (row.isActive ? 'ACTIVE' : 'INACTIVE'),
+    options: [
+      { value: 'ACTIVE', label: 'Active' },
+      { value: 'INACTIVE', label: 'Inactive' },
+    ],
+  },
+];
+
+const CREDENTIALS_SEARCH_TEXT = (row: DeveloperApiClient): string =>
+  [row.name, row.clientId, row.description ?? ''].join(' ');
+
 /**
  * API Credentials: the credential material behind every API client — when keys were
  * issued, which clients sit unused, whether they are active, and a rotation flow
@@ -93,11 +100,27 @@ export function CredentialsScreen() {
   const repository = getDevelopers();
   const canUpdate = useCan('api-client.update');
 
+  /*
+   * Load failures belong to the table, which owns the error state and the retry button;
+   * mutation failures keep the alert below the header, so a rejected change never takes
+   * the list away with it.
+   */
+  const [loadError, setLoadError] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
   const [rows, setRows] = useState<readonly DeveloperApiClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  /*
+   * Rotate replaces the secret and disable cuts the client off, so both are gated behind
+   * a dialog that names the client and the consequence, with the failure surfaced in the
+   * dialog. Enabling is the safe direction and stays a single click.
+   */
+  const [rotateTarget, setRotateTarget] = useState<DeveloperApiClient | null>(null);
+  const [disableTarget, setDisableTarget] = useState<DeveloperApiClient | null>(null);
+  const [pending, setPending] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | undefined>();
 
   useEffect(() => {
     if (state.status === 'anonymous') {
@@ -107,11 +130,11 @@ export function CredentialsScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(undefined);
+    setLoadError(undefined);
     try {
       setRows(await repository.listClients());
     } catch (cause) {
-      setError(messageOf(cause));
+      setLoadError(messageOf(cause));
     } finally {
       setLoading(false);
     }
@@ -124,29 +147,157 @@ export function CredentialsScreen() {
   const activeCount = rows.filter((row) => row.isActive).length;
   const neverUsed = rows.filter((row) => row.lastUsedAt === null).length;
 
-  const rotate = async (row: DeveloperApiClient) => {
-    setBusyId(row.id);
-    setError(undefined);
+  async function confirmRotate(): Promise<void> {
+    if (rotateTarget === null) {
+      return;
+    }
+    setBusyId(rotateTarget.id);
+    setPending(true);
+    setConfirmError(undefined);
     try {
-      await repository.rotateClient(row.id);
-      setNotice(`New secret issued for "${row.name}".`);
+      await repository.rotateClient(rotateTarget.id);
+      setNotice(`New secret issued for "${rotateTarget.name}".`);
+      setRotateTarget(null);
+      await load();
+    } catch (cause) {
+      setConfirmError(messageOf(cause));
+    } finally {
+      setPending(false);
+      setBusyId(null);
+    }
+  }
+
+  async function confirmDisable(): Promise<void> {
+    if (disableTarget === null) {
+      return;
+    }
+    setBusyId(disableTarget.id);
+    setPending(true);
+    setConfirmError(undefined);
+    try {
+      await repository.updateClient(disableTarget.id, { isActive: false });
+      setNotice(`Client "${disableTarget.name}" deactivated.`);
+      setDisableTarget(null);
+      await load();
+    } catch (cause) {
+      setConfirmError(messageOf(cause));
+    } finally {
+      setPending(false);
+      setBusyId(null);
+    }
+  }
+
+  async function enable(row: DeveloperApiClient): Promise<void> {
+    setBusyId(row.id);
+    try {
+      await repository.updateClient(row.id, { isActive: true });
+      setNotice(`Client "${row.name}" activated.`);
       await load();
     } catch (cause) {
       setError(messageOf(cause));
     } finally {
       setBusyId(null);
     }
-  };
+  }
 
-  const toggleActive = async (row: DeveloperApiClient, active: boolean) => {
-    try {
-      await repository.updateClient(row.id, { isActive: active });
-      setNotice(`Client "${row.name}" ${active ? 'activated' : 'deactivated'}.`);
-      await load();
-    } catch (cause) {
-      setError(messageOf(cause));
-    }
-  };
+  const columns: DataTableColumn<DeveloperApiClient>[] = [
+    {
+      id: 'client',
+      header: 'Client',
+      sortValue: (row) => row.name,
+      cell: (row) => (
+        <div>
+          <div className="font-medium">{row.name}</div>
+          {row.description !== null && (
+            <div className="text-xs text-muted-foreground">{row.description}</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'clientId',
+      header: 'Client ID',
+      headerClassName: 'font-mono text-sm',
+      sortValue: (row) => row.clientId,
+      cell: (row) => (
+        <div className="flex items-center gap-2">
+          <div className="font-mono text-xs truncate w-48">{row.clientId}</div>
+          <CopyButton value={row.clientId} />
+        </div>
+      ),
+    },
+    {
+      id: 'created',
+      header: 'Created',
+      align: 'right',
+      sortValue: (row) => row.createdAt,
+      cellClassName: 'text-right font-mono text-sm',
+      cell: (row) => formatTimestamp(row.createdAt),
+    },
+    {
+      id: 'lastUsed',
+      header: 'Last used',
+      align: 'right',
+      sortValue: (row) => row.lastUsedAt ?? '',
+      cellClassName: 'text-right font-mono text-sm',
+      cell: (row) => formatTimestamp(row.lastUsedAt),
+    },
+    {
+      id: 'state',
+      header: 'State',
+      sortValue: (row) => (row.isActive ? 'Active' : 'Inactive'),
+      cell: (row) => (
+        <Badge variant={row.isActive ? 'success' : 'secondary'}>
+          {row.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      ),
+    },
+  ];
+
+  if (canUpdate) {
+    columns.push({
+      id: 'actions',
+      header: 'Credential actions',
+      align: 'right',
+      hideable: false,
+      headerClassName: PINNED_ACTIONS_HEADER_CLASS,
+      /*
+       * Wider than the default pinned cell because the row carries a switch next to the
+       * rotate button; the sticky background and border come from the shared class and
+       * `w-56` only overrides the width tailwind-merge would otherwise keep at w-10.
+       */
+      cellClassName: `${PINNED_ACTIONS_CELL_CLASS} w-56`,
+      cell: (row) => (
+        <div className="flex items-center justify-end gap-2">
+          {row.isActive && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busyId === row.id}
+              onClick={() => {
+                setConfirmError(undefined);
+                setRotateTarget(row);
+              }}
+            >
+              Rotate secret
+            </Button>
+          )}
+          <Switch
+            checked={row.isActive}
+            disabled={busyId === row.id}
+            onCheckedChange={(next) => {
+              if (next) {
+                void enable(row);
+              } else {
+                setConfirmError(undefined);
+                setDisableTarget(row);
+              }
+            }}
+          />
+        </div>
+      ),
+    });
+  }
 
   return (
     <PageBody>
@@ -162,7 +313,8 @@ export function CredentialsScreen() {
       />
 
       {error !== undefined && (
-        <Alert variant="destructive">
+        <Alert>
+          <AlertTitle>Update failed</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
@@ -180,82 +332,58 @@ export function CredentialsScreen() {
         <Stat label="Secret header" value="X-Api-Key" />
       </div>
 
-      {loading ? (
-        <Skeleton className="h-60 w-full" />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No API clients have been created yet" />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Client credentials</CardTitle>
-            <CardDescription>
-              {rows.length} client{rows.length === 1 ? '' : 's'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Client</TableHead>
-                  <TableHead className="font-mono text-sm">Client ID</TableHead>
-                  <TableHead className="text-right">Created</TableHead>
-                  <TableHead className="text-right">Last used</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead className="text-right">Credential actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>
-                      <div className="font-medium">{row.name}</div>
-                      {row.description !== null && (
-                        <div className="text-xs text-muted-foreground">{row.description}</div>
-                      )}
-                    </TableCell>
-                    <TableCell className="flex items-center gap-2">
-                      <div className="font-mono text-xs truncate w-48">{row.clientId}</div>
-                      <CopyButton value={row.clientId} />
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {formatWhen(row.createdAt)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {formatWhen(row.lastUsedAt)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={row.isActive ? 'success' : 'secondary'}>
-                        {row.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {canUpdate && row.isActive && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busyId === row.id}
-                            onClick={() => void rotate(row)}
-                          >
-                            Rotate secret
-                          </Button>
-                        )}
-                        {canUpdate && (
-                          <Switch
-                            checked={row.isActive}
-                            disabled={busyId === row.id}
-                            onCheckedChange={(next) => void toggleActive(row, next)}
-                          />
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={columns}
+        filters={STATE_FILTER}
+        searchable
+        searchText={CREDENTIALS_SEARCH_TEXT}
+        searchPlaceholder="Search by name, client id or description…"
+        selectable={false}
+        status={loading ? 'loading' : loadError !== undefined ? 'error' : 'ready'}
+        errorCopy={loadError}
+        onRetry={() => void load()}
+        emptyTitle="No API clients have been created yet"
+        emptyDescription="Create an API client to issue its key; it appears here with its credential state."
+        noResultsTitle="No API clients match this filter"
+        noResultsDescription="Try a different search or state, or clear the filters to see every client."
+      />
+
+      <ConfirmDialog
+        open={rotateTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRotateTarget(null);
+            setConfirmError(undefined);
+          }
+        }}
+        title={
+          rotateTarget !== null ? `Rotate the secret for ${rotateTarget.name}?` : 'Rotate secret?'
+        }
+        description="The current secret stops working immediately."
+        confirmLabel="Rotate secret"
+        tone="destructive"
+        pending={pending}
+        error={confirmError}
+        onConfirm={() => void confirmRotate()}
+      />
+
+      <ConfirmDialog
+        open={disableTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDisableTarget(null);
+            setConfirmError(undefined);
+          }
+        }}
+        title={disableTarget !== null ? `Disable ${disableTarget.name}?` : 'Disable client?'}
+        description="The client stops authenticating until it is enabled again; its secret is kept."
+        confirmLabel="Disable"
+        tone="destructive"
+        pending={pending}
+        error={confirmError}
+        onConfirm={() => void confirmDisable()}
+      />
     </PageBody>
   );
 }

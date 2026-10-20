@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { PageToolbar } from '@/components/layout/page-toolbar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -15,24 +15,23 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { FormErrorSummary, FormField, FormSubmitButton } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/components/ui/toast';
 import { useCan, useSession } from '@/features/auth/session-context';
+import { useIamLoad } from '@/features/iam/use-iam-data';
 import { ApiRequestError } from '@/lib/api/http-client';
 import { Check, Copy, Plus } from 'lucide-react';
 
+import {
+  CLIENT_BUILT_IN_VIEWS,
+  CLIENT_SEARCH_TEXT,
+  CLIENT_VIEWS_STORAGE_KEY,
+  buildClientColumns,
+  buildClientFilters,
+} from './client-table-config';
 import type { DeveloperApiClient } from './developer-types';
 import { getDevelopers } from './index';
 import { ScopePicker } from './scope-picker';
@@ -46,78 +45,6 @@ function messageOf(error: unknown): string {
     return error.message;
   }
   return 'The change could not be saved.';
-}
-
-function formatTimestamp(value: string | null): string {
-  if (value === null) {
-    return 'Never';
-  }
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value),
-  );
-}
-
-/** Confirms a destructive action in a dialog and surfaces whatever the API rejects with. */
-function ConfirmDelete({
-  label,
-  description,
-  onConfirm,
-}: {
-  readonly label: string;
-  readonly description: string;
-  readonly onConfirm: () => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-
-  async function confirm() {
-    setPending(true);
-    setError(undefined);
-    try {
-      await onConfirm();
-      setOpen(false);
-    } catch (err) {
-      setError(messageOf(err));
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) {
-          setError(undefined);
-        }
-      }}
-    >
-      <DialogTrigger
-        render={
-          <Button variant="outline" size="sm">
-            {label}
-          </Button>
-        }
-      />
-      <DialogContent aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>{label}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        {error !== undefined && <FormErrorSummary>{error}</FormErrorSummary>}
-        <DialogFooter>
-          <Button variant="outline" disabled={pending} onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button variant="destructive" disabled={pending} onClick={() => void confirm()}>
-            {pending ? 'Deleting…' : label}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 interface ClientFormState {
@@ -372,20 +299,29 @@ function SecretDialog({
 export function ClientsScreen() {
   const router = useRouter();
   const { state } = useSession();
+  const { toast } = useToast();
   const repository = getDevelopers();
   const canCreate = useCan('api-client.create');
   const canUpdate = useCan('api-client.update');
   const canDelete = useCan('api-client.delete');
 
-  const [clients, setClients] = useState<DeveloperApiClient[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | undefined>();
-  const [tick, setTick] = useState(0);
+  const list = useIamLoad(() => repository.listClients(), []);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<DeveloperApiClient | null>(null);
   const [rotateTarget, setRotateTarget] = useState<DeveloperApiClient | null>(null);
   const [issued, setIssued] = useState<{ name: string; secret: string } | null>(null);
+
+  /*
+   * One pending destructive change at a time, whether it came from the row menu. Deleting
+   * and disabling both cut a machine identity off, so both are routed through a dialog that
+   * names the client and the consequence; enabling is the safe direction and stays a single
+   * click, exactly as the users directory treats activation.
+   */
+  const [deleting, setDeleting] = useState<DeveloperApiClient | null>(null);
+  const [disabling, setDisabling] = useState<DeveloperApiClient | null>(null);
+  const [pending, setPending] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | undefined>();
 
   useEffect(() => {
     if (state.status === 'anonymous') {
@@ -393,33 +329,67 @@ export function ClientsScreen() {
     }
   }, [state.status, router]);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    void repository.listClients().then(
-      (rows) => {
-        if (active) {
-          setClients([...rows]);
-          setLoading(false);
-          setLoadError(undefined);
-        }
-      },
-      (error: unknown) => {
-        if (!active) {
-          return;
-        }
-        setLoading(false);
-        setLoadError(
-          error instanceof ApiRequestError ? error.message : 'The API clients could not be loaded.',
-        );
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [repository, tick]);
+  async function confirmDelete(): Promise<void> {
+    if (deleting === null) {
+      return;
+    }
+    setPending(true);
+    setConfirmError(undefined);
+    try {
+      await repository.deleteClient(deleting.id);
+      toast({
+        title: 'Client deleted',
+        description: `${deleting.name} can no longer authenticate; every request using its key will fail.`,
+        variant: 'success',
+      });
+      setDeleting(null);
+      list.reload();
+    } catch (err) {
+      setConfirmError(messageOf(err));
+    } finally {
+      setPending(false);
+    }
+  }
 
-  const reload = () => setTick((value) => value + 1);
+  async function confirmDisable(): Promise<void> {
+    if (disabling === null) {
+      return;
+    }
+    setPending(true);
+    setConfirmError(undefined);
+    try {
+      await repository.updateClient(disabling.id, { isActive: false });
+      toast({
+        title: 'Client disabled',
+        description: `${disabling.name} can no longer authenticate until it is enabled again.`,
+        variant: 'success',
+      });
+      setDisabling(null);
+      list.reload();
+    } catch (err) {
+      setConfirmError(messageOf(err));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function enable(client: DeveloperApiClient): Promise<void> {
+    try {
+      await repository.updateClient(client.id, { isActive: true });
+      toast({
+        title: 'Client enabled',
+        description: `${client.name} can authenticate again.`,
+        variant: 'success',
+      });
+      list.reload();
+    } catch (err) {
+      toast({
+        title: 'The change could not be applied',
+        description: messageOf(err),
+        variant: 'error',
+      });
+    }
+  }
 
   function openCreate() {
     setEditing(null);
@@ -431,6 +401,17 @@ export function ClientsScreen() {
     setDialogOpen(true);
   }
 
+  function requestToggleActive(client: DeveloperApiClient): void {
+    if (client.isActive) {
+      setConfirmError(undefined);
+      setDisabling(client);
+    } else {
+      void enable(client);
+    }
+  }
+
+  const rows = list.data ?? [];
+
   return (
     <PageBody>
       <PageHeader
@@ -438,103 +419,48 @@ export function ClientsScreen() {
         description="Machine credentials with scoped access to the developer API."
       />
 
-      <PageToolbar className="justify-end">
-        {canCreate && (
-          <Button variant="default" onClick={openCreate}>
-            <Plus aria-hidden="true" className="size-4" />
-            Add client
-          </Button>
-        )}
-      </PageToolbar>
-
-      {loading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      ) : loadError !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {loadError}
-        </p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Client ID</TableHead>
-              <TableHead>Scopes</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Last used</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(clients ?? []).map((client) => (
-              <TableRow key={client.id}>
-                <TableCell className="font-medium">{client.name}</TableCell>
-                <TableCell className="font-mono text-xs">{client.clientId}</TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{client.scopes.length}</Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={client.isActive ? 'success' : 'outline'}>
-                    {client.isActive ? 'Active' : 'Disabled'}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {formatTimestamp(client.lastUsedAt)}
-                </TableCell>
-                <TableCell className="flex justify-end gap-2">
-                  {canUpdate && (
-                    <>
-                      <Button variant="outline" size="sm" onClick={() => openEdit(client)}>
-                        Edit
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => setRotateTarget(client)}>
-                        Rotate
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={async () => {
-                          await repository.updateClient(client.id, { isActive: !client.isActive });
-                          reload();
-                        }}
-                      >
-                        {client.isActive ? 'Disable' : 'Enable'}
-                      </Button>
-                    </>
-                  )}
-                  {canDelete && (
-                    <ConfirmDelete
-                      label="Delete"
-                      description={`Delete "${client.name}"? Any request using its key will fail immediately.`}
-                      onConfirm={async () => {
-                        await repository.deleteClient(client.id);
-                        reload();
-                      }}
-                    />
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-            {(clients ?? []).length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  No API clients yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={buildClientColumns({
+          canUpdate,
+          canDelete,
+          onEdit: openEdit,
+          onRotate: (client) => setRotateTarget(client),
+          onToggleActive: requestToggleActive,
+          onDelete: (client) => {
+            setConfirmError(undefined);
+            setDeleting(client);
+          },
+        })}
+        filters={buildClientFilters()}
+        searchable
+        searchText={CLIENT_SEARCH_TEXT}
+        searchPlaceholder="Search by name, client id or scope…"
+        selectable={false}
+        views={{ builtIn: CLIENT_BUILT_IN_VIEWS, storageKey: CLIENT_VIEWS_STORAGE_KEY }}
+        status={list.loading ? 'loading' : list.error !== undefined ? 'error' : 'ready'}
+        errorCopy={list.error}
+        onRetry={list.reload}
+        emptyTitle="No API clients yet"
+        emptyDescription="Create a client to issue a machine key with scoped access to the developer API."
+        noResultsTitle="No API clients match this filter"
+        noResultsDescription="Try a different search or status, or clear the filters to see every client."
+        actions={
+          canCreate ? (
+            <Button variant="default" onClick={openCreate}>
+              <Plus aria-hidden="true" className="size-4" />
+              Add client
+            </Button>
+          ) : undefined
+        }
+      />
 
       <ClientDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         client={editing}
         onSaved={(nextIssued) => {
-          reload();
+          list.reload();
           setIssued(nextIssued);
         }}
       />
@@ -546,11 +472,45 @@ export function ClientsScreen() {
           }
         }}
         onRotated={(nextIssued) => {
-          reload();
+          list.reload();
           setIssued(nextIssued);
         }}
       />
       <SecretDialog issued={issued} onOpenChange={(open) => !open && setIssued(null)} />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null);
+            setConfirmError(undefined);
+          }
+        }}
+        title={deleting !== null ? `Delete ${deleting.name}?` : 'Delete client?'}
+        description="Any request using its key will fail immediately."
+        confirmLabel="Delete"
+        tone="destructive"
+        pending={pending}
+        error={confirmError}
+        onConfirm={() => void confirmDelete()}
+      />
+
+      <ConfirmDialog
+        open={disabling !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDisabling(null);
+            setConfirmError(undefined);
+          }
+        }}
+        title={disabling !== null ? `Disable ${disabling.name}?` : 'Disable client?'}
+        description="Any request using its key will fail until the client is enabled again."
+        confirmLabel="Disable"
+        tone="destructive"
+        pending={pending}
+        error={confirmError}
+        onConfirm={() => void confirmDisable()}
+      />
     </PageBody>
   );
 }

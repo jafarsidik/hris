@@ -2,31 +2,30 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, Power } from 'lucide-react';
+import { Plus, Power } from 'lucide-react';
 
 import type { BusinessRuleAction, BusinessRuleSummary } from '@hris/shared-types';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
+import { useToast } from '@/components/ui/toast';
 import { useCan, useSession } from '@/features/auth/session-context';
+import {
+  BUSINESS_RULE_BUILT_IN_VIEWS,
+  BUSINESS_RULE_SEARCH_TEXT,
+  BUSINESS_RULE_VIEWS_STORAGE_KEY,
+  buildBusinessRuleColumns,
+  buildBusinessRuleFilters,
+} from '@/features/automation/business-rules-table-config';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { businessRulesApi } from '@/features/automation/business-rules-api';
 import { ApiRequestError } from '@/lib/api/http-client';
@@ -44,6 +43,7 @@ function messageOf(error: unknown): string {
 export function BusinessRulesScreen() {
   const router = useRouter();
   const { state } = useSession();
+  const { toast } = useToast();
   const rules = useIamLoad(() => businessRulesApi.list(), []);
   const canEdit = useCan('workflow.manage');
 
@@ -57,6 +57,10 @@ export function BusinessRulesScreen() {
   const [notice, setNotice] = useState<string | undefined>();
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const [deleting, setDeleting] = useState<BusinessRuleSummary | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -115,26 +119,6 @@ export function BusinessRulesScreen() {
     }
   }, [name, description, eventType, conditionText, actionsText, priority, isEnabled, rules]);
 
-  const remove = useCallback(
-    async (id: string, n: string) => {
-      if (!window.confirm(`Delete "${n}"?`)) {
-        return;
-      }
-      setError(undefined);
-      setBusy(true);
-      try {
-        await businessRulesApi.remove(id);
-        setNotice(`Deleted "${n}".`);
-        rules.reload();
-      } catch (cause) {
-        setError(messageOf(cause));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [rules],
-  );
-
   const toggle = useCallback(
     async (rule: BusinessRuleSummary) => {
       setError(undefined);
@@ -148,6 +132,28 @@ export function BusinessRulesScreen() {
     [rules],
   );
 
+  const confirmDelete = useCallback(async () => {
+    if (deleting === null) {
+      return;
+    }
+    setDeletePending(true);
+    setDeleteError(undefined);
+    try {
+      await businessRulesApi.remove(deleting.id);
+      toast({
+        title: 'Rule deleted',
+        description: `"${deleting.name}" will no longer fire.`,
+        variant: 'success',
+      });
+      setDeleting(null);
+      rules.reload();
+    } catch (cause) {
+      setDeleteError(messageOf(cause));
+    } finally {
+      setDeletePending(false);
+    }
+  }, [deleting, rules, toast]);
+
   const rows = rules.data ?? [];
 
   return (
@@ -157,11 +163,7 @@ export function BusinessRulesScreen() {
         description="Conditional logic evaluated at runtime when a domain event fires."
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
       {notice !== undefined && (
         <Alert>
           <AlertDescription>{notice}</AlertDescription>
@@ -258,71 +260,50 @@ export function BusinessRulesScreen() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Rules</CardTitle>
-          <CardDescription>
-            {rules.loading ? 'Loading…' : `${rows.length} rule${rows.length === 1 ? '' : 's'}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {rules.error !== undefined && (
-            <Alert variant="destructive">
-              <AlertDescription>{rules.error}</AlertDescription>
-            </Alert>
-          )}
-          {rules.loading && rows.length === 0 ? (
-            <Skeleton className="h-40 w-full" />
-          ) : rows.length === 0 ? (
-            <EmptyState title="No rules yet" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Trigger</TableHead>
-                  <TableHead>Actions</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((rule) => (
-                  <TableRow key={rule.id}>
-                    <TableCell className="font-medium">{rule.name}</TableCell>
-                    <TableCell className="font-mono text-sm">{rule.eventType}</TableCell>
-                    <TableCell className="text-muted-foreground">{rule.actions.length}</TableCell>
-                    <TableCell className="font-mono">{rule.priority}</TableCell>
-                    <TableCell>
-                      <Badge variant={rule.isEnabled ? 'success' : 'secondary'}>
-                        {rule.isEnabled ? 'ENABLED' : 'DISABLED'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {canEdit && (
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => void toggle(rule)}>
-                            {rule.isEnabled ? 'Disable' : 'Enable'}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void remove(rule.id, rule.name)}
-                          >
-                            <Trash2 className="mr-1 size-4" />
-                            Delete
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <HrisDataTable
+        rows={rows}
+        columns={buildBusinessRuleColumns(
+          canEdit ? { onToggle: toggle, onDelete: (rule) => setDeleting(rule) } : {},
+        )}
+        filters={buildBusinessRuleFilters(rows)}
+        searchable
+        searchText={BUSINESS_RULE_SEARCH_TEXT}
+        searchPlaceholder="Search rules by name, trigger or description…"
+        /*
+         * No selection column: there is no bulk rule operation to offer, and a checkbox
+         * that only ever leads to "nothing available for 3 selected" is worse than no
+         * checkbox.
+         */
+        selectable={false}
+        views={{
+          builtIn: BUSINESS_RULE_BUILT_IN_VIEWS,
+          storageKey: BUSINESS_RULE_VIEWS_STORAGE_KEY,
+        }}
+        status={rules.loading ? 'loading' : rules.error !== undefined ? 'error' : 'ready'}
+        errorCopy={rules.error}
+        onRetry={() => rules.reload()}
+        emptyTitle="No rules yet"
+        emptyDescription="Create a rule to react to domain events with notifications, workflows or webhooks."
+        noResultsTitle="No rules match this filter"
+        noResultsDescription="Try a different search or state, or clear the filters to see every rule."
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null);
+            setDeleteError(undefined);
+          }
+        }}
+        title={`Delete ${deleting?.name ?? 'this rule'}?`}
+        description="The rule is removed and will no longer fire when its trigger event occurs. This cannot be undone."
+        confirmLabel="Delete rule"
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+      />
     </PageBody>
   );
 }

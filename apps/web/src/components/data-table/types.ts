@@ -24,7 +24,12 @@ export interface DataTableColumn<TRow extends { readonly id: string }> {
   readonly responsive?: string;
   readonly headerClassName?: string;
   readonly cellClassName?: string;
-  readonly align?: 'left' | 'right';
+  /**
+   * Horizontal alignment. `center` exists because a badge or a short enum code reads as a
+   * column of its own when it is centred, which is how the settings catalogue and the roles
+   * type column were drawn before they moved onto this table.
+   */
+  readonly align?: 'left' | 'right' | 'center';
 }
 
 export interface DataTableOption {

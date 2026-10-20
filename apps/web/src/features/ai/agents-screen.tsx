@@ -6,13 +6,14 @@ import { Plus } from 'lucide-react';
 
 import { AI_BUILTIN_TOOLS, type AiAgentSummary } from '@hris/shared-types';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -23,20 +24,18 @@ import {
 } from '@/components/ui/dialog';
 import { FormErrorSummary, FormField, FormSubmitButton } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
+import { useToast } from '@/components/ui/toast';
 import { useCan, useSession } from '@/features/auth/session-context';
 import { aiApi } from '@/features/ai/ai-api';
+import {
+  AGENT_BUILT_IN_VIEWS,
+  AGENT_SEARCH_TEXT,
+  AGENT_VIEWS_STORAGE_KEY,
+  buildAgentColumns,
+  buildAgentFilters,
+} from '@/features/ai/agent-table-config';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { ApiRequestError } from '@/lib/api/http-client';
 
@@ -83,6 +82,7 @@ export function AgentsScreen() {
   const canManage = useCan('ai.create');
   const canUpdate = useCan('ai.update');
   const canDelete = useCan('ai.delete');
+  const { toast } = useToast();
 
   useEffect(() => {
     if (state.status === 'anonymous') {
@@ -96,6 +96,9 @@ export function AgentsScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AgentDraft>(EMPTY_DRAFT);
   const [pending, setPending] = useState(false);
+  const [deleting, setDeleting] = useState<AiAgentSummary | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
 
   const rows = (agents.data ?? []) as readonly AiAgentSummary[];
 
@@ -160,14 +163,29 @@ export function AgentsScreen() {
     }
   }, [draft, editingId, agents]);
 
-  const remove = async (row: AiAgentSummary) => {
-    if (!window.confirm(`Delete agent "${row.key}"?`)) return;
+  const requestDelete = (row: AiAgentSummary) => {
+    setDeleteError(undefined);
+    setDeleting(row);
+  };
+
+  const confirmDelete = async () => {
+    if (deleting === null) return;
+    setDeletePending(true);
+    setDeleteError(undefined);
     try {
-      await aiApi.removeAgent(row.id);
-      setNotice(`Agent "${row.key}" deleted.`);
+      await aiApi.removeAgent(deleting.id);
+      toast({
+        title: 'Agent deleted',
+        description: `Agent "${deleting.key}" was deleted.`,
+        variant: 'success',
+      });
+      setDeleting(null);
       agents.reload();
     } catch (cause) {
-      setError(messageOf(cause));
+      // Surfaced inside the dialog so the reader can retry or back out.
+      setDeleteError(messageOf(cause));
+    } finally {
+      setDeletePending(false);
     }
   };
 
@@ -195,105 +213,38 @@ export function AgentsScreen() {
         }
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
       {notice !== undefined && (
         <Alert>
           <AlertTitle>Saved</AlertTitle>
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
-      {agents.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{agents.error}</AlertDescription>
-        </Alert>
-      )}
+      <ErrorPanel error={agents.error} onRetry={() => agents.reload()} />
 
-      {agents.loading && rows.length === 0 ? (
-        <Skeleton className="h-48 w-full" />
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No agents defined — `/ai/ask` runs with the built-in assistant until one exists.
-        </p>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Agents</CardTitle>
-            <CardDescription>
-              {rows.length} agent{rows.length === 1 ? '' : 's'} · pass{' '}
-              <code className="font-mono">agentKey</code> to `/ai/ask` to use one
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Agent</TableHead>
-                  <TableHead>Prompt</TableHead>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Tools</TableHead>
-                  <TableHead>Enabled</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>
-                      <div className="font-medium">{row.name}</div>
-                      <div className="font-mono text-xs text-muted-foreground">{row.key}</div>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{row.promptKey ?? '—'}</TableCell>
-                    <TableCell className="font-mono text-sm">{row.modelKey ?? '—'}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {row.tools.length === 0 ? (
-                          <span className="text-muted-foreground text-sm">none</span>
-                        ) : (
-                          row.tools.map((tool) => (
-                            <Badge key={tool} variant="outline">
-                              {tool}
-                            </Badge>
-                          ))
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={row.isEnabled}
-                        disabled={!canUpdate}
-                        onCheckedChange={(next) => void toggleEnabled(row, next)}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {canUpdate && (
-                          <Button variant="outline" size="sm" onClick={() => open(row)}>
-                            Edit
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() => void remove(row)}
-                          >
-                            Delete
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={buildAgentColumns({
+          canUpdate,
+          canDelete,
+          onToggleEnabled: toggleEnabled,
+          onEdit: open,
+          onDelete: requestDelete,
+        })}
+        filters={buildAgentFilters()}
+        searchable
+        searchText={AGENT_SEARCH_TEXT}
+        searchPlaceholder="Search by agent name, key, prompt or model…"
+        selectable={false}
+        views={{ builtIn: AGENT_BUILT_IN_VIEWS, storageKey: AGENT_VIEWS_STORAGE_KEY }}
+        status={agents.loading ? 'loading' : agents.error !== undefined ? 'error' : 'ready'}
+        errorCopy={agents.error}
+        onRetry={() => agents.reload()}
+        emptyTitle="No agents yet"
+        emptyDescription="`/ai/ask` runs with the built-in assistant until one exists."
+        noResultsTitle="No agents match this filter"
+        noResultsDescription="Try a different search or clear the filters to see every agent."
+      />
 
       <Dialog
         open={dialogOpen}
@@ -423,6 +374,30 @@ export function AgentsScreen() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setDeleting(null);
+            setDeleteError(undefined);
+          }
+        }}
+        title={`Delete agent "${deleting?.key ?? ''}"?`}
+        description={
+          <>
+            The agent's prompt, model and tool grants are removed with it. Calls to{' '}
+            <code className="font-mono">/ai/ask</code> with{' '}
+            <code className="font-mono">{deleting?.key ?? ''}</code> fall back to the built-in
+            assistant.
+          </>
+        }
+        confirmLabel="Delete"
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+      />
     </PageBody>
   );
 }

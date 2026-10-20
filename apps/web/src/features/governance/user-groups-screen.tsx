@@ -2,31 +2,28 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trash2 } from 'lucide-react';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
-
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useCan, useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { userGroupsApi } from '@/features/governance/governance-api';
+import {
+  USER_GROUP_BUILT_IN_VIEWS,
+  USER_GROUP_SEARCH_TEXT,
+  USER_GROUP_VIEWS_STORAGE_KEY,
+  buildUserGroupColumns,
+} from '@/features/governance/user-groups-table-config';
 import { ApiRequestError } from '@/lib/api/http-client';
+import type { UserGroupSummary } from '@hris/shared-types';
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiRequestError) {
@@ -58,6 +55,10 @@ export function UserGroupsScreen() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
+  const [deleting, setDeleting] = useState<UserGroupSummary | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
+
   const resetForm = () => {
     setName('');
     setDescription('');
@@ -83,32 +84,25 @@ export function UserGroupsScreen() {
     }
   }, [name, description, groups]);
 
-  const remove = useCallback(
-    async (id: string, n: string) => {
-      if (!window.confirm(`Delete “${n}”?`)) {
-        return;
-      }
-      setError(undefined);
-      setBusy(true);
-      try {
-        await userGroupsApi.remove(id);
-        setNotice(`Deleted “${n}”.`);
-        groups.reload();
-      } catch (cause) {
-        setError(messageOf(cause));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [groups],
-  );
+  const confirmDelete = useCallback(async () => {
+    if (deleting === null) {
+      return;
+    }
+    setDeletePending(true);
+    setDeleteError(undefined);
+    try {
+      await userGroupsApi.remove(deleting.id);
+      setNotice(`Deleted "${deleting.name}".`);
+      setDeleting(null);
+      groups.reload();
+    } catch (cause) {
+      setDeleteError(messageOf(cause));
+    } finally {
+      setDeletePending(false);
+    }
+  }, [deleting, groups]);
 
-  const rows = (groups.data ?? []) as Array<{
-    readonly id: string;
-    readonly name: string;
-    readonly description: string | null;
-    readonly memberCount: number;
-  }>;
+  const rows = (groups.data ?? []) as UserGroupSummary[];
 
   return (
     <PageBody>
@@ -170,69 +164,42 @@ export function UserGroupsScreen() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Groups</CardTitle>
-          <CardDescription>
-            {groups.loading ? 'Loading…' : `${rows.length} group${rows.length === 1 ? '' : 's'}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {groups.error !== undefined && (
-            <Alert variant="destructive">
-              <AlertDescription>{groups.error}</AlertDescription>
-            </Alert>
-          )}
-          {groups.loading && rows.length === 0 ? (
-            <Skeleton className="h-40 w-full" />
-          ) : rows.length === 0 ? (
-            <EmptyState title="No groups yet" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Members</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map(
-                  (group: {
-                    id: string;
-                    name: string;
-                    description: string | null;
-                    memberCount: number;
-                  }) => (
-                    <TableRow key={group.id}>
-                      <TableCell className="font-medium">{group.name}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {group.description ?? '—'}
-                      </TableCell>
-                      <TableCell className="font-mono">{group.memberCount}</TableCell>
-                      <TableCell className="text-right">
-                        {canManage && (
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => void remove(group.id, group.name)}
-                            >
-                              <Trash2 className="mr-1 size-4" aria-hidden />
-                              Delete
-                            </Button>
-                          </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ),
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <HrisDataTable
+        rows={rows}
+        columns={buildUserGroupColumns({ onDelete: (group) => setDeleting(group) })}
+        searchable
+        searchText={USER_GROUP_SEARCH_TEXT}
+        searchPlaceholder="Search by name or description…"
+        selectable={false}
+        views={{
+          builtIn: USER_GROUP_BUILT_IN_VIEWS,
+          storageKey: USER_GROUP_VIEWS_STORAGE_KEY,
+        }}
+        status={groups.loading ? 'loading' : groups.error !== undefined ? 'error' : 'ready'}
+        errorCopy={groups.error}
+        onRetry={() => groups.reload()}
+        emptyTitle="No groups yet"
+        emptyDescription="Create a user group to assign access collectively."
+        noResultsTitle="No groups match this filter"
+        noResultsDescription="Try a different search, or clear the filters to see every group."
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null);
+            setDeleteError(undefined);
+          }
+        }}
+        title={`Delete "${deleting?.name ?? ''}"?`}
+        description="The group is removed and users who held it lose any access granted through it. Their accounts and direct permissions are untouched. This cannot be undone."
+        confirmLabel="Delete group"
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+      />
     </PageBody>
   );
 }

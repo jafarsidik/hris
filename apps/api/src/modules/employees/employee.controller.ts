@@ -1,4 +1,12 @@
-import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 import {
   Body,
@@ -168,7 +176,7 @@ export class CreatePositionDto {
   jobGrade?: string | null;
 
   @IsOptional()
-  @IsString()
+  @IsBoolean()
   isActive?: boolean;
 }
 
@@ -200,7 +208,7 @@ export class UpdatePositionDto {
   jobGrade?: string | null;
 
   @IsOptional()
-  @IsString()
+  @IsBoolean()
   isActive?: boolean;
 }
 

@@ -172,7 +172,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Sidebar>
 
       <SidebarInset id="main-content" className="min-h-0 overflow-y-auto">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 backdrop-blur-sm supports-backdrop-filter:bg-card/85">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md supports-backdrop-filter:bg-background/70">
           <SidebarTrigger className="size-8 md:hidden" aria-label="Open navigation" />
 
           {/*
@@ -186,16 +186,25 @@ export function AppShell({ children }: { children: ReactNode }) {
               Quick create targets the one create flow the platform has: the employee
               form, whose directory page reads `?action=new` and opens the dialog on
               arrival. A menu of dead entries would be worse than a single honest link.
+
+              Scoped to the module that owns that flow. Rendered everywhere it was a
+              context-free control: on `/setup/users`, whose own primary action is "Add
+              user", it opened the *employee* form, and on payroll and attendance it
+              offered an action those pages have nothing to do with. `current` is the
+              module that owns the route being viewed, so the button now appears where
+              creating an employee is the action the page is about.
             */}
-            <Button
-              variant="outline"
-              size="sm"
-              render={<Link href="/employees?action=new" />}
-              className="hidden sm:inline-flex"
-            >
-              <Plus aria-hidden="true" className="size-4" />
-              Create
-            </Button>
+            {current === 'M01_CORE_HR' && (
+              <Button
+                variant="outline"
+                size="sm"
+                render={<Link href="/employees?action=new" />}
+                className="hidden sm:inline-flex"
+              >
+                <Plus aria-hidden="true" className="size-4" />
+                Create
+              </Button>
+            )}
             <CommandPalette />
             <NotificationBell />
             <SessionMenu />
@@ -206,7 +215,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mx-auto w-full max-w-(--content-max-width)">{children}</div>
         </div>
 
-        <footer className="border-t border-border bg-card px-4 py-4 text-sm text-muted-foreground sm:px-6">
+        <footer className="border-t border-border bg-background px-4 py-4 text-sm text-muted-foreground sm:px-6">
           Enterprise HRIS
         </footer>
       </SidebarInset>

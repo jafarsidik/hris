@@ -1,9 +1,24 @@
 'use client';
 
 import * as React from 'react';
-import { cn } from '@/lib/utils';
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Maximize,
+  Minus,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react';
+
+import { PageBody } from '@/components/layout/page-body';
+import { PageHeader } from '@/components/layout/page-header';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import { ChevronDown, ChevronRight, Search, Minus, Plus, Maximize, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+import './org-chart.css';
 
 /** One node in the org chart tree. */
 interface OrgNode {
@@ -72,23 +87,33 @@ function buildDemoHierarchy(): { root: OrgNode; nodeMap: Map<string, OrgNode> } 
     const email = node.name.toLowerCase().replace(/\s+/g, '.') + '@perusahaan.co.id';
     const location = LOCATIONS[(counter * 7) % LOCATIONS.length] ?? 'Jakarta';
 
-    const baseNode = {
+    // The node has to exist before its children are walked, because every child records it
+    // as its parent. The children array is therefore allocated first and filled in place:
+    // replacing it afterwards would leave the children pointing at a parent with no
+    // children of its own, which the drawer reads.
+    const children: OrgNode[] = [];
+    const self: OrgNode = {
       id,
       name: node.name,
       title: node.title,
       department: node.department,
-      children: node.children ? node.children.map((child) => walk(child, newNode, level + 1)) : [],
+      children,
       level,
       email,
       location,
       hue,
-    };
-    const newNode: OrgNode = {
-      ...baseNode,
       parent: parentNode,
     };
 
-    return newNode;
+    for (const child of node.children ?? []) {
+      children.push(walk(child, self, level + 1));
+    }
+
+    // Register the node before returning: the detail drawer resolves a selected id through
+    // this map, so an unpopulated map makes every node click a no-op.
+    nodeMap.set(id, self);
+
+    return self;
   }
 
   const root = walk(
@@ -560,6 +585,20 @@ export function OrgChartNew() {
     setZoom(clamped);
   };
 
+  /**
+   * Centre the viewport on the root.
+   *
+   * Must run after paint: on mount the stage has not been measured yet, so a scroll offset
+   * written from the effect body is clamped to 0 and the chart opens on an arbitrary slice
+   * with the root — the one node a reader looks for first — off-screen to the right.
+   */
+  const centerView = React.useCallback(() => {
+    const vp = vpRef.current;
+    if (!vp) return;
+    vp.scrollLeft = Math.max(0, (vp.scrollWidth - vp.clientWidth) / 2);
+    vp.scrollTop = 0;
+  }, []);
+
   const zoomIn = () => setZoomLevel(zoom + 0.1);
   const zoomOut = () => setZoomLevel(zoom - 0.1);
   const zoomFit = () => {
@@ -568,7 +607,9 @@ export function OrgChartNew() {
     const vpWidth = vpRef.current.clientWidth - 60;
     const newZoom = Math.min(1, vpWidth / stageWidth);
     setZoomLevel(newZoom);
-    if (vpRef.current) vpRef.current.scrollLeft = 0;
+    // Fit means "show me the whole tree", so it re-centres rather than snapping to the
+    // left edge, which would hide the root again.
+    requestAnimationFrame(centerView);
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -601,123 +642,140 @@ export function OrgChartNew() {
     setIsDragging(false);
   };
 
-  // Center on first load
+  // Centre once, as soon as the stage has a measured width.
+  //
+  // A single rAF is not enough: on a cold load the stage can still measure narrow — the
+  // stylesheet that gives it `width: max-content` may not have applied yet — and the
+  // offset is then clamped to 0, which is how the chart ended up opening with the root
+  // off-screen to the right. Watching the stage's size instead centres on the first
+  // measurement that actually reflects the tree, whatever order the load finishes in.
   React.useEffect(() => {
-    if (vpRef.current) {
-      vpRef.current.scrollLeft = (vpRef.current.scrollWidth - vpRef.current.clientWidth) / 2;
-    }
-  }, []);
+    const vp = vpRef.current;
+    const stage = stageRef.current;
+    if (!vp || !stage) return;
+
+    let centered = false;
+    const centerOnce = () => {
+      if (centered || vp.scrollWidth <= vp.clientWidth) return;
+      centered = true;
+      centerView();
+    };
+
+    centerOnce();
+    const observer = new ResizeObserver(centerOnce);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [centerView]);
 
   return (
-    <div className="page">
-      <div className="crumb">
-        Karyawan › <b>Struktur Organisasi</b>
-      </div>
-      <div className="head">
-        <div>
-          <h1>Struktur Organisasi</h1>
-          <p id="sub">
-            {totalEmployees} karyawan · {totalDepartments} departemen · {maxLevel} level
-          </p>
-        </div>
-        <button
-          className="btn pri"
-          onClick={() => toast({ title: 'Mengekspor bagan organisasi…', variant: 'info' })}
-        >
-          <svg className="i" viewBox="0 0 24 24">
-            <path d="M12 4v11M7 11l5 5 5-5M5 20h14" />
-          </svg>
-          Ekspor bagan
-        </button>
-      </div>
-      <section className="card">
-        <div className="tool">
-          <label className="search">
-            <Search className="size-4" aria-hidden="true" />
-            <input
-              id="q"
-              placeholder="Cari nama atau jabatan…"
-              aria-label="Cari karyawan"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </label>
-          <select
-            id="fd"
-            aria-label="Sorot departemen"
-            value={deptFilter}
-            onChange={(e) => setDeptFilter(e.target.value)}
-          >
-            <option value="">Sorot departemen</option>
-            {departments.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-          <span className="sp" />
-          <button className="btn" id="oa" onClick={openAll}>
-            Buka semua
-          </button>
-          <button className="btn" id="ca" onClick={closeAll}>
-            Tutup semua
-          </button>
-          <div className="zm" role="group" aria-label="Zoom">
-            <button id="zo" aria-label="Perkecil" onClick={zoomOut}>
-              <Minus className="size-4" />
-            </button>
-            <span id="zl">{Math.round(zoom * 100)}%</span>
-            <button id="zi" aria-label="Perbesar" onClick={zoomIn}>
-              <Plus className="size-4" />
-            </button>
-            <button className="fit" id="zf" onClick={zoomFit}>
-              <Maximize className="size-3.5" /> Sesuaikan
-            </button>
-          </div>
-        </div>
-        <div className="leg" id="leg">
-          {departments.map((d) => (
-            <span key={d} style={{ '--dh': DEPARTMENT_HUES[d] ?? 0 } as React.CSSProperties}>
-              <i
-                style={
-                  { background: `hsl(${DEPARTMENT_HUES[d] ?? 0} 65% 44%)` } as React.CSSProperties
-                }
+    <div className="orgchart">
+      <PageBody>
+        {/* The shell already renders the breadcrumb trail, so this page brings only its
+            title, its own count line and the one action it owns. */}
+        <PageHeader
+          title="Struktur Organisasi"
+          description={`${totalEmployees} karyawan · ${totalDepartments} departemen · ${maxLevel} level`}
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => toast({ title: 'Mengekspor bagan organisasi…', variant: 'info' })}
+            >
+              <Download aria-hidden="true" />
+              Ekspor bagan
+            </Button>
+          }
+        />
+        <section className="card">
+          <div className="tool">
+            <label className="search">
+              <Search className="size-4" aria-hidden="true" />
+              <input
+                id="q"
+                placeholder="Cari nama atau jabatan…"
+                aria-label="Cari karyawan"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
-              {d} ({allNodes.filter((n) => n.department === d).length})
-            </span>
-          ))}
-        </div>
-        <div
-          className={cn('vp', isDragging && 'dg')}
-          id="vp"
-          ref={vpRef}
-          onWheel={handleWheel}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
-        >
-          <div
-            className="stage"
-            id="st"
-            ref={stageRef}
-            style={{ '--z': zoom } as React.CSSProperties}
-          >
-            <div className="tree" id="tr">
-              <ul>
-                <Node
-                  node={root}
-                  selectedId={selectedId}
-                  highlightedId={highlightedId}
-                  openIds={openIds}
-                  onToggle={toggleNode}
-                  onSelect={setSelectedId}
-                />
-              </ul>
+            </label>
+            <select
+              id="fd"
+              aria-label="Sorot departemen"
+              value={deptFilter}
+              onChange={(e) => setDeptFilter(e.target.value)}
+            >
+              <option value="">Sorot departemen</option>
+              {departments.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+            <span className="sp" />
+            <button className="btn" id="oa" onClick={openAll}>
+              Buka semua
+            </button>
+            <button className="btn" id="ca" onClick={closeAll}>
+              Tutup semua
+            </button>
+            <div className="zm" role="group" aria-label="Zoom">
+              <button id="zo" aria-label="Perkecil" onClick={zoomOut}>
+                <Minus className="size-4" />
+              </button>
+              <span id="zl">{Math.round(zoom * 100)}%</span>
+              <button id="zi" aria-label="Perbesar" onClick={zoomIn}>
+                <Plus className="size-4" />
+              </button>
+              <button className="fit" id="zf" onClick={zoomFit}>
+                <Maximize className="size-3.5" /> Sesuaikan
+              </button>
             </div>
           </div>
-        </div>
-      </section>
+          <div className="leg" id="leg">
+            {departments.map((d) => (
+              <span key={d} style={{ '--dh': DEPARTMENT_HUES[d] ?? 0 } as React.CSSProperties}>
+                <i
+                  style={
+                    { background: `hsl(${DEPARTMENT_HUES[d] ?? 0} 65% 44%)` } as React.CSSProperties
+                  }
+                />
+                {d} ({allNodes.filter((n) => n.department === d).length})
+              </span>
+            ))}
+          </div>
+          <div
+            className={cn('vp', isDragging && 'dg')}
+            id="vp"
+            ref={vpRef}
+            onWheel={handleWheel}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+          >
+            <div
+              className="stage"
+              id="st"
+              ref={stageRef}
+              style={{ '--z': zoom } as React.CSSProperties}
+            >
+              <div className="tree" id="tr">
+                <ul>
+                  <Node
+                    node={root}
+                    selectedId={selectedId}
+                    highlightedId={highlightedId}
+                    openIds={openIds}
+                    onToggle={toggleNode}
+                    onSelect={setSelectedId}
+                  />
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+      </PageBody>
+
       <DetailDrawer
         node={selectedId ? findNode(nodeMap, selectedId) : null}
         onClose={() => setSelectedId(null)}

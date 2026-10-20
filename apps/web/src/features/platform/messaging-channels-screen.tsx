@@ -8,6 +8,7 @@ import type { NotificationChannel, SystemSettingReadModel } from '@hris/shared-t
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -151,11 +152,7 @@ export function MessagingChannelsScreen() {
         description="Delivery channels for notifications and their transport readiness."
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
       {notice !== undefined && (
         <Alert>
           <AlertTitle>Updated</AlertTitle>
@@ -163,9 +160,13 @@ export function MessagingChannelsScreen() {
         </Alert>
       )}
       {loadError !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{loadError}</AlertDescription>
-        </Alert>
+        <ErrorPanel
+          error={loadError}
+          onRetry={() => {
+            notification.reload();
+            email.reload();
+          }}
+        />
       )}
 
       {loading ? (

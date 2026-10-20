@@ -390,7 +390,10 @@ describe('breadcrumbTrail', () => {
 
   it('has one crumb per path segment, plus the module only when there is one', () => {
     // The count is a real invariant, not a formatting detail: a missing crumb hides where
-    // the reader is, and a surplus one names a place that does not exist.
+    // the reader is, and a surplus one names a place that does not exist. The one
+    // documented exception is a segment whose label repeats the next one — see
+    // "drops a crumb whose label repeats the next one" below — and none of the paths here
+    // has that shape.
     for (const path of ['/', '/employees', '/employees/123', '/a/b/c/d']) {
       const segments = path.split('/').filter(Boolean).length;
       // The module crumb appears only on a path deeper than its own route, matching the
@@ -399,6 +402,33 @@ describe('breadcrumbTrail', () => {
       const expected = path === '/' ? 1 : segments + modulePrefix;
 
       expect(breadcrumbTrail(path).length, path).toBe(expected);
+    }
+  });
+
+  it('drops a crumb whose label repeats the next one', () => {
+    // Two registries can agree on a name, and the literal rendering then names the same
+    // place twice in a row. These two routes are the ones that do it today: payroll's
+    // module and its period route are both "Payroll", and attendance's group and its
+    // records page are both "Attendance". The later crumb survives, because it is the one
+    // that names the page being viewed.
+    expect(breadcrumbTrail('/payroll/runs').map((crumb) => crumb.label)).toEqual([
+      'Payroll',
+      'Payroll Run',
+    ]);
+    expect(breadcrumbTrail('/attendance/records').map((crumb) => crumb.label)).toEqual([
+      'Attendance & Time',
+      'Attendance',
+    ]);
+  });
+
+  it('keeps the page crumb last after a repeat is dropped', () => {
+    // The dropped crumb is the earlier one, so the trail still ends on the page the reader
+    // is on — and that last crumb must stay unlinked (the rule asserted above).
+    for (const path of ['/payroll/runs', '/attendance/records']) {
+      const trail = breadcrumbTrail(path);
+
+      expect(trail[trail.length - 1]?.href, path).toBeUndefined();
+      expect(trail.length, path).toBeGreaterThan(1);
     }
   });
 });

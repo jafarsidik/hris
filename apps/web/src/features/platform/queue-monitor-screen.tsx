@@ -8,7 +8,7 @@ import type { QueueJobState, QueueSummary } from '@hris/shared-types';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/feedback/empty-state';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,11 +76,7 @@ export function QueueMonitorScreen() {
     <PageBody>
       <PageHeader title="Background jobs" description="Queue health and failed job recovery." />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
 
       <Card>
         <CardHeader>

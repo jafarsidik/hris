@@ -232,7 +232,8 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Employee Directory',
           description: 'Search and browse the organizational workforce',
-          status: 'planned',
+          href: '/employees/directory',
+          status: 'built',
         },
       ],
     },
@@ -287,7 +288,8 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Onboarding',
           description: 'New employee onboarding process',
-          status: 'planned',
+          href: '/employees/onboarding',
+          status: 'built',
         },
         {
           label: 'Employee Movement',
@@ -311,22 +313,26 @@ const MODULE_GROUPS: Readonly<Record<ModuleId, readonly MenuGroup[]>> = {
         {
           label: 'Headcount',
           description: 'Headcount by company, department and location',
-          status: 'planned',
+          href: '/reports/headcount',
+          status: 'built',
         },
         {
-          label: 'Employee Movement',
+          label: 'Movement Report',
           description: 'Employee movement and workforce changes',
-          status: 'planned',
+          href: '/reports/movement',
+          status: 'built',
         },
         {
           label: 'Employee Turnover',
           description: 'Turnover and retention reporting',
-          status: 'planned',
+          href: '/reports/turnover',
+          status: 'built',
         },
         {
           label: 'Workforce Report',
           description: 'Comprehensive workforce reporting',
-          status: 'planned',
+          href: '/reports/workforce',
+          status: 'built',
         },
       ],
     },
@@ -1554,7 +1560,19 @@ export function breadcrumbTrail(pathname: string): readonly { label: string; hre
     trail.push(linkable ? { label, href } : { label });
   });
 
-  return trail;
+  /*
+   * A crumb whose label repeats the next one is dropped; the later crumb is the one kept.
+   *
+   * Module, group and page labels come from three different registries and two of them can
+   * agree. `/payroll/runs` is module "Payroll" + route "/payroll" ("Payroll") + page
+   * "Payroll Run"; `/attendance/records` is module "Attendance & Time" + group "Attendance"
+   * + page "Attendance". Rendered literally those read "Payroll › Payroll › Payroll Run"
+   * and "Attendance & Time › Attendance › Attendance" — the same word in adjacent crumbs,
+   * which is exactly the noise a breadcrumb exists to remove. The later crumb is the one
+   * that names the page being viewed, so dropping the earlier one keeps the trail ending
+   * on the reader's actual location.
+   */
+  return trail.filter((crumb, index) => crumb.label !== trail[index + 1]?.label);
 }
 
 const humanise = (segment: string): string =>

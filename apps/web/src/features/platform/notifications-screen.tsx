@@ -7,7 +7,7 @@ import type { NotificationKind, NotificationReadModel } from '@hris/shared-types
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -100,17 +100,9 @@ export function NotificationsScreen() {
         }
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
 
-      {notifications.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{notifications.error}</AlertDescription>
-        </Alert>
-      )}
+      <ErrorPanel error={notifications.error} onRetry={() => notifications.reload()} />
 
       <Card>
         <CardHeader>

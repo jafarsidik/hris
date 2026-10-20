@@ -9,14 +9,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import {
-  describeStatus,
-  formatHireDate,
-  initialsFor,
-} from '@/features/employees/employee-presentation';
+import { describeStatus, formatApiHireDate } from '@/features/employees/employee-presentation';
 import type { Employee } from '@/features/employees/employee-types';
+import { EmployeePhotoField } from './employee-photo-field';
 import { Building2, ExternalLink, Mail, PencilLine } from 'lucide-react';
 import Link from 'next/link';
 
@@ -47,8 +43,6 @@ export function EmployeeDetailDrawer({
   onOpenChange: (open: boolean) => void;
   onEdit: (employee: Employee) => void;
 }) {
-  const initials = employee === null ? '' : initialsFor(employee.fullName);
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
@@ -62,12 +56,13 @@ export function EmployeeDetailDrawer({
         {employee !== null && (
           <div className="space-y-6">
             <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                {initials !== '' ? (
-                  <Avatar aria-hidden="true" className="size-11 shrink-0">
-                    <AvatarFallback className="text-sm font-medium">{initials}</AvatarFallback>
-                  </Avatar>
-                ) : null}
+              <div className="flex min-w-0 items-center gap-3">
+                <EmployeePhotoField
+                  employeeId={employee.id}
+                  fullName={employee.fullName}
+                  compact
+                  className="shrink-0"
+                />
                 <div className="min-w-0">
                   <p className="truncate font-medium">{employee.fullName}</p>
                   <p className="truncate text-sm text-muted-foreground">{employee.jobTitle}</p>
@@ -106,7 +101,7 @@ export function EmployeeDetailDrawer({
               </DetailRow>
               <DetailRow label="Job title">{employee.jobTitle}</DetailRow>
               <DetailRow label="Employment type">{employee.employmentType}</DetailRow>
-              <DetailRow label="Join date">{formatHireDate(employee.hireDate)}</DetailRow>
+              <DetailRow label="Join date">{formatApiHireDate(employee.hireDate)}</DetailRow>
               <DetailRow label="Email">
                 <a
                   className="inline-flex items-center gap-1.5 text-primary underline-offset-2 hover:underline"

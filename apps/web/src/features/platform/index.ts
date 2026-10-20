@@ -7,6 +7,7 @@ export { ResourceRegistryScreen } from './resource-registry-screen';
 export { BackupRestoreScreen } from './backup-restore-screen';
 export { ApplicationsScreen } from './applications-screen';
 export { ModulesScreen } from './modules-screen';
+export { ModuleForm } from './modules-screen';
 export { ConfigurationSchemasScreen } from './configuration-schemas-screen';
 export { ExtensionsScreen } from './extensions-screen';
 export { TenantSettingsScreen } from './tenant-settings-screen';

@@ -45,6 +45,54 @@ The full scope of each phase is in
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md); the product requirements are in
 [MASTER_PRD.md](MASTER_PRD.md).
 
+## Phase 2 — Visual acceptance and Core HR (redesign)
+
+The web UI has been redesigned to the ClickUp-inspired enterprise workspace.
+This phase is the visual correction, the Core HR screen migration and the
+companion components; every item below is verified against the running build.
+It is tracked here and not in the numbered 0-17 plan, which continues in
+parallel.
+
+### Defect catalogue (visual acceptance)
+
+| ID | Defect | Consequence | Fix |
+|----|--------|-------------|-----|
+| V1 | `command-palette.tsx`: `<DialogContent>` without `translate-y-0` | the palette box clipped (landed off-screen) | added `translate-y-0` |
+| V2 | employee table: actions column scrolled away; no sticky pin | the kebab on the last column unreachable at 1280px | `sticky right-0`, opaque group row, `group` class |
+| V3 | `employee-directory.tsx`: second `<h1>` | heading hierarchy broken | `<h1>` → `<h2>` |
+| V4 | ISO dates in the employee table | hard to read | `formatApiHireDate` at 4 call sites |
+| V5 | `navigation.ts`: breadcrumb duplication | trail repeated | dedup rule |
+| V6 | `app-shell.tsx`: header Create scoped outside M01_CORE_HR | create-scoped permission unenforced | Create scoped to M01_CORE_HR |
+| F1 | `/setup/users`: server-side 401 not redirected | 401 on the protected route | `withSessionRedirect` → `/login` |
+
+### Core HR screens added (6 routes)
+
+| Route | Screen | Data source |
+|-------|--------|-------------|
+| /employees/directory | `EmployeeDirectoryBrowse` (card grid) | live employees |
+| /employees/onboarding | `OnboardingScreen` | derivation over live employees |
+| /reports/headcount | `HeadcountScreen` | live employees |
+| /reports/workforce | `WorkforceScreen` | live employees |
+| /reports/movement | `MovementScreen` | demo employment dataset (labelled) |
+| /reports/turnover | `TurnoverScreen` | live employees + demo offboarding cases |
+
+### Phase 5 components
+
+| Component | Status |
+|-----------|--------|
+| ConfirmDialog | Complete |
+| Password generator | Complete (implementation + spec) |
+| Pinned-actions column (shared table) | Complete |
+
+### Open items
+
+- The web shell's navigation entries for the 6 routes are still `planned`; they
+  must be flipped to `built` (in `lib/navigation.ts`) so no 404 can appear.
+- No reporting line exists in the employee record, so the org chart is still
+  seeded data; adding a reporting line is a data-model decision.
+- The movement and offboarding endpoints are not built; both reports are
+  labelled on screen that they read demo datasets.
+
 ## Phase 0 acceptance criteria
 
 | Criterion                                              | Status      | Evidence                                                        |

@@ -386,7 +386,16 @@ export function HrisDataTable<TRow extends { readonly id: string }>({
   // ── Early returns ───────────────────────────────────────────────────────────────
 
   if (status === 'error') {
-    return <ErrorPanel error={errorCopy} onRetry={onRetry} />;
+    // `status === 'error'` is the screen's assertion that the load failed, so the panel is
+    // shown even when the screen did not hand over a cause — otherwise a failed load would
+    // be indistinguishable from an empty one. `errorCopy` itself must stay optional, so the
+    // fallback carries the generic copy.
+    return (
+      <ErrorPanel
+        error={errorCopy ?? new Error('The table could not be loaded.')}
+        onRetry={onRetry}
+      />
+    );
   }
 
   if (status === 'ready' && rows.length === 0) {
@@ -511,6 +520,7 @@ export function HrisDataTable<TRow extends { readonly id: string }>({
                       className={cn(
                         column.responsive,
                         column.align === 'right' && 'text-right',
+                        column.align === 'center' && 'text-center',
                         column.headerClassName,
                       )}
                     >
@@ -519,7 +529,13 @@ export function HrisDataTable<TRow extends { readonly id: string }>({
                           label={column.header}
                           active={activeSort ? sort : undefined}
                           onToggle={() => setSort(toggleSort(sort, column.id))}
-                          className={column.align === 'right' ? 'justify-end' : undefined}
+                          className={
+                            column.align === 'right'
+                              ? 'justify-end'
+                              : column.align === 'center'
+                                ? 'justify-center'
+                                : undefined
+                          }
                         />
                       ) : (
                         column.header
@@ -538,7 +554,13 @@ export function HrisDataTable<TRow extends { readonly id: string }>({
                   <TableRow
                     key={row.id}
                     aria-selected={isSelected || undefined}
-                    className={cn(isSelected && 'bg-primary/[0.08]', rowClassName?.(row))}
+                    /*
+                     * `group` is for a pinned column, not for styling: a cell that sticks to
+                     * the right edge must be opaque, and its background has to be the row's
+                     * own tint composited against the card — which it can only express as
+                     * `group-hover` / `group-aria-selected`.
+                     */
+                    className={cn('group', isSelected && 'bg-primary/[0.08]', rowClassName?.(row))}
                   >
                     {selectable && (
                       <TableCell className="pl-4">
@@ -559,6 +581,7 @@ export function HrisDataTable<TRow extends { readonly id: string }>({
                           className={cn(
                             column.responsive,
                             column.align === 'right' && 'text-right',
+                            column.align === 'center' && 'text-center',
                             column.cellClassName,
                           )}
                         >

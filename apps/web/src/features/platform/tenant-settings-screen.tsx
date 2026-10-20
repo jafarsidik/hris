@@ -3,29 +3,27 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import type { SystemSettingReadModel } from '@hris/shared-types';
-
+import {
+  HrisDataTable,
+  EMPTY_FILTERS,
+  PINNED_ACTIONS_CELL_CLASS,
+  PINNED_ACTIONS_HEADER_CLASS,
+  type DataTableColumn,
+  type DataTableFilter,
+  type DataTableView,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useCan, useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { tenantSettingsApi } from '@/features/platform/tenant-settings-api';
 import { ApiRequestError } from '@/lib/api/http-client';
+
+import type { SystemSettingReadModel } from '@hris/shared-types';
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiRequestError) {
@@ -47,10 +45,41 @@ function mask(value: string | null, isSensitive: boolean): string {
   return String(value);
 }
 
+type SettingRow = SystemSettingReadModel & { readonly id: string };
+
 interface EditState {
   editing: boolean;
   value: string;
 }
+
+const SETTINGS_VIEWS_STORAGE_KEY = 'hris:tenant-settings:views';
+
+function buildSettingFilters(rows: readonly SettingRow[]): readonly DataTableFilter<SettingRow>[] {
+  const groups = [...new Set(rows.map((row) => row.group))]
+    .sort((a, b) => a.localeCompare(b))
+    .map((group) => ({ value: group, label: group }));
+
+  return [
+    {
+      kind: 'select',
+      id: 'group',
+      label: 'Group',
+      placeholder: 'All groups',
+      getValue: (row) => row.group,
+      options: groups,
+    },
+  ];
+}
+
+const SETTINGS_BUILT_IN_VIEWS: readonly DataTableView[] = [
+  {
+    id: 'all',
+    name: 'All settings',
+    builtIn: true,
+    default: true,
+    state: { filters: EMPTY_FILTERS, search: '' },
+  },
+];
 
 export function TenantSettingsScreen() {
   const router = useRouter();
@@ -69,13 +98,10 @@ export function TenantSettingsScreen() {
   const [busy, setBusy] = useState(false);
   const [editStates, setEditStates] = useState<Record<string, EditState>>({});
 
-  const rows = (settings.data ?? []) as SystemSettingReadModel[];
-  const byGroup = new Map<string, SystemSettingReadModel[]>();
-  for (const row of rows) {
-    const bucket = byGroup.get(row.group) ?? [];
-    bucket.push(row);
-    byGroup.set(row.group, bucket);
-  }
+  const rows: SettingRow[] = (settings.data ?? []).map((row) => ({
+    ...row,
+    id: `${row.group}:${row.key}`,
+  }));
 
   const editsOf = (states: Record<string, EditState>): Record<string, string> => {
     const out: Record<string, string> = {};
@@ -139,6 +165,87 @@ export function TenantSettingsScreen() {
     });
   };
 
+  const columns: DataTableColumn<SettingRow>[] = [
+    {
+      id: 'key',
+      header: 'Key',
+      sortValue: (row) => row.key,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.key,
+    },
+    {
+      id: 'type',
+      header: 'Type',
+      sortValue: (row) => row.valueType,
+      cellClassName: 'text-muted-foreground text-sm',
+      cell: (row) => row.valueType,
+    },
+    {
+      id: 'value',
+      header: 'Value',
+      sortValue: (row) => row.value ?? '',
+      cellClassName: 'max-w-[18rem] font-mono text-sm',
+      cell: (row) => {
+        const st = editStates[row.id];
+        if (st?.editing && canManage) {
+          return (
+            <Input
+              id={`edit-${row.id}`}
+              value={st.value}
+              onChange={(e) => setEditValue(row.id, e.currentTarget.value)}
+              className="h-8"
+            />
+          );
+        }
+        return (
+          <span className="block truncate" title={row.value ?? undefined}>
+            {mask(row.value, row.isSensitive)}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'sensitive',
+      header: 'Sensitive',
+      sortValue: (row) => (row.isSensitive ? 'yes' : 'no'),
+      align: 'right',
+      cellClassName: 'font-mono text-xs',
+      cell: (row) => (row.isSensitive ? 'yes' : 'no'),
+    },
+  ];
+
+  if (canManage) {
+    columns.push({
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      hideable: false,
+      headerClassName: PINNED_ACTIONS_HEADER_CLASS,
+      cellClassName: PINNED_ACTIONS_CELL_CLASS,
+      cell: (row) => {
+        const st = editStates[row.id];
+        if (st?.editing) {
+          return (
+            <div className="flex justify-end gap-1">
+              <Button variant="ghost" size="sm" onClick={() => saveEdit(row.id)}>
+                Save
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => cancelEdit(row.id)}>
+                Cancel
+              </Button>
+            </div>
+          );
+        }
+        return (
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => startEdit(row.id, row.value)}>
+              Edit
+            </Button>
+          </div>
+        );
+      },
+    });
+  }
+
   return (
     <PageBody>
       <PageHeader
@@ -157,107 +264,39 @@ export function TenantSettingsScreen() {
         </Alert>
       )}
 
-      {settings.loading && rows.length === 0 ? (
-        <Skeleton className="h-60 w-full" />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No settings configured" />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Settings</CardTitle>
-            <CardDescription>
-              {rows.length} setting{rows.length === 1 ? '' : 's'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {[...byGroup.entries()].map(([group, groupRows]) => (
-              <div key={group} className="mb-6">
-                <h3 className="text-sm font-semibold text-muted-foreground mb-3">
-                  {group.charAt(0).toUpperCase() + group.slice(1)}
-                </h3>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Key</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Value</TableHead>
-                      <TableHead className="text-right">Sensitive</TableHead>
-                      {canManage && <TableHead className="text-right">Edit</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {groupRows.map((row) => {
-                      const rowKey = `${row.group}:${row.key}`;
-                      const st = editStates[rowKey] ?? { editing: false, value: '' };
-                      return (
-                        <TableRow key={rowKey}>
-                          <TableCell className="font-mono text-sm">{row.key}</TableCell>
-                          <TableCell className="text-muted-foreground text-sm">
-                            {row.valueType}
-                          </TableCell>
-                          <TableCell>
-                            {st.editing && canManage ? (
-                              <Input
-                                id={`edit-${rowKey}`}
-                                value={st.value}
-                                onChange={(e) => setEditValue(rowKey, e.currentTarget.value)}
-                              />
-                            ) : (
-                              mask(row.value, row.isSensitive)
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-xs">
-                            {row.isSensitive ? 'yes' : 'no'}
-                          </TableCell>
-                          {canManage && (
-                            <TableCell className="text-right">
-                              {!st.editing ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => startEdit(rowKey, row.value)}
-                                >
-                                  Edit
-                                </Button>
-                              ) : (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => saveEdit(rowKey)}
-                                  >
-                                    Save
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => cancelEdit(rowKey)}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </>
-                              )}
-                            </TableCell>
-                          )}
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            ))}
-            {canManage && (
-              <div className="mt-4 flex justify-end">
-                <Button
-                  disabled={busy || Object.keys(editsOf(editStates)).length === 0}
-                  onClick={() => void save()}
-                >
-                  {busy ? 'Saving…' : 'Save changes'}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <HrisDataTable
+        rows={rows}
+        columns={columns}
+        filters={buildSettingFilters(rows)}
+        searchable
+        searchText={(row) => `${row.key} ${row.valueType} ${row.group}`}
+        searchPlaceholder="Search by key, type or group…"
+        selectable={false}
+        views={{ builtIn: SETTINGS_BUILT_IN_VIEWS, storageKey: SETTINGS_VIEWS_STORAGE_KEY }}
+        status={
+          settings.loading && rows.length === 0
+            ? 'loading'
+            : settings.error !== undefined
+              ? 'error'
+              : 'ready'
+        }
+        errorCopy={settings.error}
+        onRetry={() => settings.reload()}
+        emptyTitle="No settings configured"
+        emptyDescription="Settings appear here once the tenant has configured them."
+        noResultsTitle="No settings match this filter"
+        noResultsDescription="Try a different search or clear the filters to see every setting."
+      />
+
+      {canManage && (
+        <div className="mt-4 flex justify-end">
+          <Button
+            disabled={busy || Object.keys(editsOf(editStates)).length === 0}
+            onClick={() => void save()}
+          >
+            {busy ? 'Saving…' : 'Save changes'}
+          </Button>
+        </div>
       )}
     </PageBody>
   );

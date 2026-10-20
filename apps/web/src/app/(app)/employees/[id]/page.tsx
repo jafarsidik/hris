@@ -18,11 +18,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { getEmployeeRepository } from '@/features/employees';
 import { EmployeeProfileActions } from '@/features/employees/employee-profile-actions';
-import {
-  describeStatus,
-  formatHireDate,
-  initialsFor,
-} from '@/features/employees/employee-presentation';
+import { describeStatus, formatApiHireDate } from '@/features/employees/employee-presentation';
+import { EmployeePhotoField } from '@/features/employees/employee-photo-field';
 import type { Employee } from '@/features/employees/employee-types';
 import {
   AccountPanel,
@@ -172,18 +169,11 @@ function EmployeeIdentityColumn({
   status: ReturnType<typeof describeStatus>;
   extras: ProfileExtras;
 }) {
-  const initials = initialsFor(employee.fullName);
-
   return (
     <div>
-      {initials !== '' && (
-        <div
-          aria-hidden="true"
-          className="mx-auto grid size-20 place-items-center rounded-full bg-primary text-3xl font-bold text-primary-foreground"
-        >
-          {initials}
-        </div>
-      )}
+      <div className="flex justify-center">
+        <EmployeePhotoField employeeId={employee.id} fullName={employee.fullName} compact />
+      </div>
 
       <h1 className="mt-3 text-xl font-semibold">{employee.fullName}</h1>
       <p className="mt-0.5 text-sm text-muted-foreground">{employee.jobTitle}</p>
@@ -252,7 +242,7 @@ function OverviewPanel({ employee, extras }: { employee: Employee; extras: Profi
         <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
           <KvItem label="Department">{employee.department}</KvItem>
           <KvItem label="Direct supervisor">{extras.supervisor}</KvItem>
-          <KvItem label="Join date">{formatHireDate(employee.hireDate)}</KvItem>
+          <KvItem label="Join date">{formatApiHireDate(employee.hireDate)}</KvItem>
           <KvItem label="Employment status">{employee.employmentType}</KvItem>
         </dl>
       </section>
@@ -296,7 +286,7 @@ function EmploymentPanel({
           <KvItem label="Department">{employee.department}</KvItem>
           <KvItem label="Grade">{extras.grade}</KvItem>
           <KvItem label="Employee status">{employee.employmentType}</KvItem>
-          <KvItem label="Join date">{formatHireDate(employee.hireDate)}</KvItem>
+          <KvItem label="Join date">{formatApiHireDate(employee.hireDate)}</KvItem>
           <KvItem label="Confirmed on">{extras.confirmedOn}</KvItem>
           <KvItem label="Direct supervisor">{extras.supervisor}</KvItem>
           <KvItem label="Work pattern">{extras.workPattern}</KvItem>

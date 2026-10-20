@@ -7,6 +7,7 @@ import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/feedback/empty-state';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { useSession } from '@/features/auth/session-context';
@@ -44,9 +45,7 @@ export function PermissionsScreen() {
           <Skeleton className="h-10 w-full" />
         </div>
       ) : list.error !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {list.error}
-        </p>
+        <ErrorPanel error={list.error} onRetry={() => list.reload()} />
       ) : grouped.size === 0 ? (
         <EmptyState
           title="No permissions are defined"

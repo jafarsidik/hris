@@ -5,9 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { PageToolbar } from '@/components/layout/page-toolbar';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -15,21 +13,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import type { ApiRequestLogEntry } from './developer-types';
 import { getDevelopers } from './index';
+import { ServerPagedTable } from './server-paged-table';
+import type { DataTableColumn } from '@/components/data-table';
 
 function humanDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }).format(
@@ -88,6 +78,50 @@ export function AccessLogScreen() {
     }
   }
 
+  /*
+   * No `sortValue` on any column, and no search: the API serves this log newest-first
+   * one cursor page at a time, so a client-side sort would reorder the rows in hand and
+   * present that as the order of the log. The shared table's sorting stays off for the
+   * same reason its search does — see ServerPagedTable.
+   */
+  const columns: readonly DataTableColumn<ApiRequestLogEntry>[] = [
+    {
+      id: 'when',
+      header: 'When',
+      cellClassName: 'text-muted-foreground',
+      cell: (entry) => humanDate(entry.occurredAt),
+    },
+    {
+      id: 'client',
+      header: 'Client',
+      cell: (entry) => entry.clientName,
+    },
+    {
+      id: 'method',
+      header: 'Method',
+      cellClassName: 'font-mono text-xs',
+      cell: (entry) => entry.method,
+    },
+    {
+      id: 'path',
+      header: 'Path',
+      cellClassName: 'font-mono text-xs',
+      cell: (entry) => entry.path,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (entry) => <Badge variant={statusVariant(entry.statusCode)}>{entry.statusCode}</Badge>,
+    },
+    {
+      id: 'duration',
+      header: 'Duration',
+      align: 'right',
+      cellClassName: 'tabular-nums',
+      cell: (entry) => `${entry.durationMs} ms`,
+    },
+  ];
+
   return (
     <PageBody>
       <PageHeader
@@ -95,98 +129,43 @@ export function AccessLogScreen() {
         description="Requests made with a developer API key, newest first."
       />
 
-      <PageToolbar>
-        <Select
-          value={clientId}
-          onValueChange={(value) => {
-            if (value !== null) {
-              setClientId(value);
-              setCursor(undefined);
-              setHistory([]);
-            }
-          }}
-        >
-          <SelectTrigger aria-label="Filter by client" className="w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All clients</SelectItem>
-            {(clients.data ?? []).map((client) => (
-              <SelectItem key={client.id} value={client.id}>
-                {client.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </PageToolbar>
-
-      {log.loading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      ) : log.error !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {log.error}
-        </p>
-      ) : (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>When</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead>Path</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Duration</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(log.data?.items ?? []).map((entry: ApiRequestLogEntry) => (
-                <TableRow key={entry.id}>
-                  <TableCell className="text-muted-foreground">
-                    {humanDate(entry.occurredAt)}
-                  </TableCell>
-                  <TableCell>{entry.clientName}</TableCell>
-                  <TableCell className="font-mono text-xs">{entry.method}</TableCell>
-                  <TableCell className="font-mono text-xs">{entry.path}</TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant(entry.statusCode)}>{entry.statusCode}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{entry.durationMs} ms</TableCell>
-                </TableRow>
+      <ServerPagedTable
+        rows={log.data?.items ?? []}
+        columns={columns}
+        actions={
+          <Select
+            value={clientId}
+            onValueChange={(value) => {
+              if (value !== null) {
+                setClientId(value);
+                setCursor(undefined);
+                setHistory([]);
+              }
+            }}
+          >
+            <SelectTrigger aria-label="Filter by client" className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All clients</SelectItem>
+              {(clients.data ?? []).map((client) => (
+                <SelectItem key={client.id} value={client.id}>
+                  {client.name}
+                </SelectItem>
               ))}
-              {(log.data?.items.length ?? 0) === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    No requests recorded for this filter.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              variant="outline"
-              disabled={history.length === 0}
-              onClick={() => previousPage()}
-            >
-              <ChevronLeft aria-hidden="true" className="size-4" />
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              disabled={!(log.data?.pageInfo.hasNextPage ?? false)}
-              onClick={() => nextPage()}
-            >
-              Next
-              <ChevronRight aria-hidden="true" className="size-4" />
-            </Button>
-          </div>
-        </>
-      )}
+            </SelectContent>
+          </Select>
+        }
+        loading={log.loading}
+        error={log.error}
+        onRetry={() => log.reload()}
+        emptyTitle="No requests recorded for this filter."
+        emptyDescription="Requests are recorded as the API is served; nothing has been written for this filter yet."
+        pageInfo={log.data?.pageInfo ?? { hasNextPage: false, endCursor: null }}
+        historyLength={history.length}
+        onPrevious={previousPage}
+        onNext={nextPage}
+      />
     </PageBody>
   );
 }

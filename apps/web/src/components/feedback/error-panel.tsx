@@ -40,6 +40,14 @@ export function ErrorPanel({
   onRetry?: () => void;
   children?: ReactNode;
 }) {
+  // Nothing failed, so there is nothing to report. Screens render this panel next to a
+  // loader's `error` field, which is `undefined` on every successful load; without this
+  // guard `describeApiError(undefined)` would fall through to the generic copy and every
+  // healthy page would carry a permanent "Something went wrong" banner.
+  if (error === null || error === undefined) {
+    return null;
+  }
+
   const described = describeApiError(error);
   const Icon = ICONS[described.tone];
 

@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Section } from '@/components/layout/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,14 +22,6 @@ import {
 import { FormErrorSummary, FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { useCan, useSession } from '@/features/auth/session-context';
 import { ApiRequestError } from '@/lib/api/http-client';
@@ -39,7 +33,14 @@ import type {
 import { Check, Copy } from 'lucide-react';
 
 import { getIntegrations } from './index';
-import { KIND_LABELS, deliveryBadgeVariant, statusBadgeVariant } from './integration-presentation';
+import { KIND_LABELS, formatTimestamp, statusBadgeVariant } from './integration-presentation';
+import {
+  DELIVERY_BUILT_IN_VIEWS,
+  DELIVERY_SEARCH_TEXT,
+  DELIVERY_VIEWS_STORAGE_KEY,
+  buildDeliveryColumns,
+  buildDeliveryFilters,
+} from './delivery-table-config';
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiRequestError) {
@@ -49,15 +50,6 @@ function messageOf(error: unknown): string {
     return error.message;
   }
   return 'The change could not be saved.';
-}
-
-function formatTimestamp(value: string | null): string {
-  if (value === null) {
-    return 'Never';
-  }
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value),
-  );
 }
 
 /** Reveals a freshly issued webhook secret once, because the API never returns it again. */
@@ -240,9 +232,7 @@ export function IntegrationDetailScreen({ id }: { readonly id: string }) {
           <Skeleton className="h-10 w-full" />
         </div>
       ) : error !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <ErrorPanel error={error} onRetry={() => void load()} />
       ) : integration === null ? null : (
         <>
           <Section bodyClassName="flex flex-col gap-3">
@@ -345,49 +335,27 @@ export function IntegrationDetailScreen({ id }: { readonly id: string }) {
               )}
             </Section>
           )}
-
-          <Section title="Delivery log" bodyClassName="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>When</TableHead>
-                  <TableHead>Direction</TableHead>
-                  <TableHead>Operation</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Attempt</TableHead>
-                  <TableHead className="text-right">Duration</TableHead>
-                  <TableHead>Error</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {deliveries.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell className="text-muted-foreground">
-                      {formatTimestamp(entry.createdAt)}
-                    </TableCell>
-                    <TableCell>{entry.direction}</TableCell>
-                    <TableCell className="font-mono text-xs">{entry.operation}</TableCell>
-                    <TableCell>
-                      <Badge variant={deliveryBadgeVariant(entry.status)}>{entry.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{entry.attempt}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {entry.durationMs === null ? '—' : `${entry.durationMs} ms`}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{entry.error ?? '—'}</TableCell>
-                  </TableRow>
-                ))}
-                {deliveries.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
-                      No deliveries recorded yet.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </Section>
         </>
+      )}
+
+      {!loading && error === undefined && integration !== null && (
+        <Section title="Delivery log" bodyClassName="p-0">
+          <HrisDataTable
+            rows={deliveries}
+            columns={buildDeliveryColumns()}
+            filters={buildDeliveryFilters(deliveries)}
+            searchable
+            searchText={DELIVERY_SEARCH_TEXT}
+            searchPlaceholder="Search deliveries by operation, error…"
+            selectable={false}
+            views={{ builtIn: DELIVERY_BUILT_IN_VIEWS, storageKey: DELIVERY_VIEWS_STORAGE_KEY }}
+            status="ready"
+            emptyTitle="No deliveries recorded yet"
+            emptyDescription="Connection tests and delivery attempts appear here."
+            noResultsTitle="No deliveries match this filter"
+            noResultsDescription="Try a different search or status, or clear the filters."
+          />
+        </Section>
       )}
 
       <SecretDialog secret={secret} onOpenChange={(open) => !open && setSecret(null)} />

@@ -10,10 +10,19 @@ import {
   type OrganizationEntitySummary,
 } from '@hris/shared-types';
 
+import {
+  HrisDataTable,
+  PINNED_ACTIONS_CELL_CLASS,
+  PINNED_ACTIONS_HEADER_CLASS,
+  type DataTableColumn,
+  type DataTableFilter,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -21,8 +30,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { FormErrorSummary, FormField, FormSubmitButton } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
 import {
@@ -32,20 +46,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { useToast } from '@/components/ui/toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCan, useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { ApiRequestError } from '@/lib/api/http-client';
-import { Plus } from 'lucide-react';
+import { MoreHorizontalIcon, Pencil, Plus, Trash2 } from 'lucide-react';
 
 import { getOrganization } from './index';
 
@@ -63,77 +69,83 @@ function messageOf(error: unknown): string {
 /** Sentinel for the "no selection" choice, because a Base UI Select value cannot be null. */
 const NONE = '__none__';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function Notice({ message }: { readonly message: string | undefined }) {
   if (message === undefined) {
     return null;
   }
+  return <ErrorPanel error={message} />;
+}
+
+function EntityRowMenu({
+  entity,
+  onEdit,
+  onDelete,
+}: {
+  readonly entity: OrganizationEntitySummary;
+  readonly onEdit: (entity: OrganizationEntitySummary) => void;
+  readonly onDelete: (entity: OrganizationEntitySummary) => void;
+}) {
   return (
-    <p role="alert" className="text-sm text-destructive">
-      {message}
-    </p>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Actions for ${entity.name}`}
+            className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+          />
+        }
+      >
+        <MoreHorizontalIcon aria-hidden="true" className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem onClick={() => onEdit(entity)}>
+          <Pencil aria-hidden="true" className="size-4" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onClick={() => onDelete(entity)}>
+          <Trash2 aria-hidden="true" className="size-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
-/** Confirms a destructive action in a dialog and surfaces whatever the API rejects with. */
-function ConfirmDelete({
-  label,
-  description,
-  onConfirm,
+function UnitRowMenu({
+  unit,
+  onEdit,
+  onDelete,
 }: {
-  readonly label: string;
-  readonly description: string;
-  readonly onConfirm: () => Promise<void>;
+  readonly unit: OrganizationalUnitSummary;
+  readonly onEdit: (unit: OrganizationalUnitSummary) => void;
+  readonly onDelete: (unit: OrganizationalUnitSummary) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-
-  async function confirm() {
-    setPending(true);
-    setError(undefined);
-    try {
-      await onConfirm();
-      setOpen(false);
-    } catch (err) {
-      setError(messageOf(err));
-    } finally {
-      setPending(false);
-    }
-  }
-
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) {
-          setError(undefined);
-        }
-      }}
-    >
-      <DialogTrigger
+    <DropdownMenu>
+      <DropdownMenuTrigger
         render={
-          <Button variant="outline" size="sm">
-            {label}
-          </Button>
+          <button
+            type="button"
+            aria-label={`Actions for ${unit.name}`}
+            className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+          />
         }
-      />
-      <DialogContent aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>{label}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        {error !== undefined && <FormErrorSummary>{error}</FormErrorSummary>}
-        <DialogFooter>
-          <Button variant="outline" disabled={pending} onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button variant="destructive" disabled={pending} onClick={() => void confirm()}>
-            {pending ? 'Deleting…' : label}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      >
+        <MoreHorizontalIcon aria-hidden="true" className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem onClick={() => onEdit(unit)}>
+          <Pencil aria-hidden="true" className="size-4" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onClick={() => onDelete(unit)}>
+          <Trash2 aria-hidden="true" className="size-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -303,120 +315,141 @@ function EntityDialog({
 function EntitiesTab() {
   const repository = getOrganization();
   const canCreate = useCan('organization.create');
-  const canUpdate = useCan('organization.update');
-  const canDelete = useCan('organization.delete');
+  const { toast } = useToast();
 
-  const [search, setSearch] = useState('');
-  const [debounced, setDebounced] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<OrganizationEntitySummary | null>(null);
-  const [notice, setNotice] = useState<string | undefined>();
+  const [deleting, setDeleting] = useState<OrganizationEntitySummary | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
 
-  const list = useIamLoad(
-    () => repository.listEntities({ search: debounced || undefined }, {}),
-    [debounced],
-  );
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(search), 250);
-    return () => window.clearTimeout(timer);
-  }, [search]);
+  const list = useIamLoad(() => repository.listEntities({}, {}), []);
 
   function openCreate() {
     setEditing(null);
-    setNotice(undefined);
     setDialogOpen(true);
   }
 
   function openEdit(entity: OrganizationEntitySummary) {
     setEditing(entity);
-    setNotice(undefined);
     setDialogOpen(true);
   }
 
+  async function confirmDelete(): Promise<void> {
+    if (deleting === null) {
+      return;
+    }
+    setDeletePending(true);
+    setDeleteError(undefined);
+    try {
+      await repository.deleteEntity(deleting.id);
+      toast({
+        title: 'Entity deleted',
+        description: `${deleting.name} has been removed.`,
+        variant: 'success',
+      });
+      setDeleting(null);
+      list.reload();
+    } catch (err) {
+      setDeleteError(messageOf(err));
+    } finally {
+      setDeletePending(false);
+    }
+  }
+
+  const rows = list.data?.items ?? [];
+
+  const columns: readonly DataTableColumn<OrganizationEntitySummary>[] = [
+    {
+      id: 'code',
+      header: 'Code',
+      sortValue: (entity) => entity.code,
+      cellClassName: 'font-mono text-xs',
+      cell: (entity) => entity.code,
+    },
+    {
+      id: 'name',
+      header: 'Name',
+      sortValue: (entity) => entity.name,
+      cellClassName: 'font-medium',
+      cell: (entity) => entity.name,
+    },
+    {
+      id: 'country',
+      header: 'Country',
+      sortValue: (entity) => entity.countryCode,
+      cell: (entity) => entity.countryCode,
+    },
+    {
+      id: 'currency',
+      header: 'Currency',
+      sortValue: (entity) => entity.currencyCode,
+      cell: (entity) => entity.currencyCode,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      hideable: false,
+      headerClassName: PINNED_ACTIONS_HEADER_CLASS,
+      cellClassName: PINNED_ACTIONS_CELL_CLASS,
+      cell: (entity) => (
+        <EntityRowMenu
+          entity={entity}
+          onEdit={openEdit}
+          onDelete={(target) => setDeleting(target)}
+        />
+      ),
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Input
-          aria-label="Search entities"
-          placeholder="Search entities"
-          value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
-          className="max-w-xs"
-        />
-        {canCreate && (
-          <Button variant="default" onClick={openCreate}>
-            <Plus aria-hidden="true" className="size-4" />
-            Add entity
-          </Button>
-        )}
-      </div>
-
-      <Notice message={notice} />
-
-      {list.loading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      ) : list.error !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {list.error}
-        </p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Country</TableHead>
-              <TableHead>Currency</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {list.data?.items.map((entity) => (
-              <TableRow key={entity.id}>
-                <TableCell className="font-mono text-xs">{entity.code}</TableCell>
-                <TableCell className="font-medium">{entity.name}</TableCell>
-                <TableCell>{entity.countryCode}</TableCell>
-                <TableCell>{entity.currencyCode}</TableCell>
-                <TableCell className="flex justify-end gap-2">
-                  {canUpdate && (
-                    <Button variant="outline" size="sm" onClick={() => openEdit(entity)}>
-                      Edit
-                    </Button>
-                  )}
-                  {canDelete && (
-                    <ConfirmDelete
-                      label="Delete"
-                      description={`Delete "${entity.name}"? This cannot be undone.`}
-                      onConfirm={async () => {
-                        await repository.deleteEntity(entity.id);
-                        setNotice(undefined);
-                        list.reload();
-                      }}
-                    />
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-            {(list.data?.items.length ?? 0) === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  No legal entities yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={columns}
+        searchable
+        searchText={(entity) => `${entity.code} ${entity.name}`}
+        searchPlaceholder="Search entities"
+        selectable={false}
+        actions={
+          canCreate ? (
+            <Button variant="default" onClick={openCreate}>
+              <Plus aria-hidden="true" className="size-4" />
+              Add entity
+            </Button>
+          ) : undefined
+        }
+        status={list.loading ? 'loading' : list.error !== undefined ? 'error' : 'ready'}
+        errorCopy={list.error}
+        onRetry={() => list.reload()}
+        emptyTitle="No legal entities yet"
+        emptyDescription="Create a legal entity to start building the organizational structure."
+        noResultsTitle="No legal entities match this filter"
+        noResultsDescription="Try a different search or clear the filters to see every entity."
+      />
 
       <EntityDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         entity={editing}
         onSaved={list.reload}
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null);
+            setDeleteError(undefined);
+          }
+        }}
+        title={`Delete ${deleting?.name ?? 'this entity'}?`}
+        description={`Delete "${deleting?.name ?? ''}"? This cannot be undone.`}
+        confirmLabel="Delete entity"
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
       />
     </div>
   );
@@ -430,11 +463,14 @@ interface UnitFormState {
   parentId: string | null;
 }
 
-function stateFromUnit(unit: OrganizationalUnitSummary | null): UnitFormState {
+function stateFromUnit(
+  unit: OrganizationalUnitSummary | null,
+  defaultType: OrganizationalUnitType = 'DEPARTMENT',
+): UnitFormState {
   return {
     code: unit?.code ?? '',
     name: unit?.name ?? '',
-    type: unit?.type ?? 'DEPARTMENT',
+    type: unit?.type ?? defaultType,
     entityId: unit?.entityId ?? null,
     parentId: unit?.parentId ?? null,
   };
@@ -448,6 +484,7 @@ function UnitDialog({
   entities,
   units,
   onSaved,
+  defaultType = 'DEPARTMENT',
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -455,18 +492,20 @@ function UnitDialog({
   readonly entities: readonly OrganizationEntitySummary[];
   readonly units: readonly OrganizationalUnitSummary[];
   readonly onSaved: () => void;
+  /** The type a new unit starts as; ignored when editing. */
+  readonly defaultType?: OrganizationalUnitType;
 }) {
   const repository = getOrganization();
-  const [form, setForm] = useState<UnitFormState>(() => stateFromUnit(unit));
+  const [form, setForm] = useState<UnitFormState>(() => stateFromUnit(unit, defaultType));
   const [error, setError] = useState<string | undefined>();
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setForm(stateFromUnit(unit));
+      setForm(stateFromUnit(unit, defaultType));
       setError(undefined);
     }
-  }, [open, unit]);
+  }, [open, unit, defaultType]);
 
   const parentOptions = units.filter((candidate) => candidate.id !== unit?.id);
 
@@ -640,31 +679,30 @@ function UnitDialog({
   );
 }
 
-function UnitsTab({ entities }: { readonly entities: readonly OrganizationEntitySummary[] }) {
+function UnitsTab({
+  entities,
+  lockedType,
+}: {
+  readonly entities: readonly OrganizationEntitySummary[];
+  /**
+   * When set, the tab becomes a focused view of one unit type: the rows are filtered,
+   * the type filter disappears (it would only offer a single value), and new units
+   * default to that type. The Departments screen uses this instead of duplicating the
+   * table, the dialog and the delete confirmation.
+   */
+  readonly lockedType?: OrganizationalUnitType;
+}) {
   const repository = getOrganization();
   const canCreate = useCan('organization.create');
-  const canUpdate = useCan('organization.update');
-  const canDelete = useCan('organization.delete');
+  const { toast } = useToast();
 
-  const [search, setSearch] = useState('');
-  const [debounced, setDebounced] = useState('');
-  const [entityFilter, setEntityFilter] = useState<string>(NONE);
-  const [typeFilter, setTypeFilter] = useState<string>(NONE);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<OrganizationalUnitSummary | null>(null);
+  const [deleting, setDeleting] = useState<OrganizationalUnitSummary | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
 
-  const list = useIamLoad(
-    () =>
-      repository.listUnits(
-        {
-          search: debounced || undefined,
-          entityId: entityFilter === NONE ? undefined : entityFilter,
-          type: typeFilter === NONE ? undefined : (typeFilter as OrganizationalUnitType),
-        },
-        { limit: 100 },
-      ),
-    [debounced, entityFilter, typeFilter],
-  );
+  const list = useIamLoad(() => repository.listUnits({}, { limit: 100 }), []);
 
   const units = list.data?.items ?? [];
   const nameOf = (id: string | null): string => {
@@ -673,11 +711,6 @@ function UnitsTab({ entities }: { readonly entities: readonly OrganizationEntity
     }
     return units.find((unit) => unit.id === id)?.name ?? id;
   };
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(search), 250);
-    return () => window.clearTimeout(timer);
-  }, [search]);
 
   function openCreate() {
     setEditing(null);
@@ -689,108 +722,129 @@ function UnitsTab({ entities }: { readonly entities: readonly OrganizationEntity
     setDialogOpen(true);
   }
 
+  async function confirmDelete(): Promise<void> {
+    if (deleting === null) {
+      return;
+    }
+    setDeletePending(true);
+    setDeleteError(undefined);
+    try {
+      await repository.deleteUnit(deleting.id);
+      toast({
+        title: 'Unit deleted',
+        description: `${deleting.name} has been removed.`,
+        variant: 'success',
+      });
+      setDeleting(null);
+      list.reload();
+    } catch (err) {
+      setDeleteError(messageOf(err));
+    } finally {
+      setDeletePending(false);
+    }
+  }
+
+  const rows = lockedType === undefined ? units : units.filter((unit) => unit.type === lockedType);
+
+  const columns: readonly DataTableColumn<OrganizationalUnitSummary>[] = [
+    {
+      id: 'code',
+      header: 'Code',
+      sortValue: (unit) => unit.code,
+      cellClassName: 'font-mono text-xs',
+      cell: (unit) => unit.code,
+    },
+    {
+      id: 'name',
+      header: 'Name',
+      sortValue: (unit) => unit.name,
+      cellClassName: 'font-medium',
+      cell: (unit) => unit.name,
+    },
+    {
+      id: 'type',
+      header: 'Type',
+      sortValue: (unit) => unit.type,
+      cell: (unit) => <Badge variant="secondary">{unit.type}</Badge>,
+    },
+    {
+      id: 'parent',
+      header: 'Parent',
+      sortValue: (unit) => nameOf(unit.parentId),
+      cellClassName: 'text-muted-foreground',
+      cell: (unit) => nameOf(unit.parentId),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      hideable: false,
+      headerClassName: PINNED_ACTIONS_HEADER_CLASS,
+      cellClassName: PINNED_ACTIONS_CELL_CLASS,
+      cell: (unit) => (
+        <UnitRowMenu unit={unit} onEdit={openEdit} onDelete={(target) => setDeleting(target)} />
+      ),
+    },
+  ];
+
+  const filters: readonly DataTableFilter<OrganizationalUnitSummary>[] = [
+    {
+      kind: 'select',
+      id: 'entity',
+      label: 'Legal entity',
+      placeholder: 'All entities',
+      getValue: (unit) => unit.entityId ?? '',
+      options: entities.map((entity) => ({ value: entity.id, label: entity.name })),
+    },
+    ...(lockedType === undefined
+      ? [
+          {
+            kind: 'select' as const,
+            id: 'type',
+            label: 'Type',
+            placeholder: 'All types',
+            getValue: (unit: OrganizationalUnitSummary) => unit.type,
+            options: ORGANIZATIONAL_UNIT_TYPES.map((type) => ({ value: type, label: type })),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          aria-label="Search units"
-          placeholder="Search units"
-          value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
-          className="max-w-xs"
-        />
-        <Select value={entityFilter} onValueChange={(value) => setEntityFilter(value ?? NONE)}>
-          <SelectTrigger aria-label="Filter by entity" className="w-52">
-            <SelectValue placeholder="All entities" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>All entities</SelectItem>
-            {entities.map((entity) => (
-              <SelectItem key={entity.id} value={entity.id}>
-                {entity.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value ?? NONE)}>
-          <SelectTrigger aria-label="Filter by type" className="w-44">
-            <SelectValue placeholder="All types" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>All types</SelectItem>
-            {ORGANIZATIONAL_UNIT_TYPES.map((type) => (
-              <SelectItem key={type} value={type}>
-                {type}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {canCreate && (
-          <Button variant="default" className="ml-auto" onClick={openCreate}>
-            <Plus aria-hidden="true" className="size-4" />
-            Add unit
-          </Button>
-        )}
-      </div>
-
-      {list.loading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      ) : list.error !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {list.error}
-        </p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Parent</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {units.map((unit) => (
-              <TableRow key={unit.id}>
-                <TableCell className="font-mono text-xs">{unit.code}</TableCell>
-                <TableCell className="font-medium">{unit.name}</TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{unit.type}</Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">{nameOf(unit.parentId)}</TableCell>
-                <TableCell className="flex justify-end gap-2">
-                  {canUpdate && (
-                    <Button variant="outline" size="sm" onClick={() => openEdit(unit)}>
-                      Edit
-                    </Button>
-                  )}
-                  {canDelete && (
-                    <ConfirmDelete
-                      label="Delete"
-                      description={`Delete "${unit.name}"? This cannot be undone.`}
-                      onConfirm={async () => {
-                        await repository.deleteUnit(unit.id);
-                        list.reload();
-                      }}
-                    />
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-            {units.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  No organizational units yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={columns}
+        filters={filters}
+        searchable
+        searchText={(unit) => `${unit.code} ${unit.name}`}
+        searchPlaceholder="Search units"
+        selectable={false}
+        actions={
+          canCreate ? (
+            <Button variant="default" onClick={openCreate}>
+              <Plus aria-hidden="true" className="size-4" />
+              {lockedType === 'DEPARTMENT' ? 'Add department' : 'Add unit'}
+            </Button>
+          ) : undefined
+        }
+        status={list.loading ? 'loading' : list.error !== undefined ? 'error' : 'ready'}
+        errorCopy={list.error}
+        onRetry={() => list.reload()}
+        emptyTitle={
+          lockedType === 'DEPARTMENT' ? 'No departments yet' : 'No organizational units yet'
+        }
+        emptyDescription="Create a unit to start building the organizational structure."
+        emptyAction={
+          canCreate ? (
+            <Button variant="default" onClick={openCreate}>
+              <Plus aria-hidden="true" className="size-4" />
+              {lockedType === 'DEPARTMENT' ? 'Add department' : 'Add unit'}
+            </Button>
+          ) : undefined
+        }
+        noResultsTitle="No organizational units match this filter"
+        noResultsDescription="Try a different search or clear the filters to see every unit."
+      />
 
       <UnitDialog
         open={dialogOpen}
@@ -798,9 +852,58 @@ function UnitsTab({ entities }: { readonly entities: readonly OrganizationEntity
         unit={editing}
         entities={entities}
         units={units}
+        defaultType={lockedType ?? 'DEPARTMENT'}
         onSaved={list.reload}
       />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null);
+            setDeleteError(undefined);
+          }
+        }}
+        title={`Delete ${deleting?.name ?? 'this unit'}?`}
+        description={`Delete "${deleting?.name ?? ''}"? This cannot be undone.`}
+        confirmLabel={lockedType === 'DEPARTMENT' ? 'Delete department' : 'Delete unit'}
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+      />
     </div>
+  );
+}
+
+/**
+ * Departments: the `DEPARTMENT` slice of the unit tree.
+ *
+ * A focused view over the same repository and table as the Structure tab. It exists as
+ * its own route because "Departments" is where HR looks first; keeping one implementation
+ * means a unit created here appears in the org chart and the employee form immediately,
+ * and there is no second copy of the department list to drift.
+ */
+export function DepartmentsScreen() {
+  const router = useRouter();
+  const { state } = useSession();
+  const repository = getOrganization();
+  const entities = useIamLoad(() => repository.listEntities({}, { limit: 200 }), []);
+
+  useEffect(() => {
+    if (state.status === 'anonymous') {
+      router.replace('/login');
+    }
+  }, [state.status, router]);
+
+  return (
+    <PageBody>
+      <PageHeader
+        title="Departments"
+        description="Departments are organizational units of type DEPARTMENT — the structure people are placed into across the company."
+      />
+      <UnitsTab entities={entities.data?.items ?? []} lockedType="DEPARTMENT" />
+    </PageBody>
   );
 }
 

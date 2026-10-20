@@ -3,22 +3,18 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useSession } from '@/features/auth/session-context';
 
+import {
+  LEAVE_TYPES_BUILT_IN_VIEWS,
+  LEAVE_TYPES_SEARCH_TEXT,
+  LEAVE_TYPES_VIEWS_STORAGE_KEY,
+  buildLeaveTypesColumns,
+} from './leave-types-table-config';
 import type { LeaveType } from './leave-types';
 
 /**
@@ -41,59 +37,24 @@ export function LeaveTypesScreen({ rows }: { rows: readonly LeaveType[] }) {
         title="Leave Types"
         description="Leave type definitions — paid status and default entitlement."
       />
-      <Card>
-        <CardHeader>
-          <CardTitle>Types</CardTitle>
-          <CardDescription>{rows.length} leave type(s)</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {' '}
-          {rows.length === 0 ? (
-            <EmptyState title="No leave types defined yet" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Paid</TableHead>
-                  <TableHead className="text-center">Default days</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-mono text-sm">{row.code}</TableCell>
-                    <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell className="max-w-[20rem] truncate text-sm">
-                      {row.description ?? '—'}
-                    </TableCell>
-                    <TableCell>
-                      {row.isPaid ? (
-                        <Badge variant="success">Paid</Badge>
-                      ) : (
-                        <Badge variant="outline">Unpaid</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center font-mono text-sm">
-                      {row.defaultDays}
-                    </TableCell>
-                    <TableCell>
-                      {row.isActive ? (
-                        <Badge variant="secondary">Active</Badge>
-                      ) : (
-                        <Badge variant="outline">Inactive</Badge>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+
+      <HrisDataTable
+        rows={rows}
+        columns={buildLeaveTypesColumns()}
+        searchable
+        searchText={LEAVE_TYPES_SEARCH_TEXT}
+        searchPlaceholder="Search by code, name or description…"
+        selectable={false}
+        views={{
+          builtIn: LEAVE_TYPES_BUILT_IN_VIEWS,
+          storageKey: LEAVE_TYPES_VIEWS_STORAGE_KEY,
+        }}
+        status="ready"
+        emptyTitle="No leave types defined yet"
+        emptyDescription="Leave types created here appear in this list."
+        noResultsTitle="No types match this filter"
+        noResultsDescription="Try a different search, or clear the filters to see every type."
+      />
     </PageBody>
   );
 }

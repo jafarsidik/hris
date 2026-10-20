@@ -3,22 +3,18 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useSession } from '@/features/auth/session-context';
 
+import {
+  LEAVE_POLICIES_BUILT_IN_VIEWS,
+  LEAVE_POLICIES_SEARCH_TEXT,
+  LEAVE_POLICIES_VIEWS_STORAGE_KEY,
+  buildLeavePoliciesColumns,
+} from './leave-policies-table-config';
 import type { LeavePolicy } from './leave-types';
 
 /**
@@ -41,53 +37,24 @@ export function LeavePoliciesScreen({ rows }: { rows: readonly LeavePolicy[] }) 
         title="Leave Policies"
         description="Entitlement per leave type — annual days and carry-forward rules."
       />
-      <Card>
-        <CardHeader>
-          <CardTitle>Policies</CardTitle>
-          <CardDescription>{rows.length} policy(ies)</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {' '}
-          {rows.length === 0 ? (
-            <EmptyState title="No leave policies defined yet" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Leave type</TableHead>
-                  <TableHead className="text-center">Annual days</TableHead>
-                  <TableHead>Carry forward</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-medium">{row.leaveTypeName}</TableCell>
-                    <TableCell className="text-center font-mono text-sm">
-                      {row.annualDays}
-                    </TableCell>
-                    <TableCell>
-                      {row.carryForward ? (
-                        <Badge variant="secondary">Carries forward</Badge>
-                      ) : (
-                        <Badge variant="outline">Use it or lose it</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {row.isActive ? (
-                        <Badge variant="success">Active</Badge>
-                      ) : (
-                        <Badge variant="outline">Inactive</Badge>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+
+      <HrisDataTable
+        rows={rows}
+        columns={buildLeavePoliciesColumns()}
+        searchable
+        searchText={LEAVE_POLICIES_SEARCH_TEXT}
+        searchPlaceholder="Search by leave type…"
+        selectable={false}
+        views={{
+          builtIn: LEAVE_POLICIES_BUILT_IN_VIEWS,
+          storageKey: LEAVE_POLICIES_VIEWS_STORAGE_KEY,
+        }}
+        status="ready"
+        emptyTitle="No leave policies defined yet"
+        emptyDescription="Leave policies created here appear in this list."
+        noResultsTitle="No policies match this filter"
+        noResultsDescription="Try a different search, or clear the filters to see every policy."
+      />
     </PageBody>
   );
 }

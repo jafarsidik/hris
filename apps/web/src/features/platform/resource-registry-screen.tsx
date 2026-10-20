@@ -7,9 +7,9 @@ import type { ModuleSummary, ResourceSummary } from '@hris/shared-types';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { EmptyState } from '@/components/feedback/empty-state';
 import { ResourceFieldsTable } from '@/components/metadata/resource-fields-table';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -60,11 +60,7 @@ export function ResourceRegistryScreen() {
         description="Applications, modules and the resources they expose."
       />
 
-      {error !== undefined ? (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
+      {error !== undefined ? <ErrorPanel error={error} /> : null}
 
       <RegistryAdmin
         applications={applications.data ?? []}

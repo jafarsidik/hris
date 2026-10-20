@@ -5,20 +5,17 @@ import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
+import {
+  HrisDataTable,
+  EMPTY_FILTERS,
+  type DataTableColumn,
+  type DataTableFilter,
+  type DataTableView,
+} from '@/components/data-table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { useCan, useSession } from '@/features/auth/session-context';
 
@@ -27,6 +24,8 @@ import { useIamLoad } from '@/features/iam/use-iam-data';
 import { SYSTEM_SETTING_DEFAULTS } from '@hris/shared-types';
 
 interface DefaultRow {
+  /** The setting key doubles as the row id: it is unique across the catalogue. */
+  readonly id: string;
   readonly group: string;
   readonly key: string;
   readonly valueType: string;
@@ -34,6 +33,128 @@ interface DefaultRow {
   readonly current: string | null;
   readonly status: 'default' | 'changed' | 'unset';
 }
+
+const STATUS_LABEL: Record<DefaultRow['status'], string> = {
+  default: 'Default',
+  changed: 'Customized',
+  unset: 'Not set',
+};
+
+const STATUS_VARIANT: Record<DefaultRow['status'], 'success' | 'warning' | 'secondary'> = {
+  default: 'success',
+  changed: 'warning',
+  unset: 'secondary',
+};
+
+const STATUS_FILTER = [
+  { value: 'changed', label: 'Customized' },
+  { value: 'default', label: 'Default' },
+  { value: 'unset', label: 'Not set' },
+];
+
+const withStatus = (status: DefaultRow['status']) => ({
+  filters: { ...EMPTY_FILTERS, select: { status } },
+  search: '',
+});
+
+/**
+ * The columns, filters and views of the catalogue table.
+ *
+ * Declared here rather than in a `*-table-config.tsx` module because this table has one
+ * consumer and no other page reads `DefaultRow`.
+ */
+const SETTING_COLUMNS: readonly DataTableColumn<DefaultRow>[] = [
+  {
+    id: 'group',
+    header: 'Group',
+    sortValue: (row) => row.group,
+    cellClassName: 'text-sm text-muted-foreground',
+    cell: (row) => row.group,
+  },
+  {
+    id: 'key',
+    header: 'Key',
+    sortValue: (row) => row.key,
+    cellClassName: 'font-mono text-sm',
+    cell: (row) => row.key,
+  },
+  {
+    id: 'valueType',
+    header: 'Type',
+    sortValue: (row) => row.valueType,
+    responsive: 'hidden md:table-cell',
+    align: 'center',
+    cellClassName: 'text-sm text-muted-foreground',
+    cell: (row) => row.valueType,
+  },
+  {
+    id: 'default',
+    header: 'Default',
+    sortValue: (row) => row.default,
+    responsive: 'hidden lg:table-cell',
+    cellClassName: 'max-w-[18rem] text-sm text-muted-foreground',
+    cell: (row) => (
+      <span className="block truncate" title={row.default}>
+        {row.default}
+      </span>
+    ),
+  },
+  {
+    id: 'current',
+    header: 'Current value',
+    sortValue: (row) => row.current ?? '',
+    align: 'right',
+    cellClassName: 'max-w-[18rem] font-mono text-sm',
+    cell: (row) => (
+      <span className="block truncate" title={row.current ?? undefined}>
+        {row.current ?? '—'}
+      </span>
+    ),
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    sortValue: (row) => row.status,
+    align: 'center',
+    cell: (row) => <Badge variant={STATUS_VARIANT[row.status]}>{STATUS_LABEL[row.status]}</Badge>,
+  },
+];
+
+const SETTING_FILTERS: readonly DataTableFilter<DefaultRow>[] = [
+  {
+    kind: 'select',
+    id: 'status',
+    label: 'Status',
+    placeholder: 'All statuses',
+    getValue: (row) => row.status,
+    options: STATUS_FILTER,
+  },
+  {
+    kind: 'select',
+    id: 'group',
+    label: 'Group',
+    placeholder: 'All groups',
+    getValue: (row) => row.group,
+    advanced: true,
+    options: [...new Set(SYSTEM_SETTING_DEFAULTS.map((def) => def.group))]
+      .sort((left, right) => left.localeCompare(right))
+      .map((group) => ({ value: group, label: group })),
+  },
+];
+
+const SETTING_VIEWS: readonly DataTableView[] = [
+  {
+    id: 'all',
+    name: 'All settings',
+    builtIn: true,
+    default: true,
+    state: { filters: EMPTY_FILTERS, search: '' },
+  },
+  { id: 'customized', name: 'Customized', builtIn: true, state: withStatus('changed') },
+  { id: 'not-set', name: 'Not set', builtIn: true, state: withStatus('unset') },
+];
+
+const SETTING_VIEWS_STORAGE_KEY = 'hris:system-defaults:views';
 
 /**
  * System Defaults: the platform-wide setting catalogue — what each setting defaults
@@ -61,6 +182,7 @@ export function SystemDefaultsScreen() {
     if (value === null) status = 'unset';
     else if (String(value) !== String(def.value)) status = 'changed';
     rows.push({
+      id: def.key,
       group: def.group,
       key: def.key,
       valueType: def.valueType,
@@ -90,102 +212,63 @@ export function SystemDefaultsScreen() {
         }
       />
 
-      {settings.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{settings.error}</AlertDescription>
-        </Alert>
-      )}
-
-      {settings.loading ? (
-        <Skeleton className="h-60 w-full" />
-      ) : (
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-2">
-            <Card>
-              <CardHeader className="pb-1.5">
-                <CardDescription>Settings in catalogue</CardDescription>
-                <CardTitle className="text-xl tabular-nums">{String(rows.length)}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-1.5">
-                <CardDescription>Customized from default</CardDescription>
-                <CardTitle className="text-xl tabular-nums">{String(changed)}</CardTitle>
-              </CardHeader>
-            </Card>
-          </div>
-          <Card className="max-w-4xl">
-            <CardHeader>
-              <CardTitle>Setting catalogue</CardTitle>
-              <CardDescription>
-                {rows.length} system setting{rows.length === 1 ? '' : 's'}
-                {changed > 0 ? ` · ${changed} customized` : ''}
-              </CardDescription>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-2">
+          <Card>
+            <CardHeader className="pb-1.5">
+              <CardDescription>Settings in catalogue</CardDescription>
+              <CardTitle className="text-xl tabular-nums">{String(rows.length)}</CardTitle>
             </CardHeader>
-            <CardContent>
-              {rows.length === 0 ? (
-                <EmptyState title="No settings defined" />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Group</TableHead>
-                      <TableHead className="font-mono text-sm">Key</TableHead>
-                      <TableHead className="text-center">Type</TableHead>
-                      <TableHead>Default</TableHead>
-                      <TableHead className="text-right">Current value</TableHead>
-                      <TableHead className="text-center">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((row) => (
-                      <TableRow key={row.key}>
-                        <TableCell className="text-muted-foreground text-sm">{row.group}</TableCell>
-                        <TableCell className="font-mono text-sm">{row.key}</TableCell>
-                        <TableCell className="text-center text-muted-foreground text-sm">
-                          {row.valueType}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {row.default}
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-mono">
-                          {row.current ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge
-                            variant={
-                              row.status === 'changed'
-                                ? 'warning'
-                                : row.status === 'unset'
-                                  ? 'secondary'
-                                  : 'success'
-                            }
-                          >
-                            {row.status === 'changed'
-                              ? 'Customized'
-                              : row.status === 'unset'
-                                ? 'Not set'
-                                : 'Default'}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
           </Card>
-
-          {!canView && (
-            <Alert>
-              <AlertTitle>Read-only view</AlertTitle>
-              <AlertDescription>
-                You don't have permission to read system settings; contact your administrator.
-              </AlertDescription>
-            </Alert>
-          )}
+          <Card>
+            <CardHeader className="pb-1.5">
+              <CardDescription>Customized from default</CardDescription>
+              <CardTitle className="text-xl tabular-nums">{String(changed)}</CardTitle>
+            </CardHeader>
+          </Card>
         </div>
-      )}
+
+        {/*
+          The catalogue used to be a bare `<table>` inside a `Card`, with no search, no sort
+          and no way to hide a column — while every other list in the console had all three.
+          It now uses the shared table; the outer card went with it, because the shared table
+          brings its own, and a card inside a card is two frames around one list.
+        */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">Setting catalogue</h2>
+          <p className="text-sm text-muted-foreground">
+            {rows.length} system setting{rows.length === 1 ? '' : 's'}
+            {changed > 0 ? ` · ${changed} customized` : ''}
+          </p>
+        </div>
+
+        <HrisDataTable
+          rows={rows}
+          columns={SETTING_COLUMNS}
+          filters={SETTING_FILTERS}
+          searchable
+          searchText={(row) => `${row.group} ${row.key} ${row.valueType} ${row.default}`}
+          searchPlaceholder="Search by group, key or default…"
+          selectable={false}
+          views={{ builtIn: SETTING_VIEWS, storageKey: SETTING_VIEWS_STORAGE_KEY }}
+          status={settings.loading ? 'loading' : settings.error !== undefined ? 'error' : 'ready'}
+          errorCopy={settings.error}
+          onRetry={() => settings.reload()}
+          emptyTitle="No settings defined"
+          emptyDescription="Settings appear here once the catalogue registers them."
+          noResultsTitle="No setting matches this filter"
+          noResultsDescription="Try a different search, status or group."
+        />
+
+        {!canView && (
+          <Alert>
+            <AlertTitle>Read-only view</AlertTitle>
+            <AlertDescription>
+              You don't have permission to read system settings; contact your administrator.
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
     </PageBody>
   );
 }

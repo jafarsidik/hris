@@ -1,6 +1,13 @@
 import 'server-only';
 
-import { apiRequest, platformApiRequest, type RequestOptions } from './http-client';
+import { redirect } from 'next/navigation';
+
+import {
+  ApiRequestError,
+  apiRequest,
+  platformApiRequest,
+  type RequestOptions,
+} from './http-client';
 
 /**
  * Server-side API URLs, resolved at runtime.
@@ -31,7 +38,36 @@ export const SERVER_API_PLATFORM_URL =
 
 /** Calls a versioned business endpoint from the server. */
 export const serverApiRequestV1 = <TData>(path: string, options?: RequestOptions): Promise<TData> =>
-  apiRequest<TData>(SERVER_API_BASE_URL, path, options);
+  withSessionRedirect(() => apiRequest<TData>(SERVER_API_BASE_URL, path, options));
+
+/**
+ * Turns a 401 from the API into a trip to the sign-in page.
+ *
+ * A server component cannot render anything useful from an unauthenticated call, and it
+ * cannot explain itself either: Next serialises a thrown server error to the browser as an
+ * opaque digest, so the error boundary downstream can only say "something went wrong" and
+ * print a reference number. That is what a reader whose session had expired saw on
+ * `/employees` — "Something went wrong … Reference: 169568600" — while the same reader on
+ * `/` was correctly sent to the sign-in card, because `/` redirects client-side.
+ *
+ * Redirecting here is the one place that still knows the cause. Only `UNAUTHENTICATED` is
+ * treated this way: a 403 is a real answer about this reader and belongs to the page, and
+ * a 5xx is a fault the error boundary should report.
+ *
+ * The `redirect()` call sits inside the `catch`, and throws its own `NEXT_REDIRECT` error
+ * on the way out; nothing here catches it again, so it reaches the router.
+ */
+async function withSessionRedirect<TData>(call: () => Promise<TData>): Promise<TData> {
+  try {
+    return await call();
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.code === 'UNAUTHENTICATED') {
+      redirect('/login');
+    }
+
+    throw error;
+  }
+}
 
 /** Calls an unversioned platform endpoint from the server, such as a probe. */
 export const serverPlatformRequest = <TData>(

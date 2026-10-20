@@ -1,38 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { useSession } from '@/features/auth/session-context';
 
+import {
+  LEAVE_REQUESTS_BUILT_IN_VIEWS,
+  LEAVE_REQUESTS_SEARCH_TEXT,
+  LEAVE_REQUESTS_VIEWS_STORAGE_KEY,
+  buildLeaveRequestsColumns,
+  buildLeaveRequestsFilters,
+} from './leave-requests-table-config';
 import type { LeaveRequest } from './leave-types';
-
-function formatWhen(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-  }).format(new Date(value));
-}
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -45,23 +30,6 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-const STATUS_OPTIONS = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
-
-function statusBadge(status: string) {
-  switch (status) {
-    case 'PENDING':
-      return <Badge variant="warning">Pending</Badge>;
-    case 'APPROVED':
-      return <Badge variant="success">Approved</Badge>;
-    case 'REJECTED':
-      return <Badge variant="destructive">Rejected</Badge>;
-    case 'CANCELLED':
-      return <Badge variant="secondary">Cancelled</Badge>;
-    default:
-      return <Badge variant="outline">{status}</Badge>;
-  }
-}
-
 /**
  * Leave Requests: employee leave applications and their approval status.
  *
@@ -72,9 +40,7 @@ export function LeaveRequestsScreen({ initialRows }: { initialRows: readonly Lea
   const router = useRouter();
   const { state } = useSession();
 
-  const [filterStatus, setFilterStatus] = useState<string>('');
-
-  const filtered = initialRows.filter((row) => filterStatus === '' || row.status === filterStatus);
+  const filtered = useMemo(() => initialRows, [initialRows]);
 
   useEffect(() => {
     if (state.status === 'anonymous') {
@@ -90,26 +56,6 @@ export function LeaveRequestsScreen({ initialRows }: { initialRows: readonly Lea
       <PageHeader
         title="Leave Requests"
         description="Employee leave applications and their approval status."
-        actions={
-          <Select
-            value={filterStatus}
-            onValueChange={(value) => setFilterStatus((value ?? '') as string)}
-          >
-            <SelectTrigger className="w-40" aria-label="Filter by status">
-              <SelectValue placeholder="All statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="" key="all">
-                All statuses
-              </SelectItem>
-              {STATUS_OPTIONS.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        }
       />
 
       <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 mb-4">
@@ -119,50 +65,24 @@ export function LeaveRequestsScreen({ initialRows }: { initialRows: readonly Lea
         <Stat label="Days requested" value={String(filtered.reduce((sum, r) => sum + r.days, 0))} />
       </div>
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          title="No leave requests match this view yet."
-          description="Try a different status filter."
-        />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Requests</CardTitle>
-            <CardDescription>
-              {filtered.length} leave request{filtered.length === 1 ? '' : 's'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Leave type</TableHead>
-                  <TableHead className="text-center">From → To</TableHead>
-                  <TableHead className="text-center">Days</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>
-                      <div className="font-medium">{row.employeeName}</div>
-                      <div className="text-xs text-muted-foreground">{row.employeeNumber}</div>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{row.leaveTypeName}</TableCell>
-                    <TableCell className="text-center font-mono text-sm">
-                      {formatWhen(row.startDate)} → {formatWhen(row.endDate)}
-                    </TableCell>
-                    <TableCell className="text-center font-mono text-sm">{row.days}</TableCell>
-                    <TableCell>{statusBadge(row.status)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      <HrisDataTable
+        rows={filtered}
+        columns={buildLeaveRequestsColumns()}
+        filters={buildLeaveRequestsFilters(filtered)}
+        searchable
+        searchText={LEAVE_REQUESTS_SEARCH_TEXT}
+        searchPlaceholder="Search by employee, number or leave type…"
+        selectable={false}
+        views={{
+          builtIn: LEAVE_REQUESTS_BUILT_IN_VIEWS,
+          storageKey: LEAVE_REQUESTS_VIEWS_STORAGE_KEY,
+        }}
+        status="ready"
+        emptyTitle="No leave requests match this view yet."
+        emptyDescription="Try a different status filter."
+        noResultsTitle="No requests match this filter"
+        noResultsDescription="Try a different search or status, or clear the filters to see every request."
+      />
     </PageBody>
   );
 }

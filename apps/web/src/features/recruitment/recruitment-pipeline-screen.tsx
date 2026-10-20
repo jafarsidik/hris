@@ -3,8 +3,8 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable, type DataTableColumn, type DataTableFilter } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -55,9 +55,14 @@ function requisitionBadge(status: string) {
   }
 }
 
+const STAGE_OPTIONS = ['APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'HIRED', 'REJECTED'] as const;
+
 /**
  * Recruitment pipeline: open requisitions and the candidate applications
  * moving through the hiring stages.
+ *
+ * The applications list is the primary table and uses the shared data table. Job
+ * requisitions are a smaller embedded sub-table in a card and keep their bespoke markup.
  */
 export function RecruitmentPipelineScreen({
   requisitions,
@@ -81,6 +86,56 @@ export function RecruitmentPipelineScreen({
       router.replace('/login');
     }
   }, [state.status, router]);
+
+  const applicationColumns: readonly DataTableColumn<JobApplication>[] = [
+    {
+      id: 'candidate',
+      header: 'Candidate',
+      sortValue: (row) => row.candidateName,
+      cell: (row) => (
+        <div>
+          <div className="font-medium">{row.candidateName}</div>
+          <div className="text-xs text-muted-foreground">{row.candidateEmail}</div>
+        </div>
+      ),
+    },
+    {
+      id: 'requisition',
+      header: 'Requisition',
+      sortValue: (row) => row.requisitionTitle,
+      cell: (row) => (
+        <div>
+          <div className="font-medium">{row.requisitionTitle}</div>
+          <div className="text-xs text-muted-foreground">{row.requisitionCode}</div>
+        </div>
+      ),
+    },
+    {
+      id: 'stage',
+      header: 'Stage',
+      sortValue: (row) => row.stage,
+      cell: (row) => stageBadge(row.stage),
+    },
+    {
+      id: 'rating',
+      header: 'Rating',
+      sortValue: (row) => row.rating ?? 0,
+      align: 'center',
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.rating ?? '—',
+    },
+  ];
+
+  const stageFilters: readonly DataTableFilter<JobApplication>[] = [
+    {
+      kind: 'select',
+      id: 'stage',
+      label: 'Stage',
+      placeholder: 'All stages',
+      getValue: (row) => row.stage,
+      options: STAGE_OPTIONS.map((stage) => ({ value: stage, label: stage })),
+    },
+  ];
 
   return (
     <PageBody>
@@ -149,51 +204,27 @@ export function RecruitmentPipelineScreen({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Applications</CardTitle>
-          <CardDescription>{applications.length} application(s) in the pipeline</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {' '}
-          {applications.length === 0 ? (
-            <EmptyState title="No applications in the pipeline" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Candidate</TableHead>
-                  <TableHead>Requisition</TableHead>
-                  <TableHead>Stage</TableHead>
-                  <TableHead className="text-center">Rating</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {applications.map((application) => (
-                  <TableRow key={application.id}>
-                    <TableCell>
-                      <div className="font-medium">{application.candidateName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {application.candidateEmail}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{application.requisitionTitle}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {application.requisitionCode}
-                      </div>
-                    </TableCell>
-                    <TableCell>{stageBadge(application.stage)}</TableCell>
-                    <TableCell className="text-center font-mono text-sm">
-                      {application.rating ?? '—'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold">Applications</h2>
+        <p className="text-sm text-muted-foreground">
+          {applications.length} application(s) in the pipeline
+        </p>
+      </div>
+      <HrisDataTable
+        rows={applications}
+        columns={applicationColumns}
+        filters={stageFilters}
+        searchable
+        searchText={(row) =>
+          `${row.candidateName} ${row.candidateEmail} ${row.requisitionTitle} ${row.requisitionCode}`
+        }
+        searchPlaceholder="Search applications…"
+        selectable={false}
+        emptyTitle="No applications in the pipeline"
+        emptyDescription="Candidate applications moving through the hiring stages appear here."
+        noResultsTitle="No applications match this filter"
+        noResultsDescription="Try a different search or stage, or clear the filters to see every application."
+      />
     </PageBody>
   );
 }

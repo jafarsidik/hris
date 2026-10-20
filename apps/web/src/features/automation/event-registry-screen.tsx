@@ -6,9 +6,10 @@ import { RefreshCw, AlertTriangle, Search } from 'lucide-react';
 
 import type { EventCategory } from '@hris/shared-types';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { PageToolbar } from '@/components/layout/page-toolbar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -22,17 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
 import { useCan, useSession } from '@/features/auth/session-context';
+import { buildEventColumns } from '@/features/automation/events-table-config';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { eventsApi } from '@/features/automation/events-api';
 import { ApiRequestError } from '@/lib/api/http-client';
@@ -47,15 +39,7 @@ const CATEGORY_TONE: Readonly<Record<EventCategory, BadgeTone>> = {
   INTEGRATION: 'secondary',
   SYSTEM: 'destructive',
 };
-
 const DEFAULT_LIMIT = 50;
-
-function formatTimestamp(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
-}
 
 export function EventRegistryScreen() {
   const router = useRouter();
@@ -112,11 +96,7 @@ export function EventRegistryScreen() {
         description="The catalogue of domain events the platform emits, and the recent history of what happened in this tenant."
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
       {notice !== undefined && (
         <Alert>
           <AlertDescription>{notice}</AlertDescription>
@@ -124,6 +104,14 @@ export function EventRegistryScreen() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+        {/*
+          The catalogue stays a bespoke list rather than a shared table: it is a filter
+          panel, not a data table. Its search filters the list locally and clicking an
+          entry sets the server-side `type` filter for the history — wrapping it in the
+          shared table would add a column-visibility toggle and saved views that mean
+          nothing for a button list, and the 280px sidebar is too narrow for real table
+          columns without losing the description.
+        */}
         <Card>
           <CardHeader>
             <CardTitle>Event Catalogue</CardTitle>
@@ -189,7 +177,7 @@ export function EventRegistryScreen() {
               </div>
               <div className="flex items-center gap-2">
                 <Select value={limit.toString()} onValueChange={(v) => setLimit(Number(v))}>
-                  <SelectTrigger className="w-24">
+                  <SelectTrigger className="w-24" aria-label="Rows per page">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -217,7 +205,7 @@ export function EventRegistryScreen() {
                   value={resource ?? 'all'}
                   onValueChange={(v) => setResource(v === null || v === 'all' ? undefined : v)}
                 >
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-40" aria-label="Filter by resource">
                     <SelectValue placeholder="All resources" />
                   </SelectTrigger>
                   <SelectContent>
@@ -249,62 +237,28 @@ export function EventRegistryScreen() {
             </PageToolbar>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            {snapshot.error !== undefined && (
-              <Alert variant="destructive">
-                <AlertDescription>{snapshot.error}</AlertDescription>
-              </Alert>
-            )}
-
-            {snapshot.loading && events.length === 0 ? (
-              <Skeleton className="h-60 w-full" />
-            ) : events.length === 0 ? (
-              <EmptyState title="No events match this view" />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Resource</TableHead>
-                    <TableHead>Occurred</TableHead>
-                    <TableHead>Delivered</TableHead>
-                    <TableHead className="text-right">Attempts</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {events.map((event) => (
-                    <TableRow key={event.id}>
-                      <TableCell className="font-mono font-medium">{event.type}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {event.resource}/{event.resourceId}
-                      </TableCell>
-                      <TableCell>{formatTimestamp(event.occurredAt)}</TableCell>
-                      <TableCell>
-                        {event.publishedAt !== null ? (
-                          <span className="text-muted-foreground">
-                            {formatTimestamp(event.publishedAt)}
-                          </span>
-                        ) : (
-                          <Badge variant="warning">Pending</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">{event.attempts}</TableCell>
-                      <TableCell className="text-right">
-                        {canRetry && event.publishedAt === null && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void onRetry(event.id)}
-                          >
-                            Retry
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+            {/*
+              The history is a server slice, so the shared table runs without client-side
+              search, sort or paging — those would present a partial list as if it were
+              the whole. The server controls above stay the source of truth for what the
+              slice contains.
+            */}
+            <HrisDataTable
+              rows={events}
+              columns={buildEventColumns({ canRetry, onRetry })}
+              searchable={false}
+              pagination={false}
+              selectable={false}
+              status={
+                snapshot.loading ? 'loading' : snapshot.error !== undefined ? 'error' : 'ready'
+              }
+              errorCopy={snapshot.error}
+              onRetry={() => snapshot.reload()}
+              emptyTitle="No events match this view"
+              emptyDescription="Try a different resource, or clear the filters to see every recent event."
+              noResultsTitle="No events match this view"
+              noResultsDescription="Try a different resource, or clear the filters to see every recent event."
+            />
           </CardContent>
         </Card>
       </div>

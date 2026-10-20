@@ -45,3 +45,13 @@ export function deliveryBadgeVariant(status: IntegrationDeliveryStatus): BadgeVa
       return 'destructive';
   }
 }
+
+/** Formats an ISO timestamp for display, or "Never" for null. */
+export function formatTimestamp(value: string | null): string {
+  if (value === null) {
+    return 'Never';
+  }
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
+    new Date(value),
+  );
+}

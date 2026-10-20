@@ -12,7 +12,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   describeStatus,
-  formatHireDate,
+  formatApiHireDate,
   initialsFor,
 } from '@/features/employees/employee-presentation';
 import type { Employee } from '@/features/employees/employee-types';
@@ -88,7 +88,7 @@ export function RecentHires({ employees }: { employees: readonly Employee[] }) {
                     {employee.department}
                   </TableCell>
                   <TableCell className="hidden whitespace-nowrap tabular-nums md:table-cell">
-                    {formatHireDate(employee.hireDate)}
+                    {formatApiHireDate(employee.hireDate)}
                   </TableCell>
                   <TableCell className="pr-4">
                     <Badge variant={status.variant}>{status.label}</Badge>

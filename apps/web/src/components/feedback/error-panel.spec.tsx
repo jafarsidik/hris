@@ -90,10 +90,14 @@ describe('ErrorPanel', () => {
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
   });
 
-  it('handles a thrown null', () => {
-    render(<ErrorPanel error={null} />);
+  it('renders nothing when no failure has occurred', () => {
+    // The panel sits next to a loader's `error` field, which is undefined until something
+    // fails. A panel here would be a phantom error on a page that loaded fine.
+    const { container: fromUndefined } = render(<ErrorPanel error={undefined} />);
+    expect(fromUndefined).toBeEmptyDOMElement();
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    const { container: fromNull } = render(<ErrorPanel error={null} />);
+    expect(fromNull).toBeEmptyDOMElement();
   });
 
   it('renders extra children alongside the description', () => {

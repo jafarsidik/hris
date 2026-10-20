@@ -9,10 +9,9 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Building2, Hourglass, Info, Plane, UserCheck, UserPlus, Users } from 'lucide-react';
+import { Building2, Hourglass, Plane, UserCheck, UserPlus, Users } from 'lucide-react';
 import { DashboardGreeting } from '@/features/dashboard/greeting';
-import { HrSampleCard } from '@/features/dashboard/hr-sample-card';
+import { HeadcountCard } from '@/features/dashboard/headcount-card';
 import { MetricCard } from '@/features/dashboard/metric-card';
 import { ModuleProgress } from '@/features/dashboard/module-progress';
 import { NeedsAttention } from '@/features/dashboard/needs-attention';
@@ -29,12 +28,10 @@ export const metadata: Metadata = {
 /**
  * The HR command center.
  *
- * Headline numbers come from the same (mock) repository the directory reads, so the
- * dashboard and the directory can never disagree about a count while still sharing one
- * data path. Every figure is labeled with its basis, and the "sample data" alert makes
- * the source of the numbers impossible to miss — there is no database behind them yet.
- * The KPI row, the attention panel and the notification bell all read
- * {@link computeDirectoryFacts}, so the three surfaces stay in agreement.
+ * Headline numbers come from the same repository the directory reads, so the dashboard
+ * and the directory can never disagree about a count. The KPI row, the attention panel
+ * and the notification bell all read {@link computeDirectoryFacts}, so the three
+ * surfaces stay in agreement.
  */
 export default async function CommandCenterPage() {
   let directory;
@@ -63,19 +60,6 @@ export default async function CommandCenterPage() {
         title="Command Center"
         description="Headcount, recent hires and platform status at a glance."
       />
-
-      {/*
-        The same honesty note the directory carries: these numbers are computed locally
-        from generated records, not served by an employee endpoint.
-      */}
-      <Alert>
-        <Info aria-hidden="true" />
-        <AlertTitle>Sample data</AlertTitle>
-        <AlertDescription>
-          Every figure below is computed from {facts.total} generated records in memory. They reset
-          each time the server restarts, and nothing here is wired to a database.
-        </AlertDescription>
-      </Alert>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <MetricCard
@@ -130,7 +114,7 @@ export default async function CommandCenterPage() {
         <div className="space-y-6">
           <NeedsAttention employees={directory.items} />
           <QuickActions />
-          <HrSampleCard employees={directory.items} />
+          <HeadcountCard employees={directory.items} />
         </div>
       </div>
 

@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable, type DataTableBulkAction } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { PageToolbar } from '@/components/layout/page-toolbar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -26,41 +26,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { useToast } from '@/components/ui/toast';
 import { useSession, useCan } from '@/features/auth/session-context';
 import { getIam } from '@/features/iam';
-import type { UserSummary } from '@/features/iam/iam-types';
+import type { ManageableUserStatus, UserSummary } from '@/features/iam/iam-types';
 import { useIamLoad } from '@/features/iam/use-iam-data';
+import { generatePassword } from '@/features/iam/password-generator';
+import {
+  USER_BUILT_IN_VIEWS,
+  USER_SEARCH_TEXT,
+  USER_VIEWS_STORAGE_KEY,
+  buildUserColumns,
+  buildUserFilters,
+} from '@/features/iam/user-table-config';
 import { UnitPicker } from '@/features/organization/unit-picker';
 import { ApiRequestError } from '@/lib/api/http-client';
-import { CalendarDays, Plus } from 'lucide-react';
+import { DicesIcon, EyeIcon, EyeOffIcon, Plus, UserCheckIcon, UserXIcon } from 'lucide-react';
 
-const STATUS_VARIANT: Record<
-  UserSummary['status'],
-  'default' | 'secondary' | 'warning' | 'destructive'
-> = {
-  ACTIVE: 'default',
-  INVITED: 'secondary',
-  SUSPENDED: 'warning',
-  DISABLED: 'destructive',
-};
-
-function humanDate(value: string | null): string {
-  if (value === null) {
-    return 'Never';
-  }
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value),
-  );
-}
+/**
+ * How many users the screen asks for in one request.
+ *
+ * The list is small by nature — an administration console for one company's accounts — and
+ * the table filters, sorts and pages what it is given, which is how the employee directory
+ * works too. Asking for a page of 20 and then filtering it client-side would silently hide
+ * the rest of the tenant, so the request is for the whole list and the API's cap decides
+ * where it stops.
+ */
+const USER_PAGE_LIMIT = 100;
 
 function CreateUserDialog({ onCreated }: { onCreated: () => void }) {
   const repository = getIam();
@@ -68,6 +60,7 @@ function CreateUserDialog({ onCreated }: { onCreated: () => void }) {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [revealed, setRevealed] = useState(false);
   const [roleId, setRoleId] = useState('');
   const [unitId, setUnitId] = useState<string | null>(null);
   const [error, setError] = useState<string | undefined>();
@@ -163,14 +156,55 @@ function CreateUserDialog({ onCreated }: { onCreated: () => void }) {
             errorId="create-user-password-error"
             hint="At least 8 characters with an uppercase letter, a lowercase letter and a digit."
           >
-            <Input
-              id="create-user-password"
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(event) => setPassword(event.currentTarget.value)}
-              required
-            />
+            <div className="flex items-start gap-2">
+              <div className="relative flex-1">
+                <Input
+                  id="create-user-password"
+                  type={revealed ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  className="pr-8"
+                  value={password}
+                  onChange={(event) => setPassword(event.currentTarget.value)}
+                  required
+                />
+                {/*
+                  A reveal toggle on the field itself, not a global "show passwords" switch:
+                  the value is about to be handed to someone else, and mistyping it is the
+                  failure this prevents. `aria-pressed` plus a label that changes state means
+                  the control says what it does rather than relying on the icon.
+                */}
+                <button
+                  type="button"
+                  onClick={() => setRevealed((current) => !current)}
+                  aria-label={revealed ? 'Hide password' : 'Show password'}
+                  aria-pressed={revealed}
+                  className="absolute top-1/2 right-1 grid size-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+                >
+                  {revealed ? (
+                    <EyeOffIcon aria-hidden="true" className="size-3.5" />
+                  ) : (
+                    <EyeIcon aria-hidden="true" className="size-3.5" />
+                  )}
+                </button>
+              </div>
+              {/*
+                Generating also reveals: the administrator has to read the value to pass it
+                on, so making that a second click would only be ceremony. The generator
+                itself satisfies the policy the hint describes, so the field never arrives
+                pre-filled with something the API would reject.
+              */}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setPassword(generatePassword());
+                  setRevealed(true);
+                }}
+              >
+                <DicesIcon aria-hidden="true" className="size-3.5" />
+                Generate
+              </Button>
+            </div>
           </FormField>
           <FormField
             label="Role"
@@ -218,59 +252,28 @@ function CreateUserDialog({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-function StatusAction({ user, onChange }: { user: UserSummary; onChange: () => void }) {
-  const repository = getIam();
-  const [pending, setPending] = useState(false);
-
-  const target =
-    user.status === 'ACTIVE'
-      ? ('SUSPENDED' as const)
-      : user.status === 'SUSPENDED'
-        ? ('ACTIVE' as const)
-        : ('ACTIVE' as const);
-
-  async function apply() {
-    setPending(true);
-    try {
-      await repository.changeUserStatus(user.id, target);
-      onChange();
-    } finally {
-      setPending(false);
-    }
-  }
-
-  const canManage = useCan('user.update');
-  if (!canManage) {
-    return null;
-  }
-
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      disabled={pending || user.status === 'INVITED'}
-      onClick={() => void apply()}
-    >
-      {user.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
-    </Button>
-  );
-}
-
 export function UsersScreen() {
   const router = useRouter();
   const { state } = useSession();
+  const { toast } = useToast();
   const repository = getIam();
-  const [search, setSearch] = useState('');
-  const [debounced, setDebounced] = useState('');
-  const [status, setStatus] = useState<UserSummary['status'] | 'ALL'>('ALL');
-  const list = useIamLoad(
-    () =>
-      repository.listUsers(
-        { search: debounced || undefined, status: status === 'ALL' ? undefined : status },
-        {},
-      ),
-    [debounced, status],
-  );
+  const canManage = useCan('user.update');
+
+  const list = useIamLoad(() => repository.listUsers({}, { limit: USER_PAGE_LIMIT }), []);
+
+  /*
+   * One pending change at a time, whether it came from a row menu or the bulk bar.
+   * `SUSPENDED` is routed through the dialog because cutting an account off cannot be
+   * undone from this screen by the person doing it; `ACTIVE` is applied straight away,
+   * because restoring access is the safe direction and gating it would only add a click.
+   */
+  const [confirming, setConfirming] = useState<{
+    readonly users: readonly UserSummary[];
+    readonly target: ManageableUserStatus;
+  } | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  const clearSelection = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (state.status === 'anonymous') {
@@ -278,10 +281,81 @@ export function UsersScreen() {
     }
   }, [state.status, router]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(search), 250);
-    return () => window.clearTimeout(timer);
-  }, [search]);
+  async function applyStatus(
+    users: readonly UserSummary[],
+    target: ManageableUserStatus,
+  ): Promise<void> {
+    setPending(true);
+    setError(undefined);
+    try {
+      // Sequential rather than parallel: the API has no bulk endpoint, and a burst of
+      // concurrent status writes is a good way to trip a rate limit for no gain.
+      for (const user of users) {
+        await repository.changeUserStatus(user.id, target);
+      }
+      const label = target === 'SUSPENDED' ? 'suspended' : 'activated';
+      toast({
+        title: users.length === 1 ? `Account ${label}` : `${users.length} accounts ${label}`,
+        description:
+          users.length === 1
+            ? `${users[0]?.displayName ?? 'The account'} is now ${target.toLowerCase()}.`
+            : `Every selected account is now ${target.toLowerCase()}.`,
+        variant: 'success',
+      });
+      setConfirming(null);
+      clearSelection.current?.();
+      clearSelection.current = null;
+      list.reload();
+    } catch (err) {
+      const message =
+        err instanceof ApiRequestError ? err.message : 'The change could not be applied.';
+      if (confirming !== null) {
+        // Keep the dialog open with the reason, so the reader can retry or back out.
+        setError(message);
+      } else {
+        toast({ title: 'The change could not be applied', description: message, variant: 'error' });
+      }
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function requestStatus(user: UserSummary): void {
+    const target: ManageableUserStatus = user.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    if (target === 'ACTIVE') {
+      void applyStatus([user], target);
+      return;
+    }
+    setError(undefined);
+    setConfirming({ users: [user], target });
+  }
+
+  const bulkActions: readonly DataTableBulkAction<UserSummary>[] = canManage
+    ? [
+        {
+          id: 'suspend',
+          label: 'Suspend',
+          icon: UserXIcon,
+          run: (selected, clear) => {
+            clearSelection.current = clear;
+            setError(undefined);
+            setConfirming({ users: selected, target: 'SUSPENDED' });
+          },
+        },
+        {
+          id: 'activate',
+          label: 'Activate',
+          icon: UserCheckIcon,
+          run: (selected, clear) => {
+            clearSelection.current = clear;
+            void applyStatus(selected, 'ACTIVE');
+          },
+        },
+      ]
+    : [];
+
+  const rows = list.data?.items ?? [];
+  const single = confirming?.users.length === 1 ? confirming.users[0] : undefined;
 
   return (
     <PageBody>
@@ -290,98 +364,62 @@ export function UsersScreen() {
         description="System users and employee accounts."
         actions={<CreateUserDialog onCreated={list.reload} />}
       />
-      <PageToolbar>
-        <Input
-          aria-label="Search users"
-          placeholder="Search by name or email"
-          value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
-          className="max-w-xs"
-        />
-        <Select
-          value={status}
-          onValueChange={(value) => setStatus(value as UserSummary['status'] | 'ALL')}
-        >
-          <SelectTrigger aria-label="Filter by status" className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All statuses</SelectItem>
-            <SelectItem value="ACTIVE">Active</SelectItem>
-            <SelectItem value="INVITED">Invited</SelectItem>
-            <SelectItem value="SUSPENDED">Suspended</SelectItem>
-            <SelectItem value="DISABLED">Disabled</SelectItem>
-          </SelectContent>
-        </Select>
-      </PageToolbar>
 
-      {list.loading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      ) : list.error !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {list.error}
-        </p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Unit</TableHead>
-              <TableHead>Roles</TableHead>
-              <TableHead>Last login</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {list.data?.items.map((user) => (
-              <TableRow key={user.id}>
-                <TableCell>
-                  <div className="flex flex-col">
-                    <span className="font-medium">{user.displayName}</span>
-                    <span className="text-xs text-muted-foreground">{user.email}</span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={STATUS_VARIANT[user.status]}>{user.status}</Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {user.organizationalUnit?.name ?? '—'}
-                </TableCell>
-                <TableCell>
-                  <span className="flex flex-wrap gap-1">
-                    {user.roles.map((role) => (
-                      <Badge key={role.key} variant="secondary">
-                        {role.name}
-                      </Badge>
-                    ))}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <CalendarDays aria-hidden="true" className="size-3.5" />
-                    {humanDate(user.lastLoginAt)}
-                  </span>
-                </TableCell>
-                <TableCell className="text-right">
-                  <StatusAction user={user} onChange={list.reload} />
-                </TableCell>
-              </TableRow>
-            ))}
-            {(list.data?.items.length ?? 0) === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  No users match this filter.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      )}
+      <HrisDataTable
+        rows={rows}
+        columns={buildUserColumns(canManage ? { onChangeStatus: requestStatus } : {})}
+        filters={buildUserFilters(rows)}
+        searchable
+        searchText={USER_SEARCH_TEXT}
+        searchPlaceholder="Search by name, email, unit or role…"
+        selectable={canManage}
+        bulkActions={bulkActions}
+        views={{ builtIn: USER_BUILT_IN_VIEWS, storageKey: USER_VIEWS_STORAGE_KEY }}
+        status={list.loading ? 'loading' : list.error !== undefined ? 'error' : 'ready'}
+        errorCopy={list.error}
+        onRetry={list.reload}
+        emptyTitle="No users yet"
+        emptyDescription="Accounts created here, and employees given a login, appear in this list."
+        noResultsTitle="No users match this filter"
+        noResultsDescription="Try a different search or status, or clear the filters to see every account."
+      />
+
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirming(null);
+            setError(undefined);
+          }
+        }}
+        title={
+          single !== undefined
+            ? `Suspend ${single.displayName}?`
+            : `Suspend ${confirming?.users.length ?? 0} accounts?`
+        }
+        description={
+          single !== undefined ? (
+            <>
+              {single.email} keeps its data, roles and history, but cannot sign in until the account
+              is activated again. Sessions that are already open end at their next request.
+            </>
+          ) : (
+            <>
+              Every selected account keeps its data, roles and history, but none of them can sign in
+              until they are activated again.
+            </>
+          )
+        }
+        confirmLabel="Suspend"
+        tone="destructive"
+        pending={pending}
+        error={error}
+        onConfirm={() => {
+          if (confirming !== null) {
+            void applyStatus(confirming.users, confirming.target);
+          }
+        }}
+      />
     </PageBody>
   );
 }

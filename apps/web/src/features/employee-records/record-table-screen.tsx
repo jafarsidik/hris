@@ -3,23 +3,14 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { HrisDataTable, type DataTableColumn } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
-import { EmptyState } from '@/components/feedback/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useSession } from '@/features/auth/session-context';
 
 export interface RecordRowView {
-  readonly employeeId: string;
+  readonly id: string;
   readonly employeeName: string;
   /** Shown under the name; omit for non-employee lists. */
   readonly employeeNumber?: string;
@@ -41,6 +32,9 @@ export interface RecordTableParams {
  * (family, dependents, contacts, education, experience, skills,
  * certifications, documents). Each page pre-shapes its records into
  * string cells so one type-safe table serves all of them.
+ *
+ * The rows are a pure client-side dataset — passed in as props — so the
+ * shared table's own search, sort and pagination apply directly.
  */
 export function RecordTableScreen({ table }: { table: RecordTableParams }) {
   const router = useRouter();
@@ -52,51 +46,50 @@ export function RecordTableScreen({ table }: { table: RecordTableParams }) {
     }
   }, [state.status, router]);
 
+  const columns: readonly DataTableColumn<RecordRowView>[] = [
+    {
+      id: 'name',
+      header: table.firstColumn ?? 'Employee',
+      sortValue: (row) => row.employeeName,
+      cell: (row) => (
+        <div className="flex flex-col">
+          <span className="font-medium">{row.employeeName}</span>
+          {row.employeeNumber === undefined ? null : (
+            <span className="text-xs text-muted-foreground">{row.employeeNumber}</span>
+          )}
+        </div>
+      ),
+    },
+    ...table.columns.map((column, index) => ({
+      id: `cell-${index}`,
+      header: column,
+      sortValue: (row: RecordRowView) => row.cells[index] ?? '',
+      cellClassName: 'text-sm',
+      cell: (row: RecordRowView) => {
+        const value = row.cells[index] ?? '';
+        return value === '' ? '—' : value;
+      },
+    })),
+  ];
+
   return (
     <PageBody>
       <PageHeader title={table.title} description={table.description} />
-      <Card>
-        <CardHeader>
-          <CardTitle>Records</CardTitle>
-          <CardDescription>
-            {table.rows.length} record{table.rows.length === 1 ? '' : 's'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {' '}
-          {table.rows.length === 0 ? (
-            <EmptyState title="No records yet" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{table.firstColumn ?? 'Employee'}</TableHead>
-                  {table.columns.map((column) => (
-                    <TableHead key={column}>{column}</TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {table.rows.map((row) => (
-                  <TableRow key={row.employeeId + row.cells[0]}>
-                    <TableCell>
-                      <div className="font-medium">{row.employeeName}</div>
-                      {row.employeeNumber === undefined ? null : (
-                        <div className="text-xs text-muted-foreground">{row.employeeNumber}</div>
-                      )}
-                    </TableCell>
-                    {row.cells.map((cell, index) => (
-                      <TableCell key={index} className="text-sm">
-                        {cell === '' ? '—' : cell}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <HrisDataTable
+        rows={table.rows}
+        columns={columns}
+        searchable
+        searchText={(row) =>
+          `${row.employeeName} ${row.employeeNumber ?? ''} ${row.cells.join(' ')}`
+        }
+        searchPlaceholder="Search records…"
+        selectable={false}
+        status="ready"
+        emptyTitle="No records yet"
+        emptyDescription="Records appear here once they are added."
+        noResultsTitle="No records match this filter"
+        noResultsDescription="Try a different search, or clear the filters to see every record."
+      />
     </PageBody>
   );
 }

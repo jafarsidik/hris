@@ -67,6 +67,16 @@ Never mark a phase complete merely because the application compiles.
 | 16    | Integration               | High     |
 | 17    | Security Hardening        | Critical |
 | 18    | Performance & Production  | Critical |
+| 19    | Visual acceptance and Core HR | In progress |
+| 20    | Platform evolution        | Not started |
+
+> The numbered phases track the original delivery plan. The parallel effort —
+> redesigning the web UI to the ClickUp-inspired enterprise workspace, migrating
+> the Core HR screens to the shared `HrisDataTable`, and fixing the visual
+> defects — is tracked in [docs/PHASE_STATUS.md](docs/PHASE_STATUS.md) under
+> **Phase 2 — Visual acceptance and Core HR (redesign)**. It is a separate
+> initiative with its own defect catalogue and acceptance checks, so it is not
+> one of the numbered phases.
 
 ---
 

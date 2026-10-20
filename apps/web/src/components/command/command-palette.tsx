@@ -429,7 +429,14 @@ export function CommandPalette() {
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="top-[18%] gap-0 p-0 sm:max-w-lg">
+        {/*
+          `translate-y-0` is load-bearing, not decoration. `DialogContent` centres itself
+          with `top-1/2 … -translate-y-1/2`, so overriding only `top` leaves the popup
+          shifted up by half its own height — a 365px-tall palette at 900px viewport then
+          starts 20px above the fold and its first row is clipped. `cn` merges the two
+          classes, so the base centring translate is dropped rather than fought with.
+        */}
+        <DialogContent className="top-[18%] translate-y-0 gap-0 p-0 sm:max-w-lg">
           <DialogTitle className="sr-only">Search</DialogTitle>
           <DialogDescription className="sr-only">
             Find employees, jump to a page or a quick action, or see what is planned.

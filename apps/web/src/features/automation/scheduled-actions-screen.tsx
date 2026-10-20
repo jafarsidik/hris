@@ -2,31 +2,30 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, Power, Play } from 'lucide-react';
+import { Plus, Power } from 'lucide-react';
 
 import type { ScheduledActionSummary } from '@hris/shared-types';
 
+import { HrisDataTable } from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
+import { useToast } from '@/components/ui/toast';
 import { useCan, useSession } from '@/features/auth/session-context';
+import {
+  SCHEDULED_ACTION_BUILT_IN_VIEWS,
+  SCHEDULED_ACTION_SEARCH_TEXT,
+  SCHEDULED_ACTION_VIEWS_STORAGE_KEY,
+  buildScheduledActionColumns,
+  buildScheduledActionFilters,
+} from '@/features/automation/scheduled-actions-table-config';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { scheduledActionsApi } from '@/features/automation/scheduled-actions-api';
 import { ApiRequestError } from '@/lib/api/http-client';
@@ -44,6 +43,7 @@ function messageOf(error: unknown): string {
 export function ScheduledActionsScreen() {
   const router = useRouter();
   const { state } = useSession();
+  const { toast } = useToast();
   const items = useIamLoad(() => scheduledActionsApi.list(), []);
   const canEdit = useCan('workflow.manage');
 
@@ -57,6 +57,10 @@ export function ScheduledActionsScreen() {
   const [notice, setNotice] = useState<string | undefined>();
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const [deleting, setDeleting] = useState<ScheduledActionSummary | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -102,31 +106,11 @@ export function ScheduledActionsScreen() {
     }
   }, [name, description, cron, actionText, isEnabled, items]);
 
-  const remove = useCallback(
-    async (id: string, n: string) => {
-      if (!window.confirm(`Delete "${n}"?`)) {
-        return;
-      }
-      setError(undefined);
-      setBusy(true);
-      try {
-        await scheduledActionsApi.remove(id);
-        setNotice(`Deleted "${n}".`);
-        items.reload();
-      } catch (cause) {
-        setError(messageOf(cause));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [items],
-  );
-
   const toggle = useCallback(
-    async (rule: ScheduledActionSummary) => {
+    async (row: ScheduledActionSummary) => {
       setError(undefined);
       try {
-        await scheduledActionsApi.toggle(rule.id, !rule.isEnabled);
+        await scheduledActionsApi.toggle(row.id, !row.isEnabled);
         items.reload();
       } catch (cause) {
         setError(messageOf(cause));
@@ -153,6 +137,28 @@ export function ScheduledActionsScreen() {
     [items],
   );
 
+  const confirmDelete = useCallback(async () => {
+    if (deleting === null) {
+      return;
+    }
+    setDeletePending(true);
+    setDeleteError(undefined);
+    try {
+      await scheduledActionsApi.remove(deleting.id);
+      toast({
+        title: 'Scheduled action deleted',
+        description: `"${deleting.name}" will no longer run on its cron schedule.`,
+        variant: 'success',
+      });
+      setDeleting(null);
+      items.reload();
+    } catch (cause) {
+      setDeleteError(messageOf(cause));
+    } finally {
+      setDeletePending(false);
+    }
+  }, [deleting, items, toast]);
+
   const rows = items.data ?? [];
 
   return (
@@ -162,11 +168,7 @@ export function ScheduledActionsScreen() {
         description="Time-based automation and recurring work."
       />
 
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
       {notice !== undefined && (
         <Alert>
           <AlertDescription>{notice}</AlertDescription>
@@ -234,75 +236,56 @@ export function ScheduledActionsScreen() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Scheduled actions</CardTitle>
-          <CardDescription>
-            {items.loading ? 'Loading…' : `${rows.length} action${rows.length === 1 ? '' : 's'}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {items.error !== undefined && (
-            <Alert variant="destructive">
-              <AlertDescription>{items.error}</AlertDescription>
-            </Alert>
-          )}
-          {items.loading && rows.length === 0 ? (
-            <Skeleton className="h-40 w-full" />
-          ) : rows.length === 0 ? (
-            <EmptyState title="No scheduled actions" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Cron</TableHead>
-                  <TableHead>Next run</TableHead>
-                  <TableHead>Last run</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell className="font-mono text-sm">{row.cron}</TableCell>
-                    <TableCell className="text-muted-foreground">{row.nextRunAt ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{row.lastRunAt ?? '—'}</TableCell>
-                    <TableCell>
-                      <Badge variant={row.isEnabled ? 'success' : 'secondary'}>
-                        {row.isEnabled ? 'ENABLED' : 'DISABLED'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {canEdit && (
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => void toggle(row)}>
-                            {row.isEnabled ? 'Disable' : 'Enable'}
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => void runNow(row.id)}>
-                            <Play className="mr-1 size-3" />
-                            Run now
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void remove(row.id, row.name)}
-                          >
-                            <Trash2 className="mr-1 size-4" />
-                            Delete
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <HrisDataTable
+        rows={rows}
+        columns={buildScheduledActionColumns(
+          canEdit
+            ? {
+                onToggle: toggle,
+                onRunNow: (id) => void runNow(id),
+                onDelete: (row) => setDeleting(row),
+              }
+            : {},
+        )}
+        filters={buildScheduledActionFilters(rows)}
+        searchable
+        searchText={SCHEDULED_ACTION_SEARCH_TEXT}
+        searchPlaceholder="Search actions by name, cron or description…"
+        /*
+         * No selection column: there is no bulk scheduled-action operation to offer, and
+         * a checkbox that only ever leads to "nothing available for 3 selected" is worse
+         * than no checkbox.
+         */
+        selectable={false}
+        views={{
+          builtIn: SCHEDULED_ACTION_BUILT_IN_VIEWS,
+          storageKey: SCHEDULED_ACTION_VIEWS_STORAGE_KEY,
+        }}
+        status={items.loading ? 'loading' : items.error !== undefined ? 'error' : 'ready'}
+        errorCopy={items.error}
+        onRetry={() => items.reload()}
+        emptyTitle="No scheduled actions"
+        emptyDescription="Create a scheduled action to run a workflow, notification or event on a cron schedule."
+        noResultsTitle="No actions match this filter"
+        noResultsDescription="Try a different search or state, or clear the filters to see every action."
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null);
+            setDeleteError(undefined);
+          }
+        }}
+        title={`Delete ${deleting?.name ?? 'this action'}?`}
+        description="The scheduled action is removed and will no longer run on its cron schedule. Runs that already happened are kept in the history. This cannot be undone."
+        confirmLabel="Delete action"
+        tone="destructive"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+      />
     </PageBody>
   );
 }

@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { PageToolbar } from '@/components/layout/page-toolbar';
 import { Badge } from '@/components/ui/badge';
 import {
   Select,
@@ -14,20 +13,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 
 import type { ApiUsageRow } from './developer-types';
 import { getDevelopers } from './index';
+import { ServerPagedTable } from './server-paged-table';
+import type { DataTableColumn } from '@/components/data-table';
+
+/**
+ * A report row with the key the table needs.
+ *
+ * The report is keyed by client — the screen used `clientId` as the row key before the
+ * shared table required `id` — so the two are the same value, carried as `id` here.
+ */
+type UsageRow = ApiUsageRow & { readonly id: string };
 
 /** The selectable reporting windows, newest bound first. */
 const WINDOWS = [
@@ -94,6 +94,58 @@ export function UsageScreen() {
     }
   }, [state.status, router]);
 
+  /*
+   * No `sortValue` on any column, for the same reason the request log has none: the
+   * window and the client filter are server queries over the whole tenant, so a
+   * client-side sort would reorder the rollup rows in hand and present that as the
+   * order of the report.
+   */
+  const columns: readonly DataTableColumn<UsageRow>[] = [
+    {
+      id: 'client',
+      header: 'Client',
+      cellClassName: 'font-medium',
+      cell: (row) => row.name,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (row) => (
+        <Badge variant={row.isActive ? 'success' : 'outline'}>
+          {row.isActive ? 'Active' : 'Disabled'}
+        </Badge>
+      ),
+    },
+    {
+      id: 'requests',
+      header: 'Requests',
+      align: 'right',
+      cellClassName: 'text-right tabular-nums',
+      cell: (row) => row.requestCount,
+    },
+    {
+      id: 'errors',
+      header: 'Errors',
+      align: 'right',
+      cellClassName: 'text-right tabular-nums',
+      cell: (row) => row.errorCount,
+    },
+    {
+      id: 'errorRate',
+      header: 'Error rate',
+      align: 'right',
+      cellClassName: 'text-right tabular-nums',
+      cell: (row) => errorRate(row),
+    },
+    {
+      id: 'avgLatency',
+      header: 'Avg latency',
+      align: 'right',
+      cellClassName: 'text-right tabular-nums',
+      cell: (row) => formatDuration(row.avgDurationMs),
+    },
+  ];
+
   return (
     <PageBody>
       <PageHeader
@@ -101,102 +153,63 @@ export function UsageScreen() {
         description="Request volume, error rate and latency for machine clients."
       />
 
-      <PageToolbar>
-        <Select
-          value={windowKey}
-          onValueChange={(value) => {
-            if (value !== null) {
-              setWindowKey(value as WindowKey);
-            }
-          }}
-        >
-          <SelectTrigger aria-label="Reporting window" className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {WINDOWS.map((option) => (
-              <SelectItem key={option.key} value={option.key}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={clientId}
-          onValueChange={(value) => {
-            if (value !== null) {
-              setClientId(value);
-            }
-          }}
-        >
-          <SelectTrigger aria-label="Filter by client" className="w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All clients</SelectItem>
-            {(clients.data ?? []).map((client) => (
-              <SelectItem key={client.id} value={client.id}>
-                {client.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <span className="ml-auto text-sm text-muted-foreground">
-          {report.data === null
-            ? ''
-            : `${report.data.totalRequests} requests · ${report.data.totalErrors} errors`}
-        </span>
-      </PageToolbar>
-
-      {report.loading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      ) : report.error !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {report.error}
-        </p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Client</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Requests</TableHead>
-              <TableHead className="text-right">Errors</TableHead>
-              <TableHead className="text-right">Error rate</TableHead>
-              <TableHead className="text-right">Avg latency</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(report.data?.items ?? []).map((row) => (
-              <TableRow key={row.clientId}>
-                <TableCell className="font-medium">{row.name}</TableCell>
-                <TableCell>
-                  <Badge variant={row.isActive ? 'success' : 'outline'}>
-                    {row.isActive ? 'Active' : 'Disabled'}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right tabular-nums">{row.requestCount}</TableCell>
-                <TableCell className="text-right tabular-nums">{row.errorCount}</TableCell>
-                <TableCell className="text-right tabular-nums">{errorRate(row)}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatDuration(row.avgDurationMs)}
-                </TableCell>
-              </TableRow>
-            ))}
-            {(report.data?.items.length ?? 0) === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  No API clients to report on.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      )}
+      <ServerPagedTable
+        rows={(report.data?.items ?? []).map((row) => ({ ...row, id: row.clientId }))}
+        columns={columns}
+        actions={
+          <>
+            <Select
+              value={windowKey}
+              onValueChange={(value) => {
+                if (value !== null) {
+                  setWindowKey(value as WindowKey);
+                }
+              }}
+            >
+              <SelectTrigger aria-label="Reporting window" className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WINDOWS.map((option) => (
+                  <SelectItem key={option.key} value={option.key}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={clientId}
+              onValueChange={(value) => {
+                if (value !== null) {
+                  setClientId(value);
+                }
+              }}
+            >
+              <SelectTrigger aria-label="Filter by client" className="w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All clients</SelectItem>
+                {(clients.data ?? []).map((client) => (
+                  <SelectItem key={client.id} value={client.id}>
+                    {client.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-sm text-muted-foreground">
+              {report.data === null
+                ? ''
+                : `${report.data.totalRequests} requests · ${report.data.totalErrors} errors`}
+            </span>
+          </>
+        }
+        loading={report.loading}
+        error={report.error}
+        onRetry={() => report.reload()}
+        emptyTitle="No API clients to report on."
+        emptyDescription="Once an API client exists it appears here with its request volume for the window."
+      />
     </PageBody>
   );
 }

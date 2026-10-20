@@ -125,14 +125,18 @@
      `--sidebar-width` and `--sidebar-width-icon` as inline styles from constants in
      `components/ui/sidebar.tsx`, and it also overrides the width on mobile. Declaring
      them here as well would create a second source of truth that the inline style
-     silently wins against. */
-  --sidebar: #ffffff;
-  --sidebar-foreground: #1e293b;
+     silently wins against.
+
+     The surface is a cool slate tint rather than flat white: together with the
+     raised white cards on the content side it gives the workspace the two-panel
+     ClickUp-style reading — chrome on the left, canvas on the right. */
+  --sidebar: #f1f5f9;
+  --sidebar-foreground: #334155;
   /* Navigation hover/active is a brand tint, not the same grey as every border:
-     the accent is the one place the sidebar names the current location, so a tint
-     of `primary` makes it legible at a glance instead of reading as more chrome. */
-  --sidebar-accent: color-mix(in oklab, var(--primary) 10%, var(--sidebar));
-  --sidebar-accent-foreground: var(--primary);
+   the accent is the one place the sidebar names the current location, so a tint
+   of `primary` makes it legible at a glance instead of reading as more chrome. */
+  --sidebar-accent: #dbeafe;
+  --sidebar-accent-foreground: #1d4ed8;
   --sidebar-border: #e2e8f0;
   --sidebar-ring: #1d4ed8;
 
@@ -198,11 +202,11 @@
   --input: #1e293b;
   --ring: #60a5fa;
 
-  /* The dark rail matches the card surface so the rail and the content area read
-     as two panels on one background, rather than as a floating box. */
-  --sidebar: #0f172a;
-  --sidebar-foreground: #e2e8f0;
-  --sidebar-accent: color-mix(in oklab, var(--primary) 26%, var(--sidebar));
+  /* The dark rail keeps the near-black slate of the dark scheme: navigation stays a
+     distinct panel while the content ground stays darker. */
+  --sidebar: #101a2e;
+  --sidebar-foreground: #cbd5e1;
+  --sidebar-accent: color-mix(in oklab, var(--primary) 24%, var(--sidebar));
   --sidebar-accent-foreground: #bfdbfe;
   --sidebar-border: #1e293b;
   --sidebar-ring: #94a3b8;

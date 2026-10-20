@@ -35,6 +35,7 @@ export type {
 // client reference, not a value (runtime: "<X>.map is not a function"). Pages
 // import the arrays from `./org-data` / `./job-config-data` directly; only
 // type re-exports are safe here.
+export { DepartmentsScreen, OrganizationScreen } from './organization-screen';
 export { OrgTree, OrgTreeCard } from './org-tree';
 export { OrgChartNew } from './org-chart-new';
 export type { JobFamily, JobLevel } from './job-config-data';

@@ -9,6 +9,7 @@ import type { AiAskResponse, AiKnowledgeDocumentSummary } from '@hris/shared-typ
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/feedback/empty-state';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -123,11 +124,7 @@ export function AiAssistantScreen() {
           </AlertDescription>
         </Alert>
       )}
-      {error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error !== undefined && <ErrorPanel error={error} />}
       {notice !== undefined && (
         <Alert>
           <AlertDescription>{notice}</AlertDescription>
@@ -146,6 +143,7 @@ export function AiAssistantScreen() {
           <CardContent className="flex flex-col gap-4">
             <div className="flex gap-2">
               <Input
+                aria-label="Ask the assistant"
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 placeholder="What is our leave policy?"

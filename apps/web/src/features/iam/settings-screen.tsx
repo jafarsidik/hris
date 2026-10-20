@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Section } from '@/components/layout/section';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -154,9 +155,7 @@ export function SettingsScreen({
           <Skeleton className="h-10 w-full" />
         </div>
       ) : list.error !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {list.error}
-        </p>
+        <ErrorPanel error={list.error} onRetry={() => list.reload()} />
       ) : (
         <div className="flex flex-col gap-4">
           {Array.from(byGroup.entries())

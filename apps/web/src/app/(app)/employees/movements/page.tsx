@@ -41,7 +41,7 @@ export default async function EmployeeMovementPage() {
   const movements = mockMovements();
 
   const movementRows: RecordRowView[] = movements.items.map((row) => ({
-    employeeId: row.employeeId,
+    id: row.employeeId,
     employeeName: row.employeeName,
     employeeNumber: row.employeeNumber,
     cells: [
@@ -70,7 +70,7 @@ export default async function EmployeeMovementPage() {
             ? `Due in ${daysLeft} d`
             : 'Later';
     return {
-      employeeId: row.employeeId,
+      id: row.employeeId,
       employeeName: row.employeeName,
       employeeNumber: row.employeeNumber,
       cells: [row.contractNumber, fmtNullable(row.startDate), fmtNullable(row.endDate), due],
@@ -107,7 +107,7 @@ export default async function EmployeeMovementPage() {
               </TableHeader>
               <TableBody>
                 {movementRows.map((row) => (
-                  <TableRow key={`${row.employeeId}-${row.cells[3]}`}>
+                  <TableRow key={`${row.id}-${row.cells[3]}`}>
                     <TableCell>
                       <div className="font-medium">{row.employeeName}</div>
                       <div className="text-xs text-muted-foreground">{row.employeeNumber}</div>
@@ -149,7 +149,7 @@ export default async function EmployeeMovementPage() {
               </TableHeader>
               <TableBody>
                 {probationRows.map((row) => (
-                  <TableRow key={`${row.employeeId}-${row.cells[0]}`}>
+                  <TableRow key={`${row.id}-${row.cells[0]}`}>
                     <TableCell>
                       <div className="font-medium">{row.employeeName}</div>
                       <div className="text-xs text-muted-foreground">{row.employeeNumber}</div>

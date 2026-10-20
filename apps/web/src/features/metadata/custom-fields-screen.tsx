@@ -2,13 +2,19 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { MoreHorizontalIcon, Pencil, Plus, Trash2 } from 'lucide-react';
 
+import {
+  HrisDataTable,
+  PINNED_ACTIONS_CELL_CLASS,
+  PINNED_ACTIONS_HEADER_CLASS,
+  type DataTableColumn,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -17,6 +23,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { FormErrorSummary, FormField, FormSubmitButton } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
 import {
@@ -26,16 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 import { useCan, useSession } from '@/features/auth/session-context';
 import { ApiRequestError } from '@/lib/api/http-client';
@@ -66,9 +69,64 @@ interface FieldRow {
 }
 
 /**
+ * The per-row actions menu for custom fields.
+ *
+ * Edit is available to readers with `registry.update`; delete to readers with
+ * `registry.delete`. The destructive direction is confirmed by the screen's
+ * ConfirmDialog.
+ */
+function FieldRowMenu({
+  field,
+  canUpdate,
+  canDelete,
+  onEdit,
+  onDelete,
+}: {
+  readonly field: FieldRow;
+  readonly canUpdate: boolean;
+  readonly canDelete: boolean;
+  readonly onEdit: (field: FieldRow) => void;
+  readonly onDelete: (field: FieldRow) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Actions for ${field.label}`}
+            className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+          />
+        }
+      >
+        <MoreHorizontalIcon aria-hidden="true" className="size-4" />
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end" className="w-48">
+        {canUpdate && (
+          <DropdownMenuItem onClick={() => onEdit(field)}>
+            <Pencil aria-hidden="true" className="size-4" />
+            Edit
+          </DropdownMenuItem>
+        )}
+        {canDelete && (
+          <DropdownMenuItem variant="destructive" onClick={() => onDelete(field)}>
+            <Trash2 aria-hidden="true" className="size-4" />
+            Delete
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
  * Custom Fields: tenant-defined fields on registered resources. Fields extend a
  * resource's shape without a migration — each field carries a key, label, data type
  * and whether it is required or sensitive.
+ *
+ * The rows are computed in memory from the registry resources, so the shared
+ * table's own search, sort and pagination apply directly.
  */
 export function CustomFieldsScreen() {
   const router = useRouter();
@@ -77,6 +135,7 @@ export function CustomFieldsScreen() {
   const canUpdate = useCan('registry.update');
   const canDelete = useCan('registry.delete');
 
+  const [loadError, setLoadError] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
   const [resources, setResources] = useState<readonly ResourceSummary[]>([]);
@@ -93,6 +152,9 @@ export function CustomFieldsScreen() {
     isSensitive: boolean;
     sortOrder: number;
   } | null>(null);
+  const [confirming, setConfirming] = useState<FieldRow | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | undefined>();
 
   useEffect(() => {
     if (state.status === 'anonymous') {
@@ -102,11 +164,11 @@ export function CustomFieldsScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(undefined);
+    setLoadError(undefined);
     try {
       setResources(await platformApi.listRegistryResources());
     } catch (cause) {
-      setError(messageOf(cause));
+      setLoadError(messageOf(cause));
     } finally {
       setLoading(false);
     }
@@ -193,15 +255,86 @@ export function CustomFieldsScreen() {
   };
 
   const remove = async (row: FieldRow) => {
-    if (!window.confirm(`Remove field "${row.key}" from "${row.resourceName}"?`)) return;
+    setConfirmError(undefined);
+    setRemoving(true);
     try {
       await platformApi.removeRegistryResourceField(row.resourceKey, row.key);
       setNotice(`Field "${row.key}" removed.`);
       await load();
     } catch (cause) {
-      setError(messageOf(cause));
+      setConfirmError(messageOf(cause));
+    } finally {
+      setRemoving(false);
     }
   };
+
+  const columns: readonly DataTableColumn<FieldRow>[] = [
+    {
+      id: 'resource',
+      header: 'Resource',
+      sortValue: (row) => row.resourceName,
+      cellClassName: 'font-medium text-sm',
+      cell: (row) => row.resourceName,
+    },
+    {
+      id: 'key',
+      header: 'Key',
+      sortValue: (row) => row.key,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.key,
+    },
+    {
+      id: 'label',
+      header: 'Label',
+      sortValue: (row) => row.label,
+      cellClassName: 'text-sm',
+      cell: (row) => row.label,
+    },
+    {
+      id: 'type',
+      header: 'Type',
+      sortValue: (row) => row.dataType,
+      align: 'center',
+      cellClassName: 'font-mono text-xs',
+      cell: (row) => row.dataType,
+    },
+    {
+      id: 'required',
+      header: 'Required',
+      align: 'center',
+      cell: (row) => <Switch checked={row.required} disabled readOnly />,
+    },
+    {
+      id: 'sensitive',
+      header: 'Sensitive',
+      align: 'center',
+      cell: (row) => <Switch checked={row.isSensitive} disabled readOnly />,
+    },
+    {
+      id: 'order',
+      header: 'Order',
+      sortValue: (row) => row.sortOrder,
+      align: 'center',
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.sortOrder,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      hideable: false,
+      headerClassName: PINNED_ACTIONS_HEADER_CLASS,
+      cellClassName: PINNED_ACTIONS_CELL_CLASS,
+      cell: (row) => (
+        <FieldRowMenu
+          field={row}
+          canUpdate={canUpdate}
+          canDelete={canDelete}
+          onEdit={openEdit}
+          onDelete={(f) => setConfirming(f)}
+        />
+      ),
+    },
+  ];
 
   return (
     <PageBody>
@@ -230,81 +363,46 @@ export function CustomFieldsScreen() {
         </Alert>
       )}
 
-      {loading ? (
-        <Skeleton className="h-48 w-full" />
-      ) : fields.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              No custom fields defined yet. Register resources under Resource Registry, then add
-              fields here.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Fields</CardTitle>
-            <CardDescription>
-              {fields.length} field{fields.length === 1 ? '' : 's'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Resource</TableHead>
-                  <TableHead className="font-mono text-sm">Key</TableHead>
-                  <TableHead>Label</TableHead>
-                  <TableHead className="text-center">Type</TableHead>
-                  <TableHead className="text-center">Required</TableHead>
-                  <TableHead className="text-center">Sensitive</TableHead>
-                  <TableHead className="text-center text-right">Order</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {fields.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-medium text-sm">{row.resourceName}</TableCell>
-                    <TableCell className="font-mono text-sm">{row.key}</TableCell>
-                    <TableCell className="text-sm">{row.label}</TableCell>
-                    <TableCell className="text-center font-mono text-xs">{row.dataType}</TableCell>
-                    <TableCell className="text-center">
-                      <Switch checked={row.required} disabled readOnly />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Switch checked={row.isSensitive} disabled readOnly />
-                    </TableCell>
-                    <TableCell className="text-center text-right font-mono text-sm">
-                      {row.sortOrder}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {canUpdate && (
-                          <Button variant="outline" size="sm" onClick={() => openEdit(row)}>
-                            Edit
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() => void remove(row)}
-                          >
-                            Delete
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      <HrisDataTable
+        rows={fields}
+        columns={columns}
+        searchable
+        searchText={(row) => `${row.resourceName} ${row.key} ${row.label} ${row.dataType}`}
+        searchPlaceholder="Search by resource, key, label or type…"
+        selectable={false}
+        status={loading ? 'loading' : loadError !== undefined ? 'error' : 'ready'}
+        errorCopy={loadError}
+        onRetry={() => void load()}
+        emptyTitle="No custom fields defined yet"
+        emptyDescription="Register resources under Resource Registry, then add fields here."
+        noResultsTitle="No fields match this filter"
+        noResultsDescription="Try a different search, or clear the filters to see every field."
+      />
+
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirming(null);
+            setConfirmError(undefined);
+          }
+        }}
+        title={
+          confirming !== null
+            ? `Remove field "${confirming.key}" from "${confirming.resourceName}"?`
+            : ''
+        }
+        description="The field is removed from the resource. Stored values are kept but no longer editable."
+        confirmLabel="Remove"
+        tone="destructive"
+        pending={removing}
+        error={confirmError}
+        onConfirm={() => {
+          if (confirming !== null) {
+            void remove(confirming);
+          }
+        }}
+      />
 
       {form !== null && (
         <Dialog

@@ -1,5 +1,7 @@
 'use client';
 
+import { ErrorPanel } from '@/components/feedback/error-panel';
+
 import { useMemo, useState } from 'react';
 
 import { Checkbox } from '@/components/ui/checkbox';
@@ -71,9 +73,7 @@ export function ScopePicker({
           <Skeleton className="h-24 w-full" />
         </div>
       ) : permissions.error !== undefined ? (
-        <p role="alert" className="text-sm text-destructive">
-          {permissions.error}
-        </p>
+        <ErrorPanel error={permissions.error} onRetry={() => permissions.reload()} />
       ) : (
         <>
           <Input

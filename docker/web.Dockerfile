@@ -66,6 +66,9 @@ RUN apk add --no-cache tini curl \
  && addgroup -S hris && adduser -S -G hris hris
 
 WORKDIR /app
+# `outputFileTracingRoot` is the repository root, so the standalone tree nests the
+# app under `apps/web/`. Copying only the tree root leaves the server, its static
+# assets and the public folder missing from the paths the server expects.
 COPY --from=build --chown=hris:hris /app/apps/web/.next/standalone ./
 COPY --from=build --chown=hris:hris /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build --chown=hris:hris /app/apps/web/public ./apps/web/public

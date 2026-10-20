@@ -3,27 +3,22 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-import type { PerformanceMetricsSummary, QueuePerformanceSummary } from '@hris/shared-types';
-
+import {
+  HrisDataTable,
+  EMPTY_FILTERS,
+  type DataTableColumn,
+  type DataTableView,
+} from '@/components/data-table';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/feedback/empty-state';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { useSession } from '@/features/auth/session-context';
 import { useIamLoad } from '@/features/iam/use-iam-data';
 import { platformApi } from '@/features/platform/platform-api';
+
+import type { QueuePerformanceSummary } from '@hris/shared-types';
 
 function ms(value: number): string {
   if (value >= 1000) {
@@ -52,6 +47,96 @@ function latencyCell(queue: QueuePerformanceSummary): string {
   return `avg ${ms(latency.avgMs)} · p95 ${ms(latency.p95Ms)} · max ${ms(latency.maxMs)}`;
 }
 
+type QueueRow = QueuePerformanceSummary & { readonly id: string };
+
+const QUEUE_VIEWS_STORAGE_KEY = 'hris:performance-metrics:views';
+
+const QUEUE_BUILT_IN_VIEWS: readonly DataTableView[] = [
+  {
+    id: 'all',
+    name: 'All queues',
+    builtIn: true,
+    default: true,
+    state: { filters: EMPTY_FILTERS, search: '' },
+  },
+];
+
+function buildQueueColumns(): readonly DataTableColumn<QueueRow>[] {
+  return [
+    {
+      id: 'queue',
+      header: 'Queue',
+      sortValue: (row) => row.queue,
+      cellClassName: 'font-medium',
+      cell: (row) => (
+        <span>
+          {row.queue}
+          {row.isPaused && (
+            <Badge variant="secondary" className="ml-2">
+              PAUSED
+            </Badge>
+          )}
+        </span>
+      ),
+    },
+    {
+      id: 'waiting',
+      header: 'Waiting',
+      sortValue: (row) => row.counts.waiting,
+      align: 'right',
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.counts.waiting,
+    },
+    {
+      id: 'active',
+      header: 'Active',
+      sortValue: (row) => row.counts.active,
+      align: 'right',
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.counts.active,
+    },
+    {
+      id: 'delayed',
+      header: 'Delayed',
+      sortValue: (row) => row.counts.delayed,
+      align: 'right',
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.counts.delayed,
+    },
+    {
+      id: 'failed',
+      header: 'Failed',
+      sortValue: (row) => row.counts.failed,
+      align: 'right',
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.counts.failed,
+    },
+    {
+      id: 'done1h',
+      header: 'Done 1h',
+      sortValue: (row) => row.completedLastHour,
+      align: 'right',
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.completedLastHour,
+    },
+    {
+      id: 'done24h',
+      header: 'Done 24h',
+      sortValue: (row) => row.completedLast24h,
+      align: 'right',
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => row.completedLast24h,
+    },
+    {
+      id: 'latency',
+      header: 'Latency',
+      sortValue: (row) => row.latency?.avgMs ?? 0,
+      cellClassName: 'font-mono text-sm',
+      cell: (row) => latencyCell(row),
+    },
+  ];
+}
+
 export function PerformanceMetricsScreen() {
   const router = useRouter();
   const { state } = useSession();
@@ -63,8 +148,13 @@ export function PerformanceMetricsScreen() {
     }
   }, [state.status, router]);
 
-  const data = metrics.data as PerformanceMetricsSummary | undefined;
+  // `useIamLoad` hands back `null` until the load settles, so this must stay nullable: a
+  // cast to `| undefined` would make the guard below read `null !== undefined` as true and
+  // dereference `totals` on the loading render.
+  const data = metrics.data;
   const queues = data?.queues ?? [];
+
+  const rows: QueueRow[] = queues.map((queue) => ({ ...queue, id: queue.queue }));
 
   return (
     <PageBody>
@@ -73,102 +163,48 @@ export function PerformanceMetricsScreen() {
         description="Latency, throughput and saturation across the background queues."
       />
 
-      {metrics.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{metrics.error}</AlertDescription>
-        </Alert>
+      {data !== null && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat
+            label="In flight"
+            value={String(data.totals.waiting + data.totals.active)}
+            hint={`${data.totals.waiting} waiting · ${data.totals.active} active`}
+          />
+          <Stat label="Delayed" value={String(data.totals.delayed)} hint="scheduled for later" />
+          <Stat
+            label="Failed"
+            value={String(data.totals.failed)}
+            hint="retained dead-letter jobs"
+          />
+          <Stat
+            label="Completed (1h)"
+            value={String(data.totals.completedLastHour)}
+            hint="throughput over the last hour"
+          />
+        </div>
       )}
 
-      {metrics.loading ? (
-        <Skeleton className="h-60 w-full" />
-      ) : data === undefined ? (
-        <EmptyState title="No metrics available" />
-      ) : (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat
-              label="In flight"
-              value={String(data.totals.waiting + data.totals.active)}
-              hint={`${data.totals.waiting} waiting · ${data.totals.active} active`}
-            />
-            <Stat label="Delayed" value={String(data.totals.delayed)} hint="scheduled for later" />
-            <Stat
-              label="Failed"
-              value={String(data.totals.failed)}
-              hint="retained dead-letter jobs"
-            />
-            <Stat
-              label="Completed (1h)"
-              value={String(data.totals.completedLastHour)}
-              hint="throughput over the last hour"
-            />
-          </div>
+      <HrisDataTable
+        rows={rows}
+        columns={buildQueueColumns()}
+        searchable
+        searchText={(row) => row.queue}
+        searchPlaceholder="Search by queue name…"
+        selectable={false}
+        views={{ builtIn: QUEUE_BUILT_IN_VIEWS, storageKey: QUEUE_VIEWS_STORAGE_KEY }}
+        status={metrics.loading ? 'loading' : metrics.error !== undefined ? 'error' : 'ready'}
+        errorCopy={metrics.error}
+        onRetry={() => metrics.reload()}
+        emptyTitle="No metrics available"
+        emptyDescription="Metrics appear once the platform starts sampling queue performance."
+        noResultsTitle="No queues match this filter"
+        noResultsDescription="Try a different search to find the queue you're looking for."
+      />
 
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Per queue</CardTitle>
-              <CardDescription>
-                Sampled {new Date(data.sampledAt).toLocaleString()} · latency over retained
-                completed jobs
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {queues.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No queues configured — background jobs require Redis.
-                </p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Queue</TableHead>
-                      <TableHead className="text-right">Waiting</TableHead>
-                      <TableHead className="text-right">Active</TableHead>
-                      <TableHead className="text-right">Delayed</TableHead>
-                      <TableHead className="text-right">Failed</TableHead>
-                      <TableHead className="text-right">Done 1h</TableHead>
-                      <TableHead className="text-right">Done 24h</TableHead>
-                      <TableHead>Latency</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {queues.map((queue) => (
-                      <TableRow key={queue.queue}>
-                        <TableCell className="font-medium">
-                          {queue.queue}
-                          {queue.isPaused && (
-                            <Badge variant="secondary" className="ml-2">
-                              PAUSED
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {queue.counts.waiting}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {queue.counts.active}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {queue.counts.delayed}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {queue.counts.failed}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {queue.completedLastHour}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {queue.completedLast24h}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">{latencyCell(queue)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </>
+      {data !== null && (
+        <p className="text-sm text-muted-foreground">
+          Sampled {new Date(data.sampledAt).toLocaleString()} · latency over retained completed jobs
+        </p>
       )}
     </PageBody>
   );

@@ -8,6 +8,7 @@ import type { AiProviderSummary } from '@hris/shared-types';
 import { PageBody } from '@/components/layout/page-body';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/feedback/empty-state';
+import { ErrorPanel } from '@/components/feedback/error-panel';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -59,11 +60,7 @@ export function ProvidersScreen() {
         }
       />
 
-      {providers.error !== undefined && (
-        <Alert variant="destructive">
-          <AlertDescription>{providers.error}</AlertDescription>
-        </Alert>
-      )}
+      <ErrorPanel error={providers.error} onRetry={() => providers.reload()} />
 
       {providers.loading ? (
         <Skeleton className="h-40 w-full" />

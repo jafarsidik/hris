@@ -69,6 +69,16 @@ const tree = () => screen.getByRole('navigation', { name: /menus$/i });
 const moduleButton = (moduleId: ModuleId) =>
   within(rail()).getByRole('button', { name: new RegExp(`^${moduleLabel(moduleId)}[.]`, 'i') });
 
+/**
+ * Planned entries of a module, read from the navigation data rather than hardcoded.
+ * The roadmap advances by flipping `status`, and a literal name in these tests would
+ * either fail on every flip or silently stop asserting anything.
+ */
+const plannedItemsFor = (module: ModuleId) =>
+  (MODULE_MENUS.find((menu) => menu.module === module)?.groups ?? [])
+    .flatMap((group) => group.items)
+    .filter((item) => item.status === 'planned');
+
 const renderShell = () =>
   render(
     <SessionProvider>
@@ -227,13 +237,18 @@ describe('SidebarTree', () => {
   });
 
   it('renders planned items as text, never as links', () => {
-    pathname.current = '/employees';
+    // A module that still has planned entries; Core HR is fully built, so anchoring on
+    // it would quietly turn this into an empty loop.
+    pathname.current = '/payroll/runs';
     renderShell();
+
+    const items = plannedItemsFor('M06_PAYROLL');
+    expect(items.length).toBeGreaterThan(0);
 
     // Only routes that exist are navigable. A link to a planned screen is a 404 that looks
     // like a working feature.
-    for (const name of [/payroll runs/i, /headcount/i]) {
-      const element = within(tree()).queryByRole('link', { name });
+    for (const item of items) {
+      const element = within(tree()).queryByRole('link', { name: item.label });
 
       if (element !== null) {
         expect(element, 'planned item must not be a link').toBeNull();
@@ -242,7 +257,7 @@ describe('SidebarTree', () => {
   });
 
   it('says in words that a planned item is not built', () => {
-    pathname.current = '/employees';
+    pathname.current = '/payroll/runs';
     renderShell();
 
     // The explanation is visible text, not a tooltip on a disabled control: a disabled
@@ -296,14 +311,18 @@ describe('SidebarTree', () => {
   });
 
   it('gives a planned item no href at all', () => {
-    pathname.current = '/employees';
+    pathname.current = '/payroll/runs';
     renderShell();
 
     // The failure this guards against is a link that renders fine and 404s when clicked.
     // `href` absent is the only state that cannot be clicked by accident.
     // `closest('a')` returning null is the assertion: an anchor without an href is not a
     // link, has no link role, and silently drops its text from the accessibility tree.
-    const planned = within(tree()).getByText('Employee Directory');
+    const [item] = plannedItemsFor('M06_PAYROLL');
+    if (item === undefined) {
+      throw new Error('The payroll module must keep at least one planned entry for this test.');
+    }
+    const planned = within(tree()).getByText(item.label);
 
     expect(planned.closest('a')).toBeNull();
     expect(planned.closest('[data-slot="sidebar-menu-sub-button"]')).toHaveAttribute(
@@ -313,14 +332,17 @@ describe('SidebarTree', () => {
   });
 
   it('marks planned items in the accessible name, not only in colour', () => {
-    pathname.current = '/employees';
+    pathname.current = '/payroll/runs';
     renderShell();
+
+    const [item] = plannedItemsFor('M06_PAYROLL');
+    if (item === undefined) {
+      throw new Error('The payroll module must keep at least one planned entry for this test.');
+    }
 
     // Read as text within the tree, not lifted from `title`.
     expect(
-      within(tree())
-        .getByText('Employee Directory')
-        .closest('[data-slot="sidebar-menu-sub-button"]'),
+      within(tree()).getByText(item.label).closest('[data-slot="sidebar-menu-sub-button"]'),
     ).toHaveTextContent('planned, not built yet');
   });
 });

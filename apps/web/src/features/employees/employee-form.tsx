@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { EMPLOYMENT_TYPES } from '@hris/shared-types';
+import { EmployeePhotoField } from '@/features/employees/employee-photo-field';
 import type { Employee } from '@/features/employees/employee-types';
 import { EMPLOYEE_STATUSES, MOCK_DEPARTMENTS } from '@/features/employees/mock-employee-repository';
 
@@ -146,6 +147,14 @@ export function EmployeeForm({
       <form action={formAction} noValidate className="grid gap-6">
         {employee !== undefined && <input type="hidden" name="id" value={employee.id} />}
         <input type="hidden" name="employeeNumber" value={employee?.employeeNumber ?? ''} />
+        {employee !== undefined && (
+          <EmployeePhotoField
+            employeeId={employee.id}
+            fullName={employee.fullName}
+            editable
+            className="rounded-lg border border-border bg-muted/30 p-3"
+          />
+        )}
         {usesRealOptions && (
           <>
             <input type="hidden" name="unitId" value={unitId} />
